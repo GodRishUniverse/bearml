@@ -272,22 +272,24 @@ namespace simplenet{
             // TODO: friend function - multiply tensors - dot product
             
 
-            // TODO: Permute  
+            // Permute  
             Tensor permute(std::vector<int> new_order){
-                
-                if (sizeCheck(new_order) == false){
-                    throw std::invalid_argument("Invalid shape - needs to be multipliable to original shape");
-                }
-
-                Tensor permuted(new_order);
-                permuted.data = new double[this->sizeOfTensor()];
-
-                for (ll i = 0; i < this->sizeOfTensor(); i++){
-                    permuted.data[i] = this->data[i];
-                }
-
-                return permuted;
-
+                std::vector<int > temp ;
+               for (int i = 0; i < new_order.size(); i++){
+                    if (new_order[i] < 0 || new_order[i] >= this->shape.size()){
+                        throw std::invalid_argument("Invalid permute order");
+                    }
+               }
+               // permuting the shape
+               for (int i = 0; i < new_order.size(); i++){
+                    temp.push_back(this->shape[new_order[i]]);
+               }
+               Tensor result(temp);
+               // the numbers position will be the same - only the way they are represented will be different
+               for (ll i = 0; i < this->sizeOfTensor(); i++){
+                    result.data[i] = this->data[i];
+               }
+               return result;
             }
 
 
