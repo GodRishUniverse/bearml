@@ -4,6 +4,7 @@
 
 using ll = long long;
 
+// TODO : implementation order - permute, reshape, flatten, unflatten, unsqueeze, squeeze, GEMM, unflatten
 
 
 #ifndef TENSOR_H
@@ -12,12 +13,52 @@ namespace simplenet{
     class Tensor {
         private:
             std::vector<int> shape;
+            std::vector<int> strides; // will be used in permute and in GEMM
+
             double * data;
 
             double * getTensorDataFlat() const { return this->data; };
+
+            void computeStrides() {
+                strides.resize(shape.size());
+                size_t s = 1;
+                for (int d = shape.size()-1; d >= 0; --d) {
+                  strides[d] = s;
+                  s *= shape[d];
+                }
+            }
+
+        bool negOrZeroInSizeCheck(std::vector<int> sizePassedDown) const {
+            for (const int & i : sizePassedDown){
+                if (i < 1){
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        bool sizeCheck(std::vector<int> sizePassedDown) const {
+            if (negOrZeroInSizeCheck(sizePassedDown)){
+                return false;
+            }
+            
+            ll total = 1; // cause size may be huge
+            for (const int & i : sizePassedDown){
+                total*= i;
+            }
+        
+            return (total == this->sizeOfTensor());
+        }
+
         public:
             // constructor when size and data are provided
-            Tensor(std::vector<int> sizePassed) : shape(sizePassed) {
+            Tensor(std::vector<int> sizePassed) {
+                if (negOrZeroInSizeCheck(sizePassed)){
+                    throw std::invalid_argument("Size cannot have a negative or zero");
+                }
+                shape = sizePassed;
+                computeStrides(); // compute strides
+
                 ll total = 1; // cause size may be huge
                 for (const int & i : shape){
                     total*= i;
@@ -31,19 +72,26 @@ namespace simplenet{
                 }
             };
         
+            /**
+             * @brief Get the value at the given index
+             * @param index The index to get the value at. Must be of size equal to the shape of the tensor.
+             * @throw std::invalid_argument if the index size does not match the shape of the tensor.
+             * @return The value at the given index
+             */
             double get(std::vector<int> index) const {
+                
                 if (index.size() != shape.size()){
                     throw std::invalid_argument("Invalid index size");
                 }
-        
-                ll stride = 1;
-                ll start = 0;
-                for (ll i = 0; i < index.size(); i++){
-                    stride *= shape[i];
-                    start += index[i] * stride;
+
+                if (sizeCheck(index) == false){
+                    throw std::invalid_argument("Invalid index shape");
                 }
         
-                return data[start];
+                size_t off = 0;
+                for (size_t d = 0; d < shape.size(); ++d)
+                    off += index[d] * this->strides[d];
+                return data[off];
             }
 
             void printShape() const {
@@ -62,15 +110,16 @@ namespace simplenet{
                 if (index.size() != shape.size()){
                     throw std::invalid_argument("Invalid index size");
                 }
-        
-                ll stride = 1;
-                ll start = 0;
-                for (ll i = 0; i < index.size(); i++){
-                    stride *= shape[i];
-                    start += index[i] * stride;
+
+                if (sizeCheck(index) == false){
+                    throw std::invalid_argument("Invalid index shape");
                 }
         
-                data[start] = val;
+                size_t off = 0;
+                for (size_t d = 0; d < shape.size(); ++d)
+                    off += index[d] * strides[d];
+            
+                data[off] = val;
             }
             // helper function
             ll sizeOfTensor() const {
@@ -84,6 +133,7 @@ namespace simplenet{
             // copy constructor
             Tensor(const Tensor& other) {
                 this->shape = other.shape;
+                this->strides = other.strides;
                 this->data = new double[other.sizeOfTensor()];
                 std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
             }
@@ -93,6 +143,7 @@ namespace simplenet{
                 if (this != &other) {
                     delete[] data;
                     this->shape = other.shape;
+                    this->strides = other.strides;
                     this->data = new double[other.sizeOfTensor()];
                     std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
                 }
@@ -103,6 +154,7 @@ namespace simplenet{
             Tensor(Tensor&& other) {
                 this->shape = other.shape;
                 this->data = other.data;
+                this->strides = other.strides;
                 other.data = nullptr;
             }
         
@@ -112,6 +164,7 @@ namespace simplenet{
                     delete[] data;
                     this->shape = other.shape;
                     this->data = other.data;
+                    this->strides = other.strides;
                     other.data = nullptr;
                 }
                 return *this;
@@ -148,6 +201,10 @@ namespace simplenet{
 
             std::vector<int> getShape() const {
                 return this->shape;
+            }
+
+            std::vector<int> getStrides() const {
+                return this->strides;
             }
 
 
@@ -197,73 +254,101 @@ namespace simplenet{
                 }
                 return *this;
             }
+
+            // Hadamard product
+            Tensor operator*(const Tensor &other) {
+                if (this->shape != other.shape){
+                    throw std::invalid_argument("Tensors must have the same shape");
+                }
+
+                
+                Tensor result(this->shape);
+                for (ll i = 0; i < this->sizeOfTensor(); i++){
+                    result.data[i] = this->data[i] * other.data[i];
+                }
+                return result;
+            }
         
             // TODO: friend function - multiply tensors - dot product
-        
-            // TODO: reshape 
-    
+            
+
+            // TODO: Permute  
+            Tensor permute(std::vector<int> new_order){
+                
+                if (sizeCheck(new_order) == false){
+                    throw std::invalid_argument("Invalid shape - needs to be multipliable to original shape");
+                }
+
+                Tensor permuted(new_order);
+                permuted.data = new double[this->sizeOfTensor()];
+
+                for (ll i = 0; i < this->sizeOfTensor(); i++){
+                    permuted.data[i] = this->data[i];
+                }
+
+                return permuted;
+
+            }
+
+
+            // reshape 
+            void reshape(std::vector<int> new_shape){
+                // check multipliability
+                if (sizeCheck(new_shape) == false){
+                    throw std::invalid_argument("Invalid shape - needs to be multipliable to original shape");
+                }
+                this->shape = new_shape;
+                computeStrides();
+            }
+
+
             // flatten
-            void flatten(){
-                // We already have a 1D tensor
+            Tensor flatten(){
+                // We already have a 1D tensor - we have to copy and return
                 std::vector<int> temp;
                 ll total = 1;
                 for (ll i = 0; i < this->shape.size(); i++){
                     total *= this->shape[i];
                 }
                 temp.push_back(total);
+                Tensor result(temp);
+                for (ll i = 0; i < this->sizeOfTensor(); i++){
+                    result.data[i] = this->data[i];
+                }
+                return result;
+            }
+
+        
+            // unsqueeze
+            void unsqueeze(int dim){
+                std::vector<int> temp = this->shape;
+                temp.insert(temp.begin() + dim, 1);
                 this->shape = temp;
+                computeStrides();
             }
         
-            // TODO:unflatten
-        
-            // TODO: unsqueeze
-        
-            // TODO: squeeze
+            // squeeze
+            // default dim = 0
+            void squeeze(int dim = 0 ){
+                std::vector<int> temp = this->shape;
+                int tempDim = temp[dim];
+                if (tempDim == 1){
+                    throw std::invalid_argument("Cannot squeeze dimension with size 1");
+                }else{
+                    if (dim == 0){
+                        temp[dim+1]*=tempDim;
+                    }else{
+                        temp[dim-1]*=tempDim;
+                    }
+                    temp.erase(temp.begin() + dim);   
+                    this->shape = temp; 
+                    computeStrides();
+                }                
+            }
+            
         
             // TODO:concat
-            void concat(Tensor& other, int dim =0 ){
-                auto otherDims = other.getShape();
-                ll total = 1;
-                for (ll i = 0; i < this->shape.size(); i++){
-                    // check if the dimensions are the same                   
-                    if (i!=dim && this->shape[i] != otherDims[i]){
-                        throw std::invalid_argument("Tensors must have the same shape");
-                    }
-
-                    if (i == dim){
-                        total *= (this->shape[i] + otherDims[i]);
-                    }else{
-                        total *= this->shape[i];
-                    }
-                }
-
-                double * temp = new double[total];
-
-                auto tempShape = this->shape;
-                tempShape[dim] = this->shape[dim] + otherDims[dim];
-
-                ll stride = 1;
-                ll start = 0;
-
-            
-                for (ll j = dim+1; j < tempShape.size(); j++){
-                    stride *= tempShape[j];
-                }
-                // figure out how to add the data first and then the other data
-                for (ll j = 0; j < this->shape[dim]; j++){
-                    // TODO: figure out how to add the data
-
-                }
-                start += this->shape[dim] * stride;
-
-                for (ll j = 0; j < other.shape[dim]; j++){
-                    // TODO: figure out how to add the data
-
-
-                }
- 
-                
-            }
+           
         
             
             void stack(std::initializer_list<Tensor> tensors){
@@ -282,6 +367,7 @@ namespace simplenet{
                 ll stride = this->sizeOfTensor();
 
                 this->shape.insert(this->shape.begin(), tensors.size()+1);
+                computeStrides();
                 
                 
                 std::copy(this->data, this->data + stride, temp + 0);

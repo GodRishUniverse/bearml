@@ -12,7 +12,6 @@ using namespace std;
 // Will use reverse mode -  https://en.wikipedia.org/wiki/Automatic_differentiation  
 // https://rufflewind.com/2016-12-30/reverse-mode-automatic-differentiation
 namespace simplenet{
-    // TODO: This is just a placeholder for now
 
     // Notes for implementation 
     /*
@@ -50,6 +49,17 @@ namespace simplenet{
    // TODO: implement the reverse topological order traversal
    // TODO: implement the gradient function
    // TODO: implement the backward pass (which is the gradient function)
+
+   // TODO: need to create variations of node for matrices and tensors
+   
+   
+   struct Node {
+        double val;
+        std::vector<Node*> inputs;
+        std::vector<Node*> outputs;
+   };
+
+
 
 }
 namespace simplenet::autogradient{
