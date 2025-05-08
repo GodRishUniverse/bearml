@@ -46,7 +46,10 @@ namespace simplenet{
                 append v_k_to_i_adjoint to node_to_grad[k] // propagate the partial adjoints to its inputs 
         return adjoint of input v_input(s) - this is the gradient of the function (network) with respect to all the inputs  
     */
-
+   // TODO: implement the computational graph elements - nodes and edges and binary and unary operations
+   // TODO: implement the reverse topological order traversal
+   // TODO: implement the gradient function
+   // TODO: implement the backward pass (which is the gradient function)
 
 }
 namespace simplenet::autogradient{
