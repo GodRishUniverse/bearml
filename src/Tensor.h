@@ -19,14 +19,7 @@ namespace simplenet{
 
             double * getTensorDataFlat() const { return this->data; };
 
-            void computeStrides() {
-                strides.resize(shape.size());
-                size_t s = 1;
-                for (int d = shape.size()-1; d >= 0; --d) {
-                  strides[d] = s;
-                  s *= shape[d];
-                }
-            }
+            
 
         bool negOrZeroInSizeCheck(std::vector<int> sizePassedDown) const {
             for (const int & i : sizePassedDown){
@@ -51,6 +44,19 @@ namespace simplenet{
         }
 
         public:
+
+            void computeStrides() {
+                strides.resize(shape.size());
+                size_t s = 1;
+                for (int d = shape.size()-1; d >= 0; --d) {
+                strides[d] = s;
+                s *= shape[d];
+                }
+            }
+            
+            // default constructor 
+            Tensor() {};
+
             // constructor when size and data are provided
             Tensor(std::vector<int> sizePassed) {
                 if (negOrZeroInSizeCheck(sizePassed)){
@@ -174,26 +180,114 @@ namespace simplenet{
             ~Tensor(){
                 delete[] data;
             }
+
+            // TODO: Broadcasting
+            static std::vector<int> computeBroadcastShape(
+                const std::vector<int>& A, const std::vector<int>& B) 
+            {
+                size_t n = std::max(A.size(), B.size());
+                std::vector<int> a(A), b(B);
+                a.insert(a.begin(), n - A.size(), 1);
+                b.insert(b.begin(), n - B.size(), 1);
+
+                std::vector<int> out(n);
+                for (size_t i = 0; i < n; ++i) {
+                    if (a[i] == b[i] || a[i] == 1 || b[i] == 1) {
+                        out[i] = std::max(a[i], b[i]);
+                    } else {
+                        throw std::invalid_argument("Shapes not broadcastable");
+                    }
+                }
+                return out;
+            }
+
+            static std::vector<int> computeBroadcastStrides(
+                const std::vector<int>&   origShape,
+                const std::vector<int>&    origStrides,
+                const std::vector<int>&   targetShape)
+            {
+                size_t n = targetShape.size();
+                // pad on the left
+                std::vector<int>  s = origShape;
+                std::vector<int>  st = origStrides;
+                s.insert(s.begin(), n - s.size(), 1);
+                st.insert(st.begin(), n - st.size(), 0);
+
+                std::vector<int> out(n);
+                for (size_t i = 0; i < n; ++i) {
+                    out[i] = (s[i] == targetShape[i] ? st[i] : 0);
+                }
+                return out;
+            }
+
+            static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
+                Tensor v;            // default-constructed
+                v.data    = t.data;  // points at the same buffer
+                v.shape   = newShape;
+                v.strides = computeBroadcastStrides(t.shape, t.strides, newShape);
+                return v;
+            }
+
+                    
         
         
             // friend function - add tensors    
-            friend Tensor operator+(const Tensor &a, const Tensor &b) {
-                if (a.shape != b.shape){
-                    throw std::invalid_argument("Tensors must have the same shape");
+            friend Tensor operator+(const Tensor &A, const Tensor &B) {
+                if (A.shape == B.shape) {
+                    Tensor C(A.shape);
+                    for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                        C.data[i] = A.data[i] + B.data[i];
+                    return C;
                 }
-                Tensor result(a.shape);
-                for (ll i = 0; i < a.sizeOfTensor(); i++){
-                    result.data[i] = a.data[i] + b.data[i];
+            
+                // broadcast path
+                auto outShape = computeBroadcastShape(A.shape, B.shape);
+                Tensor  C(outShape);
+            
+                // make “broadcasted views”
+                Tensor aView = makeBroadcastView(A, outShape);
+                Tensor bView = makeBroadcastView(B, outShape);
+            
+                // now do a single flat loop
+                ll N = C.sizeOfTensor();
+                for (ll idx = 0; idx < N; ++idx) {
+                    // decode idx → coordinates and accumulate offsets
+                    ll tmp = idx, offA = 0, offB = 0;
+                    for (size_t d = 0; d < outShape.size(); ++d) {
+                        int coord = tmp / C.strides[d];
+                        tmp %= C.strides[d];
+                        offA += coord * aView.strides[d];
+                        offB += coord * bView.strides[d];
+                    }
+                    C.data[idx] = A.data[offA] + B.data[offB];
                 }
-                return result;
+                return C;
             }
 
             Tensor operator+=(const Tensor &other) {
-                if (this->shape != other.shape){
-                    throw std::invalid_argument("Tensors must have the same shape");
-                }
-                for (ll i = 0; i < other.sizeOfTensor(); i++){
-                    other.data[i] += other.data[i];
+                // broadcast or exact-shape
+                if (shape != other.shape) {
+                    auto outShape = computeBroadcastShape(shape, other.shape);
+                    // we require that *this already has exactly outShape:
+                    // otherwise you'd need to reallocate or error.
+                    if (shape != outShape)
+                        throw std::invalid_argument("LHS must match broadcasted shape");
+                    Tensor oView = makeBroadcastView(other, outShape);
+
+                    ll N = sizeOfTensor();
+                    for (ll idx = 0; idx < N; ++idx) {
+                        // same flat-to-multi decode as above
+                        ll tmp = idx, offO = 0;
+                        for (size_t d = 0; d < outShape.size(); ++d) {
+                            int coord = tmp / strides[d];
+                            tmp %= strides[d];
+                            offO += coord * oView.strides[d];
+                        }
+                        data[idx] += other.data[offO];
+                    }
+                } else {
+                    for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
+                        data[i] += other.data[i];
                 }
                 return *this;
             }
@@ -235,6 +329,8 @@ namespace simplenet{
         
             // friend function - subtract tensors
             friend Tensor operator-(const Tensor &a, const Tensor &b) {
+                //TODO: make broadcasting available
+
                 if (a.shape != b.shape){
                     throw std::invalid_argument("Tensors must have the same shape");
                 }
@@ -246,6 +342,7 @@ namespace simplenet{
             }
 
             Tensor operator-=(const Tensor &other) {
+                //TODO: make broadcasting available
                 if (this->shape != other.shape){
                     throw std::invalid_argument("Tensors must have the same shape");
                 }
@@ -268,8 +365,16 @@ namespace simplenet{
                 }
                 return result;
             }
-        
+
+
             // TODO: friend function - multiply tensors - dot product
+            friend Tensor operator*(const Tensor &a, const Tensor &b) {
+                // need to implement broadcasting first before we can do this
+                // basically we need to make sure that the shapes are compatible
+                // especially: Tensor a(a1, ... , an) Tensor b(b1, ... ,bn, bm) - we want at least an = bn and if a or b has less size then broadcasting will be needed
+
+
+            }
             
 
             // Permute  
