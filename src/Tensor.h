@@ -12,6 +12,7 @@ using ll = long long;
 namespace simplenet{
     class Tensor {
         private:
+        
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
 
@@ -19,29 +20,31 @@ namespace simplenet{
 
             double * getTensorDataFlat() const { return this->data; };
 
-            
+            // default constructor - added for edge cases - private ONLY
+            Tensor() {};
+                
 
-        bool negOrZeroInSizeCheck(std::vector<int> sizePassedDown) const {
-            for (const int & i : sizePassedDown){
-                if (i < 1){
-                    return true;
+            bool negOrZeroInSizeCheck(std::vector<int> sizePassedDown) const {
+                for (const int & i : sizePassedDown){
+                    if (i < 1){
+                        return true;
+                    }
                 }
-            }
-            return false;
-        };
-
-        bool sizeCheck(std::vector<int> sizePassedDown) const {
-            if (negOrZeroInSizeCheck(sizePassedDown)){
                 return false;
-            }
+            };
+
+            bool sizeCheck(std::vector<int> sizePassedDown) const {
+                if (negOrZeroInSizeCheck(sizePassedDown)){
+                    return false;
+                }
+                
+                ll total = 1; // cause size may be huge
+                for (const int & i : sizePassedDown){
+                    total*= i;
+                }
             
-            ll total = 1; // cause size may be huge
-            for (const int & i : sizePassedDown){
-                total*= i;
+                return (total == this->sizeOfTensor());
             }
-        
-            return (total == this->sizeOfTensor());
-        }
 
         public:
 
@@ -54,8 +57,6 @@ namespace simplenet{
                 }
             }
             
-            // default constructor 
-            Tensor() {};
 
             // constructor when size and data are provided
             Tensor(std::vector<int> sizePassed) {
@@ -181,6 +182,40 @@ namespace simplenet{
                 delete[] data;
             }
 
+            // Helper functions
+            std::vector<int> getShape() const {
+                return this->shape;
+            }
+
+            std::vector<int> getStrides() const {
+                return this->strides;
+            }
+
+
+            // TODO: friend function - print the tensor to be added
+            friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
+                int total_elements = 1;
+                for (int dim : tensor.shape) {
+                    total_elements *= dim;
+                }
+
+                os << "Tensor with shape: [";
+                for (size_t i = 0; i < tensor.shape.size(); ++i) {
+                    os << tensor.shape[i];
+                    if (i != tensor.shape.size() - 1) os << ", ";
+                }
+                os << "]\n";
+
+                os << "Tensor data: \n";
+                for (int i = 0; i < total_elements; ++i) {
+                    os << tensor.data[i] << " ";
+                }
+                os << std::endl;
+
+                return os;
+            }
+
+
             // TODO: Broadcasting
             static std::vector<int> computeBroadcastShape(
                 const std::vector<int>& A, const std::vector<int>& B) 
@@ -292,62 +327,66 @@ namespace simplenet{
                 return *this;
             }
 
-
-            std::vector<int> getShape() const {
-                return this->shape;
-            }
-
-            std::vector<int> getStrides() const {
-                return this->strides;
-            }
-
-
-            // TODO: friend function - print the tensor to be added
-            friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
-                int total_elements = 1;
-                for (int dim : tensor.shape) {
-                    total_elements *= dim;
-                }
-
-                os << "Tensor with shape: [";
-                for (size_t i = 0; i < tensor.shape.size(); ++i) {
-                    os << tensor.shape[i];
-                    if (i != tensor.shape.size() - 1) os << ", ";
-                }
-                os << "]\n";
-
-                os << "Tensor data: \n";
-                for (int i = 0; i < total_elements; ++i) {
-                    os << tensor.data[i] << " ";
-                }
-                os << std::endl;
-
-                return os;
-            }
-
+            
             
         
             // friend function - subtract tensors
-            friend Tensor operator-(const Tensor &a, const Tensor &b) {
-                //TODO: make broadcasting available
-
-                if (a.shape != b.shape){
-                    throw std::invalid_argument("Tensors must have the same shape");
+            friend Tensor operator-(const Tensor &A, const Tensor &B) {
+                if (A.shape == B.shape) {
+                    Tensor C(A.shape);
+                    for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                        C.data[i] = A.data[i] - B.data[i];
+                    return C;
                 }
-                Tensor result(a.shape);
-                for (ll i = 0; i < a.sizeOfTensor(); i++){
-                    result.data[i] = a.data[i] - b.data[i];
+            
+                // broadcast path
+                auto outShape = computeBroadcastShape(A.shape, B.shape);
+                Tensor  C(outShape);
+            
+                // make “broadcasted views”
+                Tensor aView = makeBroadcastView(A, outShape);
+                Tensor bView = makeBroadcastView(B, outShape);
+            
+                // now do a single flat loop
+                ll N = C.sizeOfTensor();
+                for (ll idx = 0; idx < N; ++idx) {
+                    // decode idx → coordinates and accumulate offsets
+                    ll tmp = idx, offA = 0, offB = 0;
+                    for (size_t d = 0; d < outShape.size(); ++d) {
+                        int coord = tmp / C.strides[d];
+                        tmp %= C.strides[d];
+                        offA += coord * aView.strides[d];
+                        offB += coord * bView.strides[d];
+                    }
+                    C.data[idx] = A.data[offA] - B.data[offB];
                 }
-                return result;
+                return C;
             }
 
             Tensor operator-=(const Tensor &other) {
-                //TODO: make broadcasting available
-                if (this->shape != other.shape){
-                    throw std::invalid_argument("Tensors must have the same shape");
-                }
-                for (ll i = 0; i < other.sizeOfTensor(); i++){
-                    other.data[i] -= other.data[i];
+                    // broadcast or exact-shape
+                    if (shape != other.shape) {
+                    auto outShape = computeBroadcastShape(shape, other.shape);
+                    // we require that *this already has exactly outShape:
+                    // otherwise you'd need to reallocate or error.
+                    if (shape != outShape)
+                        throw std::invalid_argument("LHS must match broadcasted shape");
+                    Tensor oView = makeBroadcastView(other, outShape);
+
+                    ll N = sizeOfTensor();
+                    for (ll idx = 0; idx < N; ++idx) {
+                        // same flat-to-multi decode as above
+                        ll tmp = idx, offO = 0;
+                        for (size_t d = 0; d < outShape.size(); ++d) {
+                            int coord = tmp / strides[d];
+                            tmp %= strides[d];
+                            offO += coord * oView.strides[d];
+                        }
+                        data[idx] -= other.data[offO];
+                    }
+                } else {
+                    for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
+                        data[i] -= other.data[i];
                 }
                 return *this;
             }
@@ -493,8 +532,6 @@ namespace simplenet{
                 this->data = temp;
             }
         
-        
         };
-        
 }
 #endif
