@@ -447,23 +447,8 @@ namespace simplenet{
                 computeStrides();
             }
 
-
-            // flatten
-            Tensor flatten(){
-                // We already have a 1D tensor - we have to copy and return
-                std::vector<int> temp;
-                ll total = 1;
-                for (ll i = 0; i < this->shape.size(); i++){
-                    total *= this->shape[i];
-                }
-                temp.push_back(total);
-                Tensor result(temp);
-                for (ll i = 0; i < this->sizeOfTensor(); i++){
-                    result.data[i] = this->data[i];
-                }
-                return result;
-            }
-
+            template <typename T>
+            T flatten(); // has an inplace and Tensor return type specialization in the cpp file
         
             // unsqueeze
             // Finalized
@@ -478,10 +463,11 @@ namespace simplenet{
             // default dim = 0
             void squeeze(int dim = 0 ){
                 std::vector<int> temp = this->shape;
-                std::cout << "INSIDE: " << std::endl;
-                for (size_t s = 0; s <temp.size(); s++){
-                    std::cout << temp[s] <<std::endl;
-                } 
+                //debugging
+                // std::cout << "INSIDE: " << std::endl;
+                // for (size_t s = 0; s <temp.size(); s++){
+                //     std::cout << temp[s] <<std::endl;
+                // } 
 
                 if (temp.size() == 1){
                     throw std::invalid_argument("Cannot squeeze dimension with size 1");
@@ -500,6 +486,9 @@ namespace simplenet{
             
         
             // TODO:concat
+            void concat(std::initializer_list<Tensor> tensors){
+
+            }
            
         
             

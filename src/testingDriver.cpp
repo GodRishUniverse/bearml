@@ -59,6 +59,9 @@ int main() {
     t.squeeze(3);
     cout << t <<endl;
 
+    t.flatten<void>();
+    cout << t << endl;
+
 
 
 
