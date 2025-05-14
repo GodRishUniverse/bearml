@@ -44,4 +44,22 @@ int main() {
     cout << m4 + m6 << endl;
 
 
+    for (size_t s = 0; s <t.getShape().size(); s++){
+        cout << t.getShape()[s] <<endl;
+    }
+
+    vector<int> reshape_shape {1,1,6,6};
+
+    t.reshape(reshape_shape);
+    cout << "AFTER RESHAPE" <<endl;
+    for (size_t s = 0; s <t.getShape().size(); s++){
+        cout << t.getShape()[s] <<endl;
+    }
+    cout << t<< endl;
+    t.squeeze(3);
+    cout << t <<endl;
+
+
+
+
 }

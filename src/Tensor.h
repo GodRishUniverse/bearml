@@ -466,6 +466,7 @@ namespace simplenet{
 
         
             // unsqueeze
+            // Finalized
             void unsqueeze(int dim){
                 std::vector<int> temp = this->shape;
                 temp.insert(temp.begin() + dim, 1);
@@ -477,10 +478,15 @@ namespace simplenet{
             // default dim = 0
             void squeeze(int dim = 0 ){
                 std::vector<int> temp = this->shape;
-                int tempDim = temp[dim];
-                if (tempDim == 1){
+                std::cout << "INSIDE: " << std::endl;
+                for (size_t s = 0; s <temp.size(); s++){
+                    std::cout << temp[s] <<std::endl;
+                } 
+
+                if (temp.size() == 1){
                     throw std::invalid_argument("Cannot squeeze dimension with size 1");
                 }else{
+                    int tempDim = temp[dim];
                     if (dim == 0){
                         temp[dim+1]*=tempDim;
                     }else{
