@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <iostream>
+#include <string>
 
 using ll = long long;
 
@@ -115,11 +116,72 @@ namespace simplenet{
         
             void set(double val, std::vector<int> index) const {
                 if (index.size() != shape.size()){
-                    throw std::invalid_argument("Invalid index size");
+                    std::string err = "Expected size = ";
+                    std::string expected_size {"("};
+                    std::string size_passed{"("};
+                    for (size_t s = 0; s<shape.size(); s++){
+                        expected_size+= std::to_string(shape[s]);
+                        if (s-1 != shape.size()-1){
+                            expected_size+= ", ";
+                        }
+                    }
+                    expected_size+=")";
+
+                    err+=expected_size;
+
+                    err+= " Actual passed in = ";
+
+                    for (size_t s = 0; s<index.size(); s++){
+                        size_passed+= std::to_string(index[s]);
+                        if (s-1 != index.size()-1){
+                            size_passed+= ", ";
+                        }
+                    }
+                    size_passed+=")";
+
+                    err+=size_passed;
+
+
+                    err = "Invalid index size: " + err;
+                    
+                    throw std::invalid_argument(err);
                 }
 
-                if (sizeCheck(index) == false){
-                    throw std::invalid_argument("Invalid index shape");
+
+                // check negatives and size on each index
+                bool flag = false;
+
+                std::string err = "Expected size = ";
+                std::string expected_size {"("};
+                std::string size_passed{"("};
+                for (size_t s = 0; s<shape.size(); s++){
+                    expected_size+= std::to_string(shape[s]);
+                    if (s-1 != shape.size()-1){
+                        expected_size+= ", ";
+                    }
+
+                    size_passed+= std::to_string(index[s]);
+                    if (s-1 != index.size()-1){
+                        size_passed+= ", ";
+                    }
+
+                    if (index[s] > shape[s] || index[s]<0){
+                        flag = true;
+                    }
+                }
+                expected_size+=")";
+
+                err+=expected_size;
+
+                err+= " Actual passed in = ";
+                size_passed+=")";
+
+                err+=size_passed;
+
+                err= "Invalid index shape: " + err;
+
+                if (flag){
+                    throw std::invalid_argument(err);
                 }
         
                 size_t off = 0;

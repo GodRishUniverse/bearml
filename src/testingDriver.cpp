@@ -62,6 +62,19 @@ int main() {
     t.flatten<void>();
     cout << t << endl;
 
+    vector<int> tempS {2,3,4};
+    simplenet::Tensor newT_A {tempS};
+    simplenet::Tensor newT_B {tempS};
+    newT_A.set(10, {1,0,0});
+    newT_B.set(10, {1,0,0});
+
+    cout << newT_A <<endl;
+    cout << newT_B <<endl;
+
+    cout << newT_A * newT_B << endl; // hadamard product works
+
+
+
 
 
 
