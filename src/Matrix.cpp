@@ -1,6 +1,6 @@
 # include "Matrix.h"
 
-#include <random>
+
 
 // matrix addition
 namespace simplenet{
@@ -68,7 +68,7 @@ namespace simplenet{
     // matrix multiplication
     template<typename T>
     Matrix<T> Matrix<T>::operator*(Matrix<T>&  mat) const {
-        // TODO: use CUDA if possible - to make it faster
+        // TODO: Write a CUDA kernel for this
         Matrix result(rows, mat.getCols());
         for (int i = 0; i < rows; i++) {
             for (int j = 0; j < mat.getCols(); j++) {

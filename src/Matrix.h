@@ -3,6 +3,7 @@
 #include <iostream>
 #include <utility>
 #include <ostream>
+#include <random>
 
 #ifndef MATRIX_H
 #define MATRIX_H

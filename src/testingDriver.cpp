@@ -73,9 +73,4 @@ int main() {
 
     cout << newT_A * newT_B << endl; // hadamard product works
 
-
-
-
-
-
 }

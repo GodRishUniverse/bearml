@@ -4,10 +4,6 @@
 #include "Tensor.h"
 #include "Matrix.h"
 
-using namespace std;
-
-
-
 
 // Will use reverse mode -  https://en.wikipedia.org/wiki/Automatic_differentiation  
 // https://rufflewind.com/2016-12-30/reverse-mode-automatic-differentiation
@@ -50,7 +46,6 @@ namespace simplenet{
    // TODO: implement the gradient function
    // TODO: implement the backward pass (which is the gradient function)
 
-   // TODO: need to create variations of node for matrices and tensors
    
    
    struct Node {
@@ -58,6 +53,30 @@ namespace simplenet{
         std::vector<Node*> inputs;
         std::vector<Node*> outputs;
    };
+
+   // Matrix Variant for Node
+   struct Node {
+        simplenet::Matrix<double> val;
+        std::vector<Node*> inputs;
+        std::vector<Node*> outputs;
+   };
+
+    // Tensor Variant for Node
+   struct Node {
+        simplenet::Tensor val;
+        std::vector<Node*> inputs;
+        std::vector<Node*> outputs;
+   };
+
+
+   // Edges will be operation types on two different Nodes (also same node as well) 
+   // - need to think how gradients will change with some different operations like Permute
+    // ANSWER to above question is:
+    // Permuting a tensor changes its shape but doesn't affect the underlying data or its relationships to 
+    // other tensors in the computation graph. Consequently, the gradient of a permuted tensor is simply the permutation of the original gradient,
+    // with the same operations applied to the gradient's axes as were applied to the tensor's axes. 
+
+
 
 
 
