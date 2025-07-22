@@ -5,7 +5,7 @@
 
 using ll = long long;
 
-// TODO : implementation order - permute, reshape, flatten, unflatten, unsqueeze, squeeze, GEMM, unflatten
+// TODO : implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
 
 
 #ifndef TENSOR_H
@@ -470,10 +470,10 @@ namespace simplenet{
 
             // TODO: friend function - multiply tensors - dot product
             friend Tensor operator*(const Tensor &a, const Tensor &b) {
-                // need to implement broadcasting first before we can do this
+                // TODO: need to implement broadcasting first before we can do this
                 // basically we need to make sure that the shapes are compatible
                 // especially: Tensor a(a1, ... , an) Tensor b(b1, ... ,bn, bm) - we want at least an = bn and if a or b has less size then broadcasting will be needed
-
+                // special cases where tensor is just a number
 
             }
             

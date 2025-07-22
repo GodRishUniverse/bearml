@@ -4,7 +4,7 @@ Implementing Neural Networks in C++
 
 ## Why?
 
-I want to learn C++ and CUDA properly and this would enable me to start
+I want to implement a project in C++ and CUDA properly and this would enable me to do that.
 
 C++ is very fast as compared to Python 3.
 

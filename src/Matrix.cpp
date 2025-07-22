@@ -1,9 +1,9 @@
 # include "Matrix.h"
 
+// TODO : implementation needed - division (inversion -  should work for constants and matrix inversion ), GEMM
 
-
-// matrix addition
 namespace simplenet{
+    // matrix addition
     template<typename U>
     Matrix<U> operator+(Matrix<U> &other1,  Matrix<U> &other2) {
         if (other1.getRows() != other2.getRows() || other1.getCols() != other2.getCols()) {
