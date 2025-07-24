@@ -6,7 +6,11 @@
 using ll = long long;
 
 // TODO : implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
-
+// TODO: add constants [numbers] to tensors by adding below - WILL BE USED IN GRAD OPERATIONS
+// TODO: element-wise add,
+// TODO: elemen-wise subtract
+// TODO: element-wise multiply 
+// TODO: element-wise divide
 
 #ifndef TENSOR_H
 #define TENSOR_H

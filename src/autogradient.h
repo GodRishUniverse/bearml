@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <map>
 
 #include "Tensor.h"
 #include "Matrix.h"
@@ -47,23 +48,23 @@ namespace simplenet{
     */
 
 
-   
-   template<typename T> class  Node;
+    // TODO: implement the computational graph elements - binary and unary operations
 
+   template<typename T> class  Node;
+   // TODO: fix for MATRIX AND TENSOR Types - probably will need to provide template specializations
    template <typename T>
    class Node {
     public:
         T val;
         double grad;
-        std::vector<std::shared_ptr<Node<T>>> inputs; // using stl shared pointer
-        std::vector<std::weak_ptr<Node<T>>> outputs; // using stl weak pointer - to break the cycle of shared_ptr references in inputs and outputs
+        std::vector<std::shared_ptr<Node<T>>> inputs;// PARENTS-  using stl shared pointer
+        std::vector<std::weak_ptr<Node<T>>> outputs; // CHILDREN- using stl weak pointer - to break the cycle of shared_ptr references in inputs and outputs
         std::function<void()> backward_fn; // will be used for backward pass rather than the gradients
         
         Node(T value) : val(value), grad(0.0) {}
 
         // Factory functions that return shared_ptr
-        template<typename T>
-        std::shared_ptr<Node<T>> make_node(T value) {
+        static std::shared_ptr<Node<T>> make_node(T value) {
             return std::make_shared<Node<T>>(value);
         }
 
@@ -74,7 +75,7 @@ namespace simplenet{
             }
         }
 
-        std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+        friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
                 std::shared_ptr<Node<T>> node  = make_node(a->val+b->val); 
                 // node->grad = a->grad + b->grad;  // c = a + b     =>    dc = da + db
 
@@ -83,13 +84,16 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                // TODO: setup backward function for node
+                node->backward_fn = [a, b, node](){
+                    a->grad += node->grad;  // dc/da = b
+                    b->grad += node->grad;  // dc/db = a
+                };
 
                 return node;
         }
 
 
-        std::shared_ptr<Node<T>> operator-(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+        friend std::shared_ptr<Node<T>> operator-(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
                 std::shared_ptr<Node<T>> node  = make_node(a->val-b->val); 
                 // node->grad = a->grad - b->grad;  // c = a - b     =>    dc = da - db
 
@@ -98,12 +102,16 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                // TODO: setup backward function for node
+                node->backward_fn = [a, b, node](){
+                    a->grad += node->grad*1.0;  // dc/da = 1
+                    b->grad += node->grad*-1.0;  // dc/db = -1
+                };
+
 
                 return node;
         }
 
-        std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+        friend std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
 
                 std::shared_ptr<Node<T>> node  = make_node(a->val*b->val); 
                 // node->grad = b->val*a->grad + b->grad*a->val;  //  dc = a * b     =>    dc = b * da + a * db
@@ -113,21 +121,28 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                // TODO: setup backward function for node
+                node->backward_fn = [a, b, node](){
+                    a->grad +=  node->grad * b->val;  // dc/da = b
+                    b->grad +=  node->grad * a->val; // dc/db = a
+                };
+
 
                 return node;
         }
 
+
         // DIVISION is confusing - should only be done for numbers
         // specialized for constants
-        std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
+        friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
                 std::shared_ptr<Node<T>> node  = make_node(a->val/divisor); // TODO: implement Matrix and Tensor division for constant values
                 // node->grad = (a->grad*divisor)/ (divisor * divisor); //  dc = a / b     =>    dc = (da *b  - a*db)/b^2
 
                 node->inputs = {a};
-                other1.outputs.push_back(node);
+                a->outputs.push_back(node);
 
-                // TODO: setup backward function for node
+                node->backward_fn = [a, divisor, node]() {
+                    a->grad += node->grad * (1.0 / divisor);  // dc/da = 1/divisor
+                };
 
 
                 return node;

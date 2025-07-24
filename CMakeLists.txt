@@ -7,8 +7,8 @@ project(MyProject)
 enable_language(CUDA)
 
 # Add CUDA compiler flags
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20) 
+set(CMAKE_CUDA_STANDARD 20)
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -std=c++17")
 
 add_subdirectory(src)
