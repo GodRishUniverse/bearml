@@ -5,12 +5,11 @@
 
 using ll = long long;
 
-// TODO : implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
+// TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
 // TODO: add constants [numbers] to tensors by adding below - WILL BE USED IN GRAD OPERATIONS
-// TODO: element-wise add,
-// TODO: elemen-wise subtract
 // TODO: element-wise multiply 
 // TODO: element-wise divide
+// TODO: overload not equal and equal to
 
 #ifndef TENSOR_H
 #define TENSOR_H
@@ -393,8 +392,21 @@ namespace simplenet{
                 return *this;
             }
 
-            
-            
+            // element wise add
+            Tensor operator+=(const double& b) {
+                for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
+                    data[i] += b;
+                return *this;
+            }
+
+            // element wise add
+            friend Tensor operator+(const Tensor &A, const double& b) {         
+                Tensor C(A.shape);
+                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                    C.data[i] = A.data[i] + b;
+                return C;
+            }
+
         
             // friend function - subtract tensors
             friend Tensor operator-(const Tensor &A, const Tensor &B) {
@@ -457,7 +469,22 @@ namespace simplenet{
                 return *this;
             }
 
-            // Hadamard product
+             // element wise subtract
+            Tensor operator-=(const double& b) {
+                for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
+                    data[i] -= b;
+                return *this;
+            }
+
+              // element wise subtract
+            friend Tensor operator-(const Tensor &A, const double& b) {         
+                Tensor C(A.shape);
+                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                    C.data[i] = A.data[i] - b;
+                return C;
+            }
+
+            // Hadamard product - //TODO: cchange operator as may clash with the friend function which is going to be used for dot product
             Tensor operator*(const Tensor &other) {
                 if (this->shape != other.shape){
                     throw std::invalid_argument("Tensors must have the same shape");
@@ -479,6 +506,14 @@ namespace simplenet{
                 // especially: Tensor a(a1, ... , an) Tensor b(b1, ... ,bn, bm) - we want at least an = bn and if a or b has less size then broadcasting will be needed
                 // special cases where tensor is just a number
 
+            }
+
+            // element wise multiply
+            friend Tensor operator*(const Tensor &A, const double& b) {         
+                Tensor C(A.shape);
+                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                    C.data[i] = A.data[i]*b;
+                return C;
             }
             
 

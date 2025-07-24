@@ -20,7 +20,6 @@ namespace simplenet::autogradient{
             child_counts[node] += 1;
          }else{
             child_counts[node] = 1;
-            stack.reserve(stack.size() + distance(node->inputs.begin(),node->inputs.end()));
             stack.insert(stack.end(),node->inputs.begin(),node->inputs.end()); // node->inputs are the parents
          }
       }

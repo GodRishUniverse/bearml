@@ -74,13 +74,16 @@ int main() {
 
     // cout << newT_A * newT_B << endl; // hadamard product works
 
-    auto x_val=  4.0;
-    auto y_val = 2.0;
+    double x_val=  4.0;
+    double y_val = 2.0;
 
-    shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val);
-    shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val);
+    shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val); // calling static function
+    shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val); // calling static function
 
     auto z = x*y + x;
+    // dz/dx = y+1 = 2+1 =3
+    // dz/dy= x =4
+
 
     cout << simplenet::autogradient::backward(z) << endl;
     cout << x->grad << endl;

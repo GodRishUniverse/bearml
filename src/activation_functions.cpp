@@ -5,6 +5,8 @@
 #include <iostream>
 #include <algorithm>
 
+// TODO: edit according to autogradient and Node implementations in the autogradient.h/.cpp files
+
 
 namespace simplenet::activation_functions{
 

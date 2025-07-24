@@ -147,6 +147,11 @@ namespace simplenet{
 
                 return node;
         }
+
+        // unary operator: e^x
+        friend std::shared_ptr<Node<T>> exp(std::shared_ptr<Node<T>> a){
+            //TODO: will need to use template specialization for constants (doubles), Tensors and Matrices
+        }
         
     };
 
