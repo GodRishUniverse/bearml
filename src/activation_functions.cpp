@@ -6,7 +6,7 @@
 #include <algorithm>
 
 // TODO: edit according to autogradient and Node implementations in the autogradient.h/.cpp files
-
+// TODO: make tensor activation functions
 
 namespace simplenet::activation_functions{
 
@@ -34,6 +34,7 @@ namespace simplenet::activation_functions{
         return 1.0 / (1.0 + exp(-x));
     }
 
+    // Matrix specialized
     template<typename T>
     Matrix<T> sigmoid(Matrix<T> &m) {
         Matrix<T> result(m.getRows(), m.getCols());
@@ -43,6 +44,7 @@ namespace simplenet::activation_functions{
             }
         }    
     }
+
 
     // ReLU
     double relu(double x) {
@@ -58,6 +60,7 @@ namespace simplenet::activation_functions{
             }
         }    
     }
+
 
     // Leaky ReLU
     double leaky_relu(double x, double leaky) {

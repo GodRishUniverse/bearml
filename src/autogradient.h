@@ -8,6 +8,7 @@
 
 #include "Tensor.h"
 #include "Matrix.h"
+#include "activation_functions.cpp"
 
 
 // Will use reverse mode -  https://en.wikipedia.org/wiki/Automatic_differentiation  

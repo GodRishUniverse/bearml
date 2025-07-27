@@ -1,5 +1,5 @@
 // #include "Matrix.cpp"
-// #include "Tensor.cpp"
+#include "Tensor.cpp"
 #include "autogradient.cpp"
 
 #include <iostream>
@@ -64,13 +64,20 @@ int main() {
     // cout << t << endl;
 
     // vector<int> tempS {2,3,4};
+    //     vector<int> tempS_1 {2,3,4,7};
     // simplenet::Tensor newT_A {tempS};
     // simplenet::Tensor newT_B {tempS};
-    // newT_A.set(10, {1,0,0});
-    // newT_B.set(10, {1,0,0});
+    // simplenet::Tensor newT_C {tempS_1};
+    // // newT_A.set(10.0, {1,0,0});
+
+    // // newT_B.set(10.0000000000001, {1,0,0});
+
+    // cout << (newT_A == newT_C) << endl;
+    
+
 
     // cout << newT_A <<endl;
-    // cout << newT_B <<endl;
+    // cout << newT_C <<endl;
 
     // cout << newT_A * newT_B << endl; // hadamard product works
 

@@ -2,21 +2,20 @@
 #include <vector>
 #include <iostream>
 #include <string>
+// #include <cmath>
+#include <iomanip>
 
 using ll = long long;
 
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
-// TODO: add constants [numbers] to tensors by adding below - WILL BE USED IN GRAD OPERATIONS
-// TODO: element-wise multiply 
 // TODO: element-wise divide
-// TODO: overload not equal and equal to
 
 #ifndef TENSOR_H
 #define TENSOR_H
 namespace simplenet{
     class Tensor {
-        private:
-        
+        public:
+            // SHOULD BE PRIVATE BUT ACTIVATION FUNCTIONS NEED  double * data
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
 
@@ -50,7 +49,9 @@ namespace simplenet{
                 return (total == this->sizeOfTensor());
             }
 
-        public:
+            // ABOVE SHOULD BE PRIVATE BUT ACTIVATION FUNCTIONS NEED  double * data
+
+
 
             void computeStrides() {
                 strides.resize(shape.size());
@@ -273,7 +274,7 @@ namespace simplenet{
 
                 os << "Tensor data: \n";
                 for (int i = 0; i < total_elements; ++i) {
-                    os << tensor.data[i] << " ";
+                    os << std::setprecision(14) << tensor.data[i] << " ";
                 }
                 os << std::endl;
 
@@ -485,7 +486,7 @@ namespace simplenet{
             }
 
             // Hadamard product - //TODO: cchange operator as may clash with the friend function which is going to be used for dot product
-            Tensor operator*(const Tensor &other) {
+            Tensor operator*=(const Tensor &other) {
                 if (this->shape != other.shape){
                     throw std::invalid_argument("Tensors must have the same shape");
                 }
@@ -505,6 +506,9 @@ namespace simplenet{
                 // basically we need to make sure that the shapes are compatible
                 // especially: Tensor a(a1, ... , an) Tensor b(b1, ... ,bn, bm) - we want at least an = bn and if a or b has less size then broadcasting will be needed
                 // special cases where tensor is just a number
+
+                // technically dot product is just a.traspose * b - assuming vector format for a and b
+                // TODO: use Kahan summation algorithm to reduce numerical error
 
             }
 
@@ -585,6 +589,7 @@ namespace simplenet{
                 }                
             }
             
+            
         
             // TODO:concat
             void concat(std::initializer_list<Tensor> tensors){
@@ -627,6 +632,26 @@ namespace simplenet{
                 }
                 this->data = temp;
             }
+
+
+            friend bool operator==(const Tensor &a, const Tensor &b){
+                if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
+                    // NOTE: std::abs is better for doubles
+                    for (size_t i = 0; i<a.sizeOfTensor(); i++){
+                        if (std::abs(a.data[i]-b.data[i]) >= 1e-12){ // check if the error is greater than 10^-15
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+                return false;
+            }
+
+
+            friend bool operator!=(const Tensor &a, const Tensor &b){
+                return !(a==b);
+            }
+
         
         };
 }
