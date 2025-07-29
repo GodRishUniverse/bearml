@@ -10,6 +10,7 @@
 
 namespace simplenet::activation_functions{
 
+    const double MY_PI = 3.141592653589793;
 
     // Linear
     template<typename T>
@@ -109,7 +110,7 @@ namespace simplenet::activation_functions{
     //gelu GELU(x)=0.5∗x∗(1+Tanh( sqrt(2/π)(x+0.044715∗x^3))
     
     double gelu(double x) {
-        return 0.5 * x * (1 + tanh(sqrt(2 / M_PI) * (x + 0.044715 * pow(x, 3))));
+        return 0.5 * x * (1 + tanh(sqrt(2 / MY_PI) * (x + 0.044715 * pow(x, 3))));
     }
 
     template<typename T>

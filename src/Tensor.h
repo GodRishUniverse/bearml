@@ -258,7 +258,7 @@ namespace simplenet{
             }
 
 
-            // TODO: friend function - print the tensor to be added
+            // TODO:CHANGE to not print extra stuff after the boradcast is applied as stride is set to 0 after broadcast is done
             friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
                 int total_elements = 1;
                 for (int dim : tensor.shape) {
@@ -282,7 +282,7 @@ namespace simplenet{
             }
 
 
-            // TODO: Broadcasting
+            //works
             static std::vector<int> computeBroadcastShape(
                 const std::vector<int>& A, const std::vector<int>& B) 
             {
@@ -302,6 +302,7 @@ namespace simplenet{
                 return out;
             }
 
+            // TODO: check if this works or not - computeBroadcastStrides
             static std::vector<int> computeBroadcastStrides(
                 const std::vector<int>&   origShape,
                 const std::vector<int>&    origStrides,
@@ -321,9 +322,10 @@ namespace simplenet{
                 return out;
             }
 
+            // TODO: COMPLETTE IMPLEMENTATION
             static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
                 Tensor v;            // default-constructed
-                v.data    = t.data;  // points at the same buffer
+                v.data    = t.data; // TODO: PROBLEM PROBLEM PROBLEM - broadcasting means that the current data after the changed indices must be different- so must change the data array
                 v.shape   = newShape;
                 v.strides = computeBroadcastStrides(t.shape, t.strides, newShape);
                 return v;
