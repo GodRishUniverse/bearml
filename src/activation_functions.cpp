@@ -10,7 +10,6 @@
 
 namespace simplenet::activation_functions{
 
-    const double M_PI = 3.14159265358979323846;
 
     // Linear
     template<typename T>
@@ -22,10 +21,10 @@ namespace simplenet::activation_functions{
         // outcols = inrows
         int outcols = inrows;
     
-        Matrix weight= Matrix::xavier(outrows, inrows, inrows * incols, outrows * outcols); // get the weight matrix
-        Matrix bias = Matrix::xavier(outrows, inrows, inrows * incols, outrows * outcols); // get the bias
+        Matrix<T> weight= Matrix<T>::xavier(outrows, inrows, inrows * incols, outrows * outcols); // get the weight matrix
+        Matrix<T> bias = Matrix<T>::xavier(outrows, inrows, inrows * incols, outrows * outcols); // get the bias
     
-        Matrix result = (weight * m1) + bias; 
+        Matrix<T> result = (weight * m1) + bias; 
         return result;
     }
 
