@@ -81,27 +81,27 @@ int main() {
 
     // cout << newT_A * newT_B << endl; // hadamard product works
 
-    // double x_val=  4.0;
-    // double y_val = 2.0;
+    double x_val=  4.0;
+    double y_val = 2.0;
 
-    // shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val); // calling static function
-    // shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val); // calling static function
+    shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val); // calling static function
+    shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val); // calling static function
 
-    // auto z = x*y + x;
-    // // dz/dx = y+1 = 2+1 =3
-    // // dz/dy= x =4
+    auto z = x*y + x;
+    // dz/dx = y+1 = 2+1 =3
+    // dz/dy= x =4
 
 
-    // cout << simplenet::autogradient::backward(z) << endl;
-    // cout << x->grad << endl;
-    // cout << y->grad << endl;
+    cout << simplenet::autogradient::backward(z) << endl;
+    cout << x->grad << endl;
+    cout << y->grad << endl;
 
-    vector<int> tempS_1 {2,3,4,7};
-    simplenet::Tensor newT_C {tempS_1};
-    newT_C.set(10.0, {0, 0,0,1});
-    cout << newT_C << endl;
-    vector<int> tempS_2 {2, 2,3,4,7};
-    vector<int> broad = simplenet::Tensor::computeBroadcastShape(tempS_1, tempS_2);
+    // vector<int> tempS_1 {2,3,4,7};
+    // simplenet::Tensor newT_C {tempS_1};
+    // newT_C.set(10.0, {0, 0,0,1});
+    // cout << newT_C << endl;
+    // vector<int> tempS_2 {2, 2,3,4,7};
+    // vector<int> broad = simplenet::Tensor::computeBroadcastShape(tempS_1, tempS_2);
 
     // for (size_t i =0; i < broad.size(); i++){
     //     cout << broad[i] << ", ";
@@ -110,19 +110,19 @@ int main() {
 
     // 
 
-    vector<int> strides = newT_C.getStrides();
-    for (size_t i =0; i < strides.size(); i++){
-        cout << strides[i] << ", ";
-    }
-    cout << endl;
-    cout << "=======================================================" << endl;
-    simplenet::Tensor newT_D = simplenet::Tensor::makeBroadcastView(newT_C, broad);
-    strides = newT_D.getStrides();
-    for (size_t i =0; i < strides.size(); i++){
-        cout << strides[i] << ", ";
-    }
-    cout << endl; 
-    cout << newT_D << endl;
+    // vector<int> strides = newT_C.getStrides();
+    // for (size_t i =0; i < strides.size(); i++){
+    //     cout << strides[i] << ", ";
+    // }
+    // cout << endl;
+    // cout << "=======================================================" << endl;
+    // simplenet::Tensor newT_D = simplenet::Tensor::makeBroadcastView(newT_C, broad);
+    // strides = newT_D.getStrides();
+    // for (size_t i =0; i < strides.size(); i++){
+    //     cout << strides[i] << ", ";
+    // }
+    // cout << endl; 
+    // cout << newT_D << endl;
 
 
 

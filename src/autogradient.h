@@ -136,7 +136,7 @@ namespace simplenet{
         // specialized for constants
         friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
                 std::shared_ptr<Node<T>> node  = make_node(a->val/divisor); // TODO: implement Matrix and Tensor division for constant values
-                // node->grad = (a->grad*divisor)/ (divisor * divisor); //  dc = a / b     =>    dc = (da *b  - a*db)/b^2
+                // node->grad = (a->grad*divisor)/ (divisor * divisor); //  c = a / b     =>    dc = (da *b  - a*db)/b^2
 
                 node->inputs = {a};
                 a->outputs.push_back(node);
@@ -151,8 +151,21 @@ namespace simplenet{
 
         // unary operator: e^x
         friend std::shared_ptr<Node<T>> exp(std::shared_ptr<Node<T>> a){
-            //TODO: will need to use template specialization for constants (doubles), Tensors and Matrices
+            //TODO: will need to use template specialization for Tensors and Matrices
+            std::shared_ptr<Node<T>> node  = make_node(exp(a->val)); // TODO: implement exp for tensors and matrices
+            //  c = exp(a)     =>    dc/da = exp(a)
+
+            node->inputs = {a};
+            a->outputs.push_back(node);
+
+            node->backward_fn = [a, node]() {
+                a->grad += node->grad * exp(a->val);  //  dc/da = exp(a)
+            };
+
+            return node;
         }
+
+        
         
     };
 

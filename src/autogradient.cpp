@@ -7,39 +7,42 @@
 using ll = long long;
 namespace simplenet::autogradient{
 
-   template <typename T>
-   std::vector<std::shared_ptr<simplenet::Node<T>>> topological_sort(std::shared_ptr<simplenet::Node<T>> end_node){
-      std::map<std::shared_ptr<simplenet::Node<T>>, ll> child_counts;
-      std::vector<std::shared_ptr<simplenet::Node<T>>> stack;
-      stack.push_back(end_node);
+   // no named namespace as we do not want topological sort to be called outside
+   namespace{
+      template <typename T>
+      std::vector<std::shared_ptr<simplenet::Node<T>>> topological_sort(std::shared_ptr<simplenet::Node<T>> end_node){
+         std::map<std::shared_ptr<simplenet::Node<T>>, ll> child_counts;
+         std::vector<std::shared_ptr<simplenet::Node<T>>> stack;
+         stack.push_back(end_node);
 
-      while (!stack.empty()){
-         std::shared_ptr<simplenet::Node<T>> node = stack[stack.size()-1]; stack.pop_back();
-         auto f = child_counts.find(node);
-         if (f != child_counts.end()){
-            child_counts[node] += 1;
-         }else{
-            child_counts[node] = 1;
-            stack.insert(stack.end(),node->inputs.begin(),node->inputs.end()); // node->inputs are the parents
-         }
-      }
-
-
-      std::vector<std::shared_ptr<simplenet::Node<T>>> childless_nodes {end_node}; // assumption is that we do not consider the child nodes of the calling node here, even if it has some children
-      std::vector<std::shared_ptr<simplenet::Node<T>>> sorted;
-      while (!childless_nodes.empty()){
-         std::shared_ptr<simplenet::Node<T>> node = childless_nodes[childless_nodes.size()-1]; childless_nodes.pop_back();
-         sorted.push_back(node); // like python yield
-         for (auto parent  : node->inputs){
-            if (child_counts[parent] == 1){
-                childless_nodes.push_back(parent);
+         while (!stack.empty()){
+            std::shared_ptr<simplenet::Node<T>> node = stack[stack.size()-1]; stack.pop_back();
+            auto f = child_counts.find(node);
+            if (f != child_counts.end()){
+               child_counts[node] += 1;
             }else{
-                child_counts[parent] -= 1;
-            }      
+               child_counts[node] = 1;
+               stack.insert(stack.end(),node->inputs.begin(),node->inputs.end()); // node->inputs are the parents
+            }
          }
-      }
 
-      return sorted;
+
+         std::vector<std::shared_ptr<simplenet::Node<T>>> childless_nodes {end_node}; // assumption is that we do not consider the child nodes of the calling node here, even if it has some children
+         std::vector<std::shared_ptr<simplenet::Node<T>>> sorted;
+         while (!childless_nodes.empty()){
+            std::shared_ptr<simplenet::Node<T>> node = childless_nodes[childless_nodes.size()-1]; childless_nodes.pop_back();
+            sorted.push_back(node); // like python yield
+            for (auto parent  : node->inputs){
+               if (child_counts[parent] == 1){
+                  childless_nodes.push_back(parent);
+               }else{
+                  child_counts[parent] -= 1;
+               }      
+            }
+         }
+
+         return sorted;
+      }
    }
 
    // TODO: fix for MATRIX AND TENSOR TYPES - also add a boolean for gradient accumulation as well

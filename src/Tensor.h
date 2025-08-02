@@ -5,7 +5,7 @@
 // #include <cmath>
 #include <iomanip>
 
-using ll = long long;
+using ll = long long; // can also use int_fast64_t
 
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
 // TODO: element-wise divide
@@ -487,16 +487,16 @@ namespace simplenet{
                 return C;
             }
 
-            // Hadamard product - //TODO: cchange operator as may clash with the friend function which is going to be used for dot product
-            Tensor operator*=(const Tensor &other) {
-                if (this->shape != other.shape){
+            // Hadamard product 
+            friend Tensor hadamard(const Tensor &a, const Tensor &other) {
+                if (a.shape != other.shape){
                     throw std::invalid_argument("Tensors must have the same shape");
                 }
 
                 
-                Tensor result(this->shape);
-                for (ll i = 0; i < this->sizeOfTensor(); i++){
-                    result.data[i] = this->data[i] * other.data[i];
+                Tensor result(a.shape);
+                for (ll i = 0; i < a.sizeOfTensor(); i++){
+                    result.data[i] = a.data[i] * other.data[i];
                 }
                 return result;
             }
@@ -504,7 +504,7 @@ namespace simplenet{
 
             // TODO: friend function - multiply tensors - dot product
             friend Tensor operator*(const Tensor &a, const Tensor &b) {
-                // TODO: need to implement broadcasting first before we can do this
+                // TODO: need to fix broadcasting and also figure out how to use it for multipliccation as STRIDE CALCULATION FOR BROADCASTING IS FLAWED AND Moreover it should be a private function
                 // basically we need to make sure that the shapes are compatible
                 // especially: Tensor a(a1, ... , an) Tensor b(b1, ... ,bn, bm) - we want at least an = bn and if a or b has less size then broadcasting will be needed
                 // special cases where tensor is just a number
