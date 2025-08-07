@@ -26,7 +26,7 @@ int main() {
 
     // cout << m5 << endl;
 
-    // vector<int> size; 
+    // vector<int> size;
     // size.push_back(2);
     // size.push_back(3);
     // size.push_back(2);
@@ -73,7 +73,7 @@ int main() {
     // // newT_B.set(10.0000000000001, {1,0,0});
 
     // cout << (newT_A == newT_C) << endl;
-    
+
 
 
     // cout << newT_A <<endl;
@@ -81,20 +81,34 @@ int main() {
 
     // cout << newT_A * newT_B << endl; // hadamard product works
 
-    double x_val=  4.0;
-    double y_val = 2.0;
+    // double x_val=  4.0;
+    // double y_val = 2.0;
 
-    shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val); // calling static function
-    shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val); // calling static function
+    // shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val); // calling static function
+    // shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val); // calling static function
 
-    auto z = x*y + x;
-    // dz/dx = y+1 = 2+1 =3
-    // dz/dy= x =4
+    // auto z = x*y + x;
+    // // dz/dx = y+1 = 2+1 =3
+    // // dz/dy= x =4
 
 
-    cout << simplenet::autogradient::backward(z) << endl;
-    cout << x->grad << endl;
-    cout << y->grad << endl;
+    // cout << simplenet::autogradient::backward(z) << endl;
+    // cout << x->grad << endl;
+    // cout << y->grad << endl;
+
+    simplenet::Tensor a({2, 1, 3});
+    simplenet::Tensor b({4, 3});
+
+
+    // Fill with test data
+    for (int i = 0; i < 6; ++i) a.data[i] = i + 1;      // [1,2,3,4,5,6]
+    cout << a << endl;
+    for (int i = 0; i < 12; ++i) b.data[i] = (i + 1) * 10; // [10,20,30,40,50,60,70,80,90,100,110,120]
+    cout << b << endl;
+
+    simplenet::Tensor result = a + b;
+
+    cout << result << endl;
 
     // vector<int> tempS_1 {2,3,4,7};
     // simplenet::Tensor newT_C {tempS_1};
@@ -108,7 +122,7 @@ int main() {
     // }
     // cout << endl;
 
-    // 
+    //
 
     // vector<int> strides = newT_C.getStrides();
     // for (size_t i =0; i < strides.size(); i++){
@@ -121,7 +135,7 @@ int main() {
     // for (size_t i =0; i < strides.size(); i++){
     //     cout << strides[i] << ", ";
     // }
-    // cout << endl; 
+    // cout << endl;
     // cout << newT_D << endl;
 
 
