@@ -1,7 +1,12 @@
 #pragma once
+#include <cstddef>
 #include <vector>
 #include <iostream>
 #include <string>
+#include <algorithm>
+
+#include "eigen-3.4.0/Eigen/Dense" // IMPORTING eigen for BLAS functions
+
 // #include <cmath>
 #include <iomanip>
 
@@ -17,6 +22,53 @@ namespace simplenet{
 
         // ==============================PRIVATE========================================
         private:
+
+            std::vector<int> shape;
+            std::vector<int> strides; // will be used in permute and in GEMM
+
+            double * data;
+            bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
+
+            double * getTensorDataFlat() const { return this->data; };
+
+            // default constructor - added for edge cases - private ONLY
+            Tensor() : data(nullptr), owns_data(false) {};
+
+
+            bool negOrZeroInSizeCheck(std::vector<int> sizePassedDown) const {
+                for (const int & i : sizePassedDown){
+                    if (i < 1){
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            bool sizeCheck(std::vector<int> sizePassedDown) const {
+                if (negOrZeroInSizeCheck(sizePassedDown)){
+                    return false;
+                }
+
+                ll total = 1; // cause size may be huge
+                for (const int & i : sizePassedDown){
+                    total*= i;
+                }
+
+                return (total == this->sizeOfTensor());
+            }
+
+            // checks if the index is valid or not
+            bool indexCheck(std::vector<int> sizePassedDown) const {
+
+                for (size_t i = 0 ; i < this->shape.size(); i++){
+                    if (sizePassedDown[i] <0 || sizePassedDown[i] >= this->shape[i]){
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            // TODO MAY CHANGE ACTIVATION FUNCTIONS IMPLEMENTATION - they need double* data
 
             //works
             static std::vector<int> computeBroadcastShape(
@@ -80,46 +132,32 @@ namespace simplenet{
                 return t.data[0];
             }
 
-        // ==============================PRIVATE========================================
 
-        public:
-            // SHOULD BE PRIVATE BUT ACTIVATION FUNCTIONS NEED  double * data
-            std::vector<int> shape;
-            std::vector<int> strides; // will be used in permute and in GEMM
-
-            double * data;
-            bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
-
-            double * getTensorDataFlat() const { return this->data; };
-
-            // default constructor - added for edge cases - private ONLY
-            Tensor() : data(nullptr), owns_data(false) {};
-
-
-            bool negOrZeroInSizeCheck(std::vector<int> sizePassedDown) const {
-                for (const int & i : sizePassedDown){
-                    if (i < 1){
-                        return true;
-                    }
+            static std::string debugShapes(std::vector<int> shapePassed){
+                std::string shape_lit = "";
+                for (size_t i = 0; i <shapePassed.size(); i++){
+                    shape_lit+= std::to_string(shapePassed[i]) + ", ";
                 }
-                return false;
-            };
-
-            bool sizeCheck(std::vector<int> sizePassedDown) const {
-                if (negOrZeroInSizeCheck(sizePassedDown)){
-                    return false;
-                }
-
-                ll total = 1; // cause size may be huge
-                for (const int & i : sizePassedDown){
-                    total*= i;
-                }
-
-                return (total == this->sizeOfTensor());
+                return shape_lit;
             }
 
-            // ABOVE SHOULD BE PRIVATE BUT ACTIVATION FUNCTIONS NEED  double * data
-            // TODO MAY CHANGE ACTIVATION FUNCTIONS IMPLEMENTATION
+
+
+            // ==============================PRIVATE========================================
+
+            public:
+
+            // linspace function  to edit the current tensor
+            Tensor& linspace(double start, double end){
+                ll long_size = this->sizeOfTensor();
+                double size = static_cast<double>(long_size);
+                double step = (end-start)/(size);
+                for (size_t i =0; i < long_size ; i++){
+                    this->data[i] = start;
+                    start+=step;
+                }
+                return *this;
+            }
 
 
 
@@ -127,8 +165,8 @@ namespace simplenet{
                 strides.resize(shape.size());
                 size_t s = 1;
                 for (int d = shape.size()-1; d >= 0; --d) {
-                strides[d] = s;
-                s *= shape[d];
+                    strides[d] = s;
+                    s *= shape[d];
                 }
             }
 
@@ -163,11 +201,11 @@ namespace simplenet{
             double get(std::vector<int> index) const {
 
                 if (index.size() != shape.size()){
-                    throw std::invalid_argument("Invalid index size");
+                    throw std::invalid_argument("Invalid index size: \nPassed:" + debugShapes(index)+"\nExpected:" +debugShapes(this->shape)+"\n");
                 }
 
-                if (sizeCheck(index) == false){
-                    throw std::invalid_argument("Invalid index shape");
+                if (indexCheck(index) == false){
+                    throw std::invalid_argument("Invalid index shape: \nPassed" + debugShapes(index)+"\nExpected:" +debugShapes(this->shape)+"\n");
                 }
 
                 size_t off = 0;
@@ -567,11 +605,13 @@ namespace simplenet{
             // TODO: friend function - multiply tensors - dot product (GEMM)
             friend Tensor operator*(const Tensor &a, const Tensor &b) {
 
-                // 3 cases that need to be checked for this
+                // 5 cases that need to be checked for this
                 //                  case 0: A and B are scalars in the form of Tensors [TAKEN INSIDE CASE 1 and 2]
                 // case 1: A is scalar
                 // case 2: B is scalar
-                // case 3: matrix multiplication - batched and unbatched (GEMM operations)
+                // case 3: A is a vector and B is a vector
+                // case 4: A is matrix and B is a vector and vice versa
+                // case 5: matrix multiplication - batched and unbatched (GEMM operations)
 
                 if (isScalar(a)){
                     return b*getScalarValue(a); // b is not a scalar - we call our friend function (created above for element wise mult) here
@@ -581,15 +621,25 @@ namespace simplenet{
                     return a*getScalarValue(b); // a is not a scalar - we call our friend function (created above for element wise mult) here
                 }
 
-                // TODO: GEMM
+                // TODO: GEMM and GEMV using Eigen
 
+                std::vector<int> a_shape = a.getShape();
+                std::vector<int> b_shape = b.getShape();
 
-                // especially: Tensor a(a1, ... , an) Tensor b(b1, ... ,bn, bm) - we want at least an = bn and if a or b has less size then broadcasting will be needed
-                // special cases where tensor is just a number
+                // vector-vector product - dot product
+                if (a_shape.size() == 1 && b_shape.size()==1){
+                    if (a_shape[0] != b_shape[0]) {
+                        throw std::invalid_argument("Vector dimensions must match for dot product");
+                    }
+                    // matches
+                    Eigen::Map<const Eigen::VectorXd> vec_a(a.getTensorDataFlat(), a_shape[0]);
+                    Eigen::Map<const Eigen::VectorXd> vec_b(b.getTensorDataFlat(), b_shape[0]);
 
-                // technically dot product is just a.traspose * b - assuming vector format for a and b
-                // TODO: use Kahan summation algorithm to reduce numerical error
-                //
+                    Tensor output({1});
+                    output.data[0] = vec_a.dot(vec_b);
+                    return output;
+                }
+
                 return Tensor(); // TODO: remove this return - added to remove the warning from compiler
 
 
@@ -607,8 +657,44 @@ namespace simplenet{
             }
 
 
+            // TODO: implement general transpose
+            static Tensor transpose(const Tensor& t, int dim0, int dim1){
+                // We want to transpose dim0 and dim1
+                std::vector<int> shape = t.getShape();
 
-            // Permute
+                // Validate dimensions
+                if (dim0 < 0 || dim0 >= shape.size() || dim1 < 0 || dim1 >= shape.size()) {
+                     throw std::invalid_argument("Invalid dimensions for transpose");
+                }
+
+                // 3 cases:
+                //  - Case 1: 1 as the shape return the same thing - scalar - If transposing the same dimension or a single element tensor, return a copy
+                if (dim0 == dim1 || t.sizeOfTensor() <= 1) {
+                    return t;
+                }
+
+                //  - Case 2: Matrix transpose - swap rows and columns
+                if (shape.size() == 2 || (dim0 == 0 && dim1 ==1)){
+                    std::vector<int> temp = shape;
+                    std::reverse(shape.begin()+(shape.size()-2), shape.end()); // reverse the shape
+                    Tensor n (shape); // new matrix with reversed shape (transposed)
+
+                    for (int r = 0 ; r<temp[shape.size()-2]; r++){
+                        for (int c = 0; c < temp[shape.size()-1]; c++){
+                            // CHANGE BELOW AS ONLY WORKS WHEN THE shape.size()= 2 so a MATRIX
+                            n.set(t.data[r*temp[shape.size()-1]+c], {c,r}); // FLAWED as this does not work for a general case of n-dim tensors when you want to transpose last two dims
+                        }
+                    }
+                    return n; // transposed
+                }
+
+                //  - Case 3: general dims
+                // TODO: implement
+
+            }
+
+
+            // Permute - Not the same as TRANSPOSE
             Tensor permute(std::vector<int> new_order){
                 std::vector<int > temp ;
                 for (int i = 0; i < new_order.size(); i++){

@@ -21,16 +21,25 @@ The Autodiff works on the
 ## What has been done
 
 * Simple (double) based automatic differentiation for: addition, subtraction, multiplication and division
-* Tensor library with adddition, subtraction, equivalence check
+* Tensor library with adddition, subtraction, equivalence check, broadcasting is applied to both addition and subtraction
+
 
 ## What do we need to complete
+
+
 
 * Integrate Caffe2 : [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
 * Implement broadcasting properly as it is required for tensor multiplication - there is another bug in the print code because the tensor shape changes but not the data so it accesses beyond what is allocated - **PROBLEM**
   * Potential solution is to basically set a boolean to see if it is a broadcasted tensor or nott - PLAN IS TO MAKE BORADCAST A PRIVATE FUNCTION SO THE BROADCASTED TENSOR VANISHES AFTER COMPUTATION is APPLIED
-* Implement Tensor multiplication (GEMM and not Tensor Product - both are infact different)
-  * Use Kahman Summation
+* Just use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) ~~Implement Tensor multiplication (GEMM and not Tensor Product - both are infact different)~~
+  * ~~[Multi dim Transpose](https://www.iaeng.org/publication/WCE2010/WCE2010_pp1838-1841.pdf)~~
+  * ~~Use Kahman Summation~~
+  * Check what device has been set - using a string to call a CUDA kernel or normal matmul for GEMM
+    * **TODO**: Use CUDA for GEMM and Matmul - use
 * Implement Autodiff for activation functions
   * Also make template specifications for them
-* Check what device has been set - using a string to call a CUDA kernel or normal matmul for GEMM
-  * **TODO**: Use CUDA for GEMM and Matmul
+
+
+## Roadblocks I faced
+
+So one of the first roadblocks that I faced is that (I have spent months on this - not completely but relatively speaking) implementing GEMM on the CPU without a prebaked library is hard.
