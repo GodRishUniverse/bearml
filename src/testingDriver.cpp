@@ -1,6 +1,5 @@
 // #include "Matrix.cpp"
 #include "Tensor.cpp"
-#include "Tensor.h"
 #include "autogradient.cpp"
 
 #include <iostream>
@@ -82,20 +81,20 @@ int main() {
 
     // cout << newT_A * newT_B << endl; // hadamard product works
 
-    // double x_val=  4.0;
-    // double y_val = 2.0;
+    double x_val=  4.0;
+    double y_val = 2.0;
 
-    // shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val); // calling static function
-    // shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val); // calling static function
+    shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val); // calling static function
+    shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val); // calling static function
 
-    // auto z = x*y + x;
-    // // dz/dx = y+1 = 2+1 =3
-    // // dz/dy= x =4
+    auto z = x*y + x;
+    // dz/dx = y+1 = 2+1 =3
+    // dz/dy= x =4
 
 
-    // cout << simplenet::autogradient::backward(z) << endl;
-    // cout << x->grad << endl;
-    // cout << y->grad << endl;
+    cout << simplenet::autogradient::backward(z) << endl;
+    cout << x->grad << endl;
+    cout << y->grad << endl;
 
     simplenet::Tensor a({2, 1, 3});
     simplenet::Tensor b({4, 3});

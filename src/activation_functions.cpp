@@ -18,14 +18,14 @@ namespace simplenet::activation_functions{
         // need a way to initialize the weight matrix here.
         int inrows = m1.getRows();
         int incols = m1.getCols();
-    
+
         // outcols = inrows
         int outcols = inrows;
-    
+
         Matrix<T> weight= Matrix<T>::xavier(outrows, inrows, inrows * incols, outrows * outcols); // get the weight matrix
         Matrix<T> bias = Matrix<T>::xavier(outrows, inrows, inrows * incols, outrows * outcols); // get the bias
-    
-        Matrix<T> result = (weight * m1) + bias; 
+
+        Matrix<T> result = (weight * m1) + bias;
         return result;
     }
 
@@ -42,7 +42,7 @@ namespace simplenet::activation_functions{
             for (int j = 0; j < m.getCols(); j++) {
                 result.set(sigmoid(m.get(i, j)),i,j);
             }
-        }    
+        }
     }
 
 
@@ -58,7 +58,7 @@ namespace simplenet::activation_functions{
             for (int j = 0; j < m.getCols(); j++) {
                 result.set(std::max(0.0, m.get(i, j)), i, j);
             }
-        }    
+        }
     }
 
 
@@ -74,7 +74,7 @@ namespace simplenet::activation_functions{
             for (int j = 0; j < m.getCols(); j++) {
                 result.set(std::max(leaky * m.get(i, j), m.get(i, j)), i, j);
             }
-        }    
+        }
     }
 
     // SiLU
@@ -89,12 +89,12 @@ namespace simplenet::activation_functions{
             for (int j = 0; j < m.getCols(); j++) {
                 result.set(silu(m.get(i, j)), i, j);
             }
-        }    
+        }
     }
 
     // Tanh
     double tanh(double x) {
-        return (exp(2*x)-1)/(exp(2*x)+1); 
+        return (exp(2*x)-1)/(exp(2*x)+1);
     }
 
     template<typename T>
@@ -104,11 +104,11 @@ namespace simplenet::activation_functions{
             for (int j = 0; j < m.getCols(); j++) {
                 result.set(tanh(m.get(i, j)), i, j);
             }
-        }    
+        }
     }
 
     //gelu GELU(x)=0.5∗x∗(1+Tanh( sqrt(2/π)(x+0.044715∗x^3))
-    
+
     double gelu(double x) {
         return 0.5 * x * (1 + tanh(sqrt(2 / MY_PI) * (x + 0.044715 * pow(x, 3))));
     }
@@ -120,7 +120,7 @@ namespace simplenet::activation_functions{
             for (int j = 0; j < m.getCols(); j++) {
                 result.set(gelu(m.get(i, j)), i, j);
             }
-        }    
+        }
     }
 
 

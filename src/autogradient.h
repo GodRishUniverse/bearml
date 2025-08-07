@@ -10,42 +10,43 @@
 #include "Matrix.h"
 #include "activation_functions.cpp"
 
-
-// Will use reverse mode -  https://en.wikipedia.org/wiki/Automatic_differentiation  
+#ifndef AUTO_NODE_H
+#define AUTO_NODE_H
+// Will use reverse mode -  https://en.wikipedia.org/wiki/Automatic_differentiation
 // https://rufflewind.com/2016-12-30/reverse-mode-automatic-differentiation
 namespace simplenet{
 
-    // Notes for implementation 
+    // Notes for implementation
     /*
 
     We will be using a topological sort to walk the graph and compute the derivatives
     We will design a computational graph and use a topological sort
 
-    
+
     https://en.wikipedia.org/wiki/Topological_sort
-    
+
     */
 
 
     // We need to create a representation for a computation graph
     // then we can use a reverse topological order to walk the graph and compute the derivatives backward from the output
-    //    x1 ---- x3 ---- out 
+    //    x1 ---- x3 ---- out
     //    x2-----/
-    //      here we have x1, x2, x3, out - we start the backward pass from out to compute the derivatives of out with respect to all the nodes 
+    //      here we have x1, x2, x3, out - we start the backward pass from out to compute the derivatives of out with respect to all the nodes
     // Algorithm is as follows:
 
     /*
-    
+
     def gradient(out):
         node_to_grad = {out: [1]} // dictionary for node to list of gradients for each node that is connected to it
-        
+
         for i in reverse_topological_sort(out):
             v_i_adjoint = sum(node_to_grad[i])
 
             for k in inputs(i):
                 compute v_k_to_i_adjoint = v_i_adjoint * d_v_i / d_v_k
-                append v_k_to_i_adjoint to node_to_grad[k] // propagate the partial adjoints to its inputs 
-        return adjoint of input v_input(s) - this is the gradient of the function (network) with respect to all the inputs  
+                append v_k_to_i_adjoint to node_to_grad[k] // propagate the partial adjoints to its inputs
+        return adjoint of input v_input(s) - this is the gradient of the function (network) with respect to all the inputs
     */
 
 
@@ -57,11 +58,11 @@ namespace simplenet{
    class Node {
     public:
         T val;
-        double grad;
+        T grad;
         std::vector<std::shared_ptr<Node<T>>> inputs;// PARENTS-  using stl shared pointer
         std::vector<std::weak_ptr<Node<T>>> outputs; // CHILDREN- using stl weak pointer - to break the cycle of shared_ptr references in inputs and outputs
         std::function<void()> backward_fn; // will be used for backward pass rather than the gradients
-        
+
         Node(T value) : val(value), grad(0.0) {}
 
         // Factory functions that return shared_ptr
@@ -77,7 +78,7 @@ namespace simplenet{
         }
 
         friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-                std::shared_ptr<Node<T>> node  = make_node(a->val+b->val); 
+                std::shared_ptr<Node<T>> node  = make_node(a->val+b->val);
                 // node->grad = a->grad + b->grad;  // c = a + b     =>    dc = da + db
 
                 node->inputs = {a,b};
@@ -95,7 +96,7 @@ namespace simplenet{
 
 
         friend std::shared_ptr<Node<T>> operator-(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-                std::shared_ptr<Node<T>> node  = make_node(a->val-b->val); 
+                std::shared_ptr<Node<T>> node  = make_node(a->val-b->val);
                 // node->grad = a->grad - b->grad;  // c = a - b     =>    dc = da - db
 
                 node->inputs = {a,b};
@@ -114,7 +115,7 @@ namespace simplenet{
 
         friend std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
 
-                std::shared_ptr<Node<T>> node  = make_node(a->val*b->val); 
+                std::shared_ptr<Node<T>> node  = make_node(a->val*b->val);
                 // node->grad = b->val*a->grad + b->grad*a->val;  //  dc = a * b     =>    dc = b * da + a * db
 
                 node->inputs = {a,b};
@@ -165,16 +166,17 @@ namespace simplenet{
             return node;
         }
 
-        
-        
+
+
     };
 
-   // Edges will be operation types on two different Nodes (also same node as well) 
+   // Edges will be operation types on two different Nodes (also same node as well)
    // - need to think how gradients will change with some different operations like Permute
     // ANSWER to above question is:
-    // Permuting a tensor changes its shape but doesn't affect the underlying data or its relationships to 
+    // Permuting a tensor changes its shape but doesn't affect the underlying data or its relationships to
     // other tensors in the computation graph. Consequently, the gradient of a permuted tensor is simply the permutation of the original gradient,
-    // with the same operations applied to the gradient's axes as were applied to the tensor's axes. 
+    // with the same operations applied to the gradient's axes as were applied to the tensor's axes.
 
 
 }
+#endif
