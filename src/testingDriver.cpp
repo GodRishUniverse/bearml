@@ -150,12 +150,12 @@ int main() {
     // cout << a << endl;
     //
 
-    simplenet::Tensor veca ({3});
+    simplenet::Tensor veca ({3,3});
     simplenet::Tensor vecb ({3});
-    veca.set(201.0, {0});
-    vecb.set(2.0, {0});
+    veca.set(201.0, {1, 0});
+    vecb.set(2.0, {1});
 
-    cout << vecb * veca << endl;
+    cout << veca * vecb << endl;
 
 
 }

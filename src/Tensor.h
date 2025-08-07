@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "eigen-3.4.0/Eigen/Dense" // IMPORTING eigen for BLAS functions
+#include "eigen-3.4.0/Eigen/src/Core/Matrix.h"
 
 // #include <cmath>
 #include <iomanip>
@@ -139,6 +140,11 @@ namespace simplenet{
                     shape_lit+= std::to_string(shapePassed[i]) + ", ";
                 }
                 return shape_lit;
+            }
+
+            // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
+            static Tensor batchedMatMul(const Tensor& a, const Tensor& b){
+                // TODO: figure out how batched mat mul will be implemented and use Eigen for mul as it does not have an inbuilt batch mat mul
             }
 
 
@@ -602,6 +608,8 @@ namespace simplenet{
             }
 
 
+
+
             // TODO: friend function - multiply tensors - dot product (GEMM)
             friend Tensor operator*(const Tensor &a, const Tensor &b) {
 
@@ -610,28 +618,29 @@ namespace simplenet{
                 // case 1: A is scalar
                 // case 2: B is scalar
                 // case 3: A is a vector and B is a vector
-                // case 4: A is matrix and B is a vector and vice versa
+                // case 4: A is matrix and B is a vector
                 // case 5: matrix multiplication - batched and unbatched (GEMM operations)
 
+                // CASE 1
                 if (isScalar(a)){
                     return b*getScalarValue(a); // b is not a scalar - we call our friend function (created above for element wise mult) here
                 }
 
+                // CASE 2
                 if (isScalar(b)){
                     return a*getScalarValue(b); // a is not a scalar - we call our friend function (created above for element wise mult) here
                 }
 
-                // TODO: GEMM and GEMV using Eigen
-
                 std::vector<int> a_shape = a.getShape();
                 std::vector<int> b_shape = b.getShape();
 
-                // vector-vector product - dot product
+                // CASE 3: vector-vector product - dot product
                 if (a_shape.size() == 1 && b_shape.size()==1){
                     if (a_shape[0] != b_shape[0]) {
+                        // TODO: put debugPrints
                         throw std::invalid_argument("Vector dimensions must match for dot product");
                     }
-                    // matches
+                    // matches - calling Eigen
                     Eigen::Map<const Eigen::VectorXd> vec_a(a.getTensorDataFlat(), a_shape[0]);
                     Eigen::Map<const Eigen::VectorXd> vec_b(b.getTensorDataFlat(), b_shape[0]);
 
@@ -640,9 +649,49 @@ namespace simplenet{
                     return output;
                 }
 
-                return Tensor(); // TODO: remove this return - added to remove the warning from compiler
+                // CASE 4: matrix n by m multiplied with m by 1 vector
+                if (a_shape.size() == 2 && b_shape.size() == 1) {
+                    if (a_shape[1] != b_shape[0]) {
+                        // TODO: put debugPrints
+                        throw std::invalid_argument("Matrix columns must match vector size");
+                    }
+                    // matches - calling Eigen
+                    // using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
+                    Eigen::Map<const Eigen::MatrixXd> mat_a(a.data, a_shape[0], a_shape[1]);
+                    Eigen::Map<const Eigen::VectorXd> vec_b(b.data, b_shape[0]);
 
+                    Tensor result({a_shape[0]});
+                    Eigen::Map<Eigen::VectorXd> result_vec(result.data, a_shape[0]);
+                    result_vec = mat_a * vec_b;
+
+                    return result;
+                }
+
+                // CASE 5: unbatched matmul
+                if (a_shape.size() == 2 && b_shape.size() == 2) {
+                    if (a_shape[1] != b_shape[0]) {
+                        throw std::invalid_argument("Matrix dimensions incompatible for multiplication");
+                    }
+
+                    // using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+                    Eigen::Map<const Eigen::MatrixXd> mat_a(a.data, a_shape[0], a_shape[1]);
+                    Eigen::Map<const Eigen::MatrixXd> mat_b(b.data, b_shape[0], b_shape[1]);
+
+                    Tensor result({a_shape[0], b_shape[1]});
+                    Eigen::Map< Eigen::MatrixXd> result_mat(result.data, a_shape[0], b_shape[1]);
+                    result_mat = mat_a * mat_b;
+
+                    return result;
+                }
+
+                // CASE 5: batched batched matmul
+                if (a_shape.size() >= 2 && b_shape.size() >= 2) {
+                    return batchedMatMul(a, b);
+                }
+
+                // SHOULD NEVER REACH HERE
+                throw std::invalid_argument("SHOULD NOT REACH HERE - Unsupported tensor shapes for multiplication");
             }
 
             // In-place matrix multiplication - we call our function made above
@@ -650,7 +699,7 @@ namespace simplenet{
                  *this = *this * B;
                  return *this;
             }
-
+            // calls the element wise mul
             Tensor& operator*=(const double& B) {
                  *this = *this * B;
                  return *this;

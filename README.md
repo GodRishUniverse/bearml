@@ -26,8 +26,6 @@ The Autodiff works on the
 
 ## What do we need to complete
 
-
-
 * Integrate Caffe2 : [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
 * Implement broadcasting properly as it is required for tensor multiplication - there is another bug in the print code because the tensor shape changes but not the data so it accesses beyond what is allocated - **PROBLEM**
   * Potential solution is to basically set a boolean to see if it is a broadcasted tensor or nott - PLAN IS TO MAKE BORADCAST A PRIVATE FUNCTION SO THE BROADCASTED TENSOR VANISHES AFTER COMPUTATION is APPLIED
@@ -36,6 +34,9 @@ The Autodiff works on the
   * ~~Use Kahman Summation~~
   * Check what device has been set - using a string to call a CUDA kernel or normal matmul for GEMM
     * **TODO**: Use CUDA for GEMM and Matmul - use
+  * The problem is not matmul or vector-mat mul or vector-vector mul - rather batched mat mul - what I now understand is how batched matmul works and I give an example here
+    `When we multiply [2,3,4] with [2,4,5] -> [2,3,5] because the first is a 2-batch of [3,4] matrices and the next one is the 2-batch of [4,5] matrices`
+    This is one reason why when doing batched mul only the last 2 indices can differ but the rest HAVE TO BE THE SAME.
 * Implement Autodiff for activation functions
   * Also make template specifications for them
 
