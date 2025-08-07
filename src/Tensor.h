@@ -14,6 +14,74 @@ using ll = long long; // can also use int_fast64_t
 #define TENSOR_H
 namespace simplenet{
     class Tensor {
+
+        // ==============================PRIVATE========================================
+        private:
+
+            //works
+            static std::vector<int> computeBroadcastShape(
+                const std::vector<int>& A, const std::vector<int>& B)
+            {
+                size_t n = std::max(A.size(), B.size());
+                std::vector<int> a(A), b(B);
+                a.insert(a.begin(), n - A.size(), 1);
+                b.insert(b.begin(), n - B.size(), 1);
+
+                std::vector<int> out(n);
+                for (size_t i = 0; i < n; ++i) {
+                    if (a[i] == b[i] || a[i] == 1 || b[i] == 1) {
+                        out[i] = std::max(a[i], b[i]);
+                    } else {
+                        throw std::invalid_argument("Shapes not broadcastable");
+                    }
+                }
+                return out;
+            }
+
+            // TODO: check if this works or not - computeBroadcastStrides
+            static std::vector<int> computeBroadcastStrides(
+                const std::vector<int>&   origShape,
+                const std::vector<int>&    origStrides,
+                const std::vector<int>&   targetShape)
+            {
+                size_t n = targetShape.size();
+                // pad on the left
+                std::vector<int>  s = origShape;
+                std::vector<int>  st = origStrides;
+                s.insert(s.begin(), n - s.size(), 1);
+                st.insert(st.begin(), n - st.size(), 0);
+
+                std::vector<int> out(n);
+                for (size_t i = 0; i < n; ++i) {
+                    out[i] = (s[i] == targetShape[i] ? st[i] : 0);
+                }
+                return out;
+            }
+
+            // TODO: COMPLETTE IMPLEMENTATION - problem here is that we would need to implement broadcasted mul, add and subtract differently as the memory is not copied when broadcasted and the
+            static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
+                Tensor v;            // default-constructed
+                v.data    = t.data;
+                v.shape   = newShape;
+                v.strides = computeBroadcastStrides(t.shape, t.strides, newShape);
+                v.owns_data = false; // we do not want the broadcasted tensors to own the data that it points - so we do not double delete
+                return v;
+            }
+
+            static bool isScalar(const Tensor& t) {
+                if (t.shape.empty()) return true;
+                for (int dim : t.shape) {
+                    if (dim != 1) return false;
+                }
+                return true;
+            }
+
+            static double getScalarValue(const Tensor& t){
+                return t.data[0];
+            }
+
+        // ==============================PRIVATE========================================
+
         public:
             // SHOULD BE PRIVATE BUT ACTIVATION FUNCTIONS NEED  double * data
             std::vector<int> shape;
@@ -51,6 +119,7 @@ namespace simplenet{
             }
 
             // ABOVE SHOULD BE PRIVATE BUT ACTIVATION FUNCTIONS NEED  double * data
+            // TODO MAY CHANGE ACTIVATION FUNCTIONS IMPLEMENTATION
 
 
 
@@ -289,61 +358,6 @@ namespace simplenet{
                 return os;
             }
 
-        private:
-
-            //works
-            static std::vector<int> computeBroadcastShape(
-                const std::vector<int>& A, const std::vector<int>& B)
-            {
-                size_t n = std::max(A.size(), B.size());
-                std::vector<int> a(A), b(B);
-                a.insert(a.begin(), n - A.size(), 1);
-                b.insert(b.begin(), n - B.size(), 1);
-
-                std::vector<int> out(n);
-                for (size_t i = 0; i < n; ++i) {
-                    if (a[i] == b[i] || a[i] == 1 || b[i] == 1) {
-                        out[i] = std::max(a[i], b[i]);
-                    } else {
-                        throw std::invalid_argument("Shapes not broadcastable");
-                    }
-                }
-                return out;
-            }
-
-            // TODO: check if this works or not - computeBroadcastStrides
-            static std::vector<int> computeBroadcastStrides(
-                const std::vector<int>&   origShape,
-                const std::vector<int>&    origStrides,
-                const std::vector<int>&   targetShape)
-            {
-                size_t n = targetShape.size();
-                // pad on the left
-                std::vector<int>  s = origShape;
-                std::vector<int>  st = origStrides;
-                s.insert(s.begin(), n - s.size(), 1);
-                st.insert(st.begin(), n - st.size(), 0);
-
-                std::vector<int> out(n);
-                for (size_t i = 0; i < n; ++i) {
-                    out[i] = (s[i] == targetShape[i] ? st[i] : 0);
-                }
-                return out;
-            }
-
-            // TODO: COMPLETTE IMPLEMENTATION - problem here is that we would need to implement broadcasted mul, add and subtract differently as the memory is not copied when broadcasted and the
-            static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
-                Tensor v;            // default-constructed
-                v.data    = t.data;
-                v.shape   = newShape;
-                v.strides = computeBroadcastStrides(t.shape, t.strides, newShape);
-                v.owns_data = false; // we do not want the broadcasted tensors to own the data that it points - so we do not double delete
-                return v;
-            }
-
-        public:
-
-
             // friend function - add tensors
             friend Tensor operator+(const Tensor &A, const Tensor &B) {
                 if (A.shape == B.shape) {
@@ -425,6 +439,10 @@ namespace simplenet{
                 for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i] + b;
                 return C;
+            }
+
+            friend Tensor operator+(const double& b, const Tensor &A) {
+                return A+b; // same as above
             }
 
 
@@ -510,6 +528,14 @@ namespace simplenet{
                 return C;
             }
 
+            // element wise subtract
+            friend Tensor operator-(const double& b, const Tensor &A) {
+                Tensor C(A.shape);
+                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                    C.data[i] = b- A.data[i]; // operation is switched as above
+                return C;
+            }
+
             // Hadamard product
             friend Tensor hadamard(const Tensor &a, const Tensor &other) {
                 if (a.shape != other.shape){
@@ -525,18 +551,6 @@ namespace simplenet{
             }
 
 
-            // TODO: friend function - multiply tensors - dot product
-            friend Tensor operator*(const Tensor &a, const Tensor &b) {
-                // TODO: need to fix broadcasting and also figure out how to use it for multipliccation as STRIDE CALCULATION FOR BROADCASTING IS FLAWED AND Moreover it should be a private function
-                // basically we need to make sure that the shapes are compatible
-                // especially: Tensor a(a1, ... , an) Tensor b(b1, ... ,bn, bm) - we want at least an = bn and if a or b has less size then broadcasting will be needed
-                // special cases where tensor is just a number
-
-                // technically dot product is just a.traspose * b - assuming vector format for a and b
-                // TODO: use Kahan summation algorithm to reduce numerical error
-
-            }
-
             // element wise multiply
             friend Tensor operator*(const Tensor &A, const double& b) {
                 Tensor C(A.shape);
@@ -544,6 +558,54 @@ namespace simplenet{
                     C.data[i] = A.data[i]*b;
                 return C;
             }
+            // for when the operations are reversed
+            friend Tensor operator*(const double& b, const Tensor &A) {
+                return A*b; // order of multiplication doesn't matter here
+            }
+
+
+            // TODO: friend function - multiply tensors - dot product (GEMM)
+            friend Tensor operator*(const Tensor &a, const Tensor &b) {
+
+                // 3 cases that need to be checked for this
+                //                  case 0: A and B are scalars in the form of Tensors [TAKEN INSIDE CASE 1 and 2]
+                // case 1: A is scalar
+                // case 2: B is scalar
+                // case 3: matrix multiplication - batched and unbatched (GEMM operations)
+
+                if (isScalar(a)){
+                    return b*getScalarValue(a); // b is not a scalar - we call our friend function (created above for element wise mult) here
+                }
+
+                if (isScalar(b)){
+                    return a*getScalarValue(b); // a is not a scalar - we call our friend function (created above for element wise mult) here
+                }
+
+                // TODO: GEMM
+
+
+                // especially: Tensor a(a1, ... , an) Tensor b(b1, ... ,bn, bm) - we want at least an = bn and if a or b has less size then broadcasting will be needed
+                // special cases where tensor is just a number
+
+                // technically dot product is just a.traspose * b - assuming vector format for a and b
+                // TODO: use Kahan summation algorithm to reduce numerical error
+                //
+                return Tensor(); // TODO: remove this return - added to remove the warning from compiler
+
+
+            }
+
+            // In-place matrix multiplication - we call our function made above
+            Tensor& operator*=(const Tensor& B) {
+                 *this = *this * B;
+                 return *this;
+            }
+
+            Tensor& operator*=(const double& B) {
+                 *this = *this * B;
+                 return *this;
+            }
+
 
 
             // Permute

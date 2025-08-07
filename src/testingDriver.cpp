@@ -1,5 +1,6 @@
 // #include "Matrix.cpp"
 #include "Tensor.cpp"
+#include "Tensor.h"
 #include "autogradient.cpp"
 
 #include <iostream>
@@ -109,35 +110,22 @@ int main() {
     simplenet::Tensor result = a + b;
 
     cout << result << endl;
+    simplenet::Tensor c ({1});
+    c.set(1.5, {0});
 
-    // vector<int> tempS_1 {2,3,4,7};
-    // simplenet::Tensor newT_C {tempS_1};
-    // newT_C.set(10.0, {0, 0,0,1});
-    // cout << newT_C << endl;
-    // vector<int> tempS_2 {2, 2,3,4,7};
-    // vector<int> broad = simplenet::Tensor::computeBroadcastShape(tempS_1, tempS_2);
+    // testing some scalar mul operations
+    cout << 1.1*result <<endl;
+    cout << result*1.1 <<endl;
+    cout << c*result << endl;
+    cout << result*c << endl;
+    cout << c*c << endl;
 
-    // for (size_t i =0; i < broad.size(); i++){
-    //     cout << broad[i] << ", ";
-    // }
-    // cout << endl;
+    cout << result << endl;
+    result*=c;
+    cout << result << endl;
 
-    //
-
-    // vector<int> strides = newT_C.getStrides();
-    // for (size_t i =0; i < strides.size(); i++){
-    //     cout << strides[i] << ", ";
-    // }
-    // cout << endl;
-    // cout << "=======================================================" << endl;
-    // simplenet::Tensor newT_D = simplenet::Tensor::makeBroadcastView(newT_C, broad);
-    // strides = newT_D.getStrides();
-    // for (size_t i =0; i < strides.size(); i++){
-    //     cout << strides[i] << ", ";
-    // }
-    // cout << endl;
-    // cout << newT_D << endl;
-
+    result*=7.0;
+    cout << result << endl;
 
 
 
