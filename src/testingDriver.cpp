@@ -157,5 +157,10 @@ int main() {
 
     cout << veca * vecb << endl;
 
+    simplenet::Tensor a ({1,1,4,5});
+    simplenet::Tensor b ({1,2,5,5});
+
+    cout << a * b << endl;
+
 
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <stdexcept>
 #include <vector>
 #include <iostream>
 #include <string>
@@ -145,13 +146,113 @@ namespace simplenet{
             // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
             static Tensor batchedMatMul(const Tensor& a, const Tensor& b){
                 // TODO: figure out how batched mat mul will be implemented and use Eigen for mul as it does not have an inbuilt batch mat mul
+                //
+                // can do normal mat mul for elements
+                std::vector<int> a_size = a.getShape();
+                std::vector<int> b_size = b.getShape();
+
+                // [a1, a2, ..., an, am] * [b1, b2, ..., bm, bk]
+                // We need to treat these as batches of
+                // batches_(a1*a2*...*)[an, am] * batches_(b1*b2*...*)[bm, bk] work on so each version of [an,am]*[bm*bk] are multiplied with
+                // An example of a working version is alson
+                // [2,1,4,5] * [2,3,5,6] -> [2,3,4,6] as the output shape - broadcasting done
+                // Get matrix dimensions (last two dimensions from each Tensor)
+                int a_rows = a_size[a_size.size() - 2];
+                int a_cols = a_size[a_size.size() - 1];
+                int b_rows = b_size[b_size.size() - 2];
+                int b_cols = b_size[b_size.size() - 1];
+
+                if (a_cols != b_rows){
+                    throw std::invalid_argument("SHAPES are incompatible for batched matmul: "+ std::to_string(a_cols) + " != " + std::to_string(b_rows));
+                }
+
+                // Compute broadcast shape for batch dimensions
+                std::vector<int> a_batch_dims(a_size.begin(), a_size.end() - 2);
+                std::vector<int> b_batch_dims(b_size.begin(), b_size.end() - 2);
+
+                std::vector<int> batch_shape;
+                if (a_batch_dims.empty()) {
+                    batch_shape = b_batch_dims;
+                } else if (b_batch_dims.empty()) {
+                    batch_shape = a_batch_dims;
+                } else {
+                    // Both have batch dimensions - broadcast them
+                    batch_shape = computeBroadcastShape(a_batch_dims, b_batch_dims);
+                }
+
+
+                // Create output shape: batch_shape + [a_rows, b_cols]
+                std::vector<int> output_shape = batch_shape;
+                output_shape.push_back(a_rows);
+                output_shape.push_back(b_cols);
+
+                Tensor result(output_shape); // we have our result here
+
+                // Create broadcast views for the full shapes (including matrix dims)
+                std::vector<int> full_a_shape = batch_shape;
+                full_a_shape.push_back(a_rows);
+                full_a_shape.push_back(a_cols);
+
+                std::vector<int> full_b_shape = batch_shape;
+                full_b_shape.push_back(b_rows);
+                full_b_shape.push_back(b_cols);
+
+                Tensor a_view = makeBroadcastView(a, full_a_shape);
+                Tensor b_view = makeBroadcastView(b, full_b_shape);
+
+                // Perform batched matrix multiplication
+                ll matrix_size_a = a_rows * a_cols;
+                ll matrix_size_b = b_rows * b_cols;
+                ll matrix_size_result = a_rows * b_cols;
+
+
+                ll total_batch_size {1};
+                for (int i : batch_shape){
+                    total_batch_size*=i;
+                }
+                total_batch_size = (total_batch_size>0) ? total_batch_size : 1;
+
+                // loop over the total batch size -
+                for (ll batch_index = 0; batch_index<total_batch_size; batch_index++){
+                    // now since we have the batch index with us we will be using the batch_coordinates
+                    std::vector<int> batch_coords(batch_shape.size());
+                    ll tmp = batch_index; // get the current batch index
+                    // HERE we convert our current batched index in the total to the coordinates in the actual tensor
+                    for (int d = batch_shape.size() - 1; d >= 0; --d) {
+                        if (batch_shape[d] > 0) {
+                            batch_coords[d] = tmp % batch_shape[d];
+                            tmp /= batch_shape[d];
+                        }
+                    }
+
+                    // Calculate offsets for this batch
+                    ll offset_a = 0, offset_b = 0;
+                    for (size_t d = 0; d < batch_shape.size(); ++d) {
+                        offset_a += batch_coords[d] * a_view.strides[d]; // if stride is zero somewhere in the broadcasted view then the computations make use of the same memory - no copies done
+                        offset_b += batch_coords[d] * b_view.strides[d]; // if stride is zero somewhere in the broadcasted view then the computations make use of the same memory - no copies done
+                    }
+
+                    // Get pointers to the matrices for this batch
+                    double* mat_a_ptr = a_view.data + offset_a;
+                    double* mat_b_ptr = b_view.data + offset_b;
+                    double* result_ptr = result.data + batch_index * matrix_size_result;
+
+                    // Use Eigen for the actual matrix multiplication - actual batched mat mul
+                    Eigen::Map<const Eigen::MatrixXd> mat_a(mat_a_ptr, a_rows, a_cols);
+                    Eigen::Map<const Eigen::MatrixXd> mat_b(mat_b_ptr, b_rows, b_cols);
+                    Eigen::Map<Eigen::MatrixXd> result_mat(result_ptr, a_rows, b_cols);
+
+                    result_mat = mat_a * mat_b;
+                }
+
+                return result;
             }
 
 
 
             // ==============================PRIVATE========================================
 
-            public:
+        public:
 
             // linspace function  to edit the current tensor
             Tensor& linspace(double start, double end){
@@ -686,7 +787,7 @@ namespace simplenet{
                 }
 
                 // CASE 5: batched batched matmul
-                if (a_shape.size() >= 2 && b_shape.size() >= 2) {
+                if (a_shape.size() > 2 && b_shape.size() > 2) {
                     return batchedMatMul(a, b);
                 }
 
