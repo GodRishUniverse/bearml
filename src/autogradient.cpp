@@ -37,7 +37,7 @@ namespace simplenet::autogradient{
                   childless_nodes.push_back(parent);
                }else{
                   child_counts[parent] -= 1;
-               }      
+               }
             }
          }
 
@@ -47,18 +47,18 @@ namespace simplenet::autogradient{
 
    // TODO: fix for MATRIX AND TENSOR TYPES - also add a boolean for gradient accumulation as well
    template <typename T>
-   double backward(std::shared_ptr<simplenet::Node<T>> end_node, bool accumulate = false){
+   T backward(std::shared_ptr<simplenet::Node<T>> end_node, bool accumulate = false){
 
       std::vector<std::shared_ptr<simplenet::Node<T>>> all_nodes = topological_sort(end_node);
       // we clear grads right now
       if (!accumulate){
          for (auto node : all_nodes) {
-            node->grad = 0.0;
+            node->grad = 0.0; // TODO: change to default values - but need to figure out what shape of matrix here
          }
       }
 
 
-      end_node->grad = 1.0;     
+      end_node->grad = 1.0; // TODO: change to default values - identity matrices - but need to figure out what shape of identity matrix to choose
 
       for (auto node : all_nodes) {
          // Only propagate if this node has a gradient

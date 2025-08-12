@@ -253,6 +253,45 @@ namespace simplenet{
             // ==============================PRIVATE========================================
 
         public:
+            Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
+
+            static Tensor identity_matrix(std::vector<int> sizePassed, int n) {
+
+
+                Tensor t (sizePassed);
+                // fill the diagonals with one
+                if (sizePassed.size() ==1){
+                    // vector basically - does also work for scalars
+                    if (sizePassed[0] != n){
+                        std::invalid_argument("Identity vector is just 1s and size should match what is entered");
+                    }
+                    for (int r =0; r < sizePassed[0]; r++){
+                        t.set(1.0, {r});
+                    }
+                } else if (sizePassed.size() ==2){
+                    if (sizePassed[sizePassed.size()-1] != n || sizePassed[sizePassed.size()-2]!=n){
+                        std::invalid_argument("Identity matrices are only defined for square matrices");
+                    }
+                    for (int r =0; r < sizePassed[0]; r++){
+                        t.set(1.0, {r,r}); // diagonals only
+                    }
+                } else{
+                    // batched matrix - set individually to identity matrix
+                    //TODO:
+                }
+
+                return t;
+            }
+
+            // acts as an alias for the identity matrix
+            static Tensor eye(std::vector<int> sizePassed, int n){
+                return identity_matrix(sizePassed, n);
+            }
+
+
+
+
+
 
             // linspace function  to edit the current tensor
             Tensor& linspace(double start, double end){

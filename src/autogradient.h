@@ -1,10 +1,13 @@
 #pragma once
 
 #include <algorithm>
+#include <typeinfo>
 #include <vector>
 #include <memory>
 #include <functional>
 #include <map>
+#include <type_traits>
+
 
 #include "Tensor.h"
 #include "Matrix.h"
@@ -63,7 +66,14 @@ namespace simplenet{
         std::vector<std::weak_ptr<Node<T>>> outputs; // CHILDREN- using stl weak pointer - to break the cycle of shared_ptr references in inputs and outputs
         std::function<void()> backward_fn; // will be used for backward pass rather than the gradients
 
-        Node(T value) : val(value), grad(0.0) {}
+        Node(T value) : val(value) {
+            if (std::is_same<T,double>::value){
+                grad = 0.0;
+            }else if (std::is_same<T,simplenet::Tensor>::value){
+                grad = simplenet::Tensor(true); // TODO: this owns the data - but need to figure out what shape of matrix
+            }
+
+        }
 
         // Factory functions that return shared_ptr
         static std::shared_ptr<Node<T>> make_node(T value) {
