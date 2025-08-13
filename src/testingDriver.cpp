@@ -82,20 +82,7 @@ int main() {
 
     // cout << newT_A * newT_B << endl; // hadamard product works
 
-    // double x_val=  4.0;
-    // double y_val = 2.0;
 
-    // shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val); // calling static function
-    // shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val); // calling static function
-
-    // auto z = x*y + x;
-    // // dz/dx = y+1 = 2+1 =3
-    // // dz/dy= x =4
-
-
-    // cout << simplenet::autogradient::backward(z) << endl;
-    // cout << x->grad << endl;
-    // cout << y->grad << endl;
 
     // simplenet::Tensor a({2, 1, 3});
     // simplenet::Tensor b({4, 3});
@@ -150,17 +137,42 @@ int main() {
     // cout << a << endl;
     //
 
-    simplenet::Tensor veca ({3,3});
-    simplenet::Tensor vecb ({3});
-    veca.set(201.0, {1, 0});
-    vecb.set(2.0, {1});
+    // simplenet::Tensor veca ({3,3});
+    // simplenet::Tensor vecb ({3});
+    // veca.set(201.0, {1, 0});
+    // vecb.set(2.0, {1});
 
-    cout << veca * vecb << endl;
+    // cout << veca * vecb << endl;
+
+    // double x_val=  4.0;
+    // double y_val = 2.0;
+
+    // shared_ptr<simplenet::Node<double>> x = simplenet::Node<double>::make_node(x_val); // calling static function
+    // shared_ptr<simplenet::Node<double>> y = simplenet::Node<double>::make_node(y_val); // calling static function
+
+    // auto z = x*y + x;
+    // // dz/dx = y+1 = 2+1 =3
+    // // dz/dy= x =4
+
+
+    // cout << simplenet::autogradient::backward(z) << endl;
+    // cout << x->grad << endl;
+    // cout << y->grad << endl;
 
     simplenet::Tensor a ({1,1,4,5});
     simplenet::Tensor b ({1,2,5,5});
 
-    cout << a * b << endl;
+    // cout << a * b << endl;
+
+
+    shared_ptr<simplenet::Node<simplenet::Tensor>> x = simplenet::Node<simplenet::Tensor>::make_node(a); // calling static function
+    shared_ptr<simplenet::Node<simplenet::Tensor>> y = simplenet::Node<simplenet::Tensor>::make_node(b); // calling static function
+
+    auto z = x*y ;
+
+    cout << simplenet::autogradient::backward(z) << endl;
+    cout << x->grad << endl;
+    cout << y->grad << endl;
 
 
 }

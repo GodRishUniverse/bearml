@@ -66,13 +66,13 @@ namespace simplenet{
         std::vector<std::weak_ptr<Node<T>>> outputs; // CHILDREN- using stl weak pointer - to break the cycle of shared_ptr references in inputs and outputs
         std::function<void()> backward_fn; // will be used for backward pass rather than the gradients
 
-        Node(T value) : val(value) {
-            if (std::is_same<T,double>::value){
-                grad = 0.0;
-            }else if (std::is_same<T,simplenet::Tensor>::value){
-                grad = simplenet::Tensor(true); // TODO: this owns the data - but need to figure out what shape of matrix
-            }
-
+        Node(T value) : val(value) , grad([&value]() {
+                if constexpr (std::is_same<T, double>::value) {
+                    return 0.0;
+                } else if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                    return simplenet::Tensor(value.getShape());
+                }
+            }()) {
         }
 
         // Factory functions that return shared_ptr
@@ -87,6 +87,7 @@ namespace simplenet{
             }
         }
 
+        // TODO - change
         friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
                 std::shared_ptr<Node<T>> node  = make_node(a->val+b->val);
                 // node->grad = a->grad + b->grad;  // c = a + b     =>    dc = da + db
@@ -96,6 +97,7 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
+                // TODO - change this function as not correct with Tensors
                 node->backward_fn = [a, b, node](){
                     a->grad += node->grad;  // dc/da = b
                     b->grad += node->grad;  // dc/db = a
@@ -114,6 +116,7 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
+                // TODO - change this function as not correct with Tensors
                 node->backward_fn = [a, b, node](){
                     a->grad += node->grad*1.0;  // dc/da = 1
                     b->grad += node->grad*-1.0;  // dc/db = -1
@@ -130,6 +133,7 @@ namespace simplenet{
 
                 node->inputs = {a,b};
 
+                // TODO - change this function as not correct with Tensors
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
@@ -145,6 +149,7 @@ namespace simplenet{
 
         // DIVISION is confusing - should only be done for numbers
         // specialized for constants
+        // TODO: change for Tensors
         friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
                 std::shared_ptr<Node<T>> node  = make_node(a->val/divisor); // TODO: implement Matrix and Tensor division for constant values
                 // node->grad = (a->grad*divisor)/ (divisor * divisor); //  c = a / b     =>    dc = (da *b  - a*db)/b^2
@@ -152,6 +157,7 @@ namespace simplenet{
                 node->inputs = {a};
                 a->outputs.push_back(node);
 
+                // TODO - change this function as not correct with Tensors
                 node->backward_fn = [a, divisor, node]() {
                     a->grad += node->grad * (1.0 / divisor);  // dc/da = 1/divisor
                 };

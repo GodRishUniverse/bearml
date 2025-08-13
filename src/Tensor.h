@@ -37,7 +37,7 @@ namespace simplenet{
             Tensor() : data(nullptr), owns_data(false) {};
 
 
-            bool negOrZeroInSizeCheck(std::vector<int> sizePassedDown) const {
+            bool negOrZeroInSizeCheck(const std::vector<int>& sizePassedDown) const {
                 for (const int & i : sizePassedDown){
                     if (i < 1){
                         return true;
@@ -46,7 +46,7 @@ namespace simplenet{
                 return false;
             };
 
-            bool sizeCheck(std::vector<int> sizePassedDown) const {
+            bool sizeCheck(const std::vector<int>& sizePassedDown) const {
                 if (negOrZeroInSizeCheck(sizePassedDown)){
                     return false;
                 }
@@ -60,7 +60,7 @@ namespace simplenet{
             }
 
             // checks if the index is valid or not
-            bool indexCheck(std::vector<int> sizePassedDown) const {
+            bool indexCheck(std::vector<int>& sizePassedDown) const {
 
                 for (size_t i = 0 ; i < this->shape.size(); i++){
                     if (sizePassedDown[i] <0 || sizePassedDown[i] >= this->shape[i]){
@@ -248,48 +248,56 @@ namespace simplenet{
                 return result;
             }
 
-
-
             // ==============================PRIVATE========================================
 
         public:
-            Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
-
-            static Tensor identity_matrix(std::vector<int> sizePassed, int n) {
-
-
-                Tensor t (sizePassed);
-                // fill the diagonals with one
-                if (sizePassed.size() ==1){
-                    // vector basically - does also work for scalars
-                    if (sizePassed[0] != n){
-                        std::invalid_argument("Identity vector is just 1s and size should match what is entered");
-                    }
-                    for (int r =0; r < sizePassed[0]; r++){
-                        t.set(1.0, {r});
-                    }
-                } else if (sizePassed.size() ==2){
-                    if (sizePassed[sizePassed.size()-1] != n || sizePassed[sizePassed.size()-2]!=n){
-                        std::invalid_argument("Identity matrices are only defined for square matrices");
-                    }
-                    for (int r =0; r < sizePassed[0]; r++){
-                        t.set(1.0, {r,r}); // diagonals only
-                    }
-                } else{
-                    // batched matrix - set individually to identity matrix
-                    //TODO:
+            // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
+            void fill(double v){
+                for (ll i =0;i<sizeOfTensor(); i++){
+                    this->data[i] = v;
                 }
-
-                return t;
             }
 
-            // acts as an alias for the identity matrix
-            static Tensor eye(std::vector<int> sizePassed, int n){
-                return identity_matrix(sizePassed, n);
+            static bool has_nonzero_gradient(Tensor& t){
+                // we only have to check if there is at least one of the numbers that is non-zero
+                for (ll i =0;i<t.sizeOfTensor(); i++){
+                    if (std::abs(t.getTensorDataFlat()[i]) > 1e-12) {
+                        return true;
+                    }
+                }
+                return false;
             }
+            // TODO
+            // static Tensor identity_matrix(std::vector<int>& sizePassed, int n) {
+            //     Tensor t (sizePassed);
+            //     // fill the diagonals with one
+            //     if (sizePassed.size() ==1){
+            //         // vector basically - does also work for scalars
+            //         if (sizePassed[0] != n){
+            //             std::invalid_argument("Identity vector is just 1s and size should match what is entered");
+            //         }
+            //         for (int r =0; r < sizePassed[0]; r++){
+            //             t.set(1.0, {r});
+            //         }
+            //     } else if (sizePassed.size() ==2){
+            //         if (sizePassed[sizePassed.size()-1] != n || sizePassed[sizePassed.size()-2]!=n){
+            //             std::invalid_argument("Identity matrices are only defined for square matrices");
+            //         }
+            //         for (int r =0; r < sizePassed[0]; r++){
+            //             t.set(1.0, {r,r}); // diagonals only
+            //         }
+            //     } else{
+            //         // batched matrix - set individually to identity matrix
+            //         //TODO:
+            //     }
 
+            //     return t;
+            // }
 
-
+            // // acts as an alias for the identity matrix
+            // static Tensor eye(std::vector<int>& sizePassed, int n){
+            //     return identity_matrix(sizePassed, n);
+            // }
 
 
 
@@ -344,7 +352,7 @@ namespace simplenet{
              * @throw std::invalid_argument if the index size does not match the shape of the tensor.
              * @return The value at the given index
              */
-            double get(std::vector<int> index) const {
+            double get(std::vector<int>& index) const {
 
                 if (index.size() != shape.size()){
                     throw std::invalid_argument("Invalid index size: \nPassed:" + debugShapes(index)+"\nExpected:" +debugShapes(this->shape)+"\n");

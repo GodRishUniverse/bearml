@@ -1,4 +1,5 @@
 #include "autogradient.h"
+#include "Tensor.h"
 
    // TODO: implement the reverse topological order traversal
    // TODO: implement the gradient function
@@ -52,25 +53,36 @@ namespace simplenet::autogradient{
       std::vector<std::shared_ptr<simplenet::Node<T>>> all_nodes = topological_sort(end_node);
       // we clear grads right now
       if (!accumulate){
-         for (auto node : all_nodes) {
-            node->grad = 0.0; // TODO: change to default values - but need to figure out what shape of matrix here
+         for (const auto& node : all_nodes) {
+            if constexpr (std::is_same<T,double>::value){
+                node->grad = 0.0;
+            }else if constexpr (std::is_same<T,simplenet::Tensor>::value){
+                node->grad = simplenet::Tensor(node->val.getShape());
+            }
          }
       }
 
+      if constexpr (std::is_same<T,double>::value){
+          end_node->grad = 1.0;
+      }else if constexpr (std::is_same<T,simplenet::Tensor>::value){
+          end_node->grad = simplenet::Tensor(end_node->val.getShape()); // The whole matrix is filled with 1 - because we want to compute the Jacobian matrix
+          end_node->grad.fill(1.0); // fill returns void;
+      }
 
-      end_node->grad = 1.0; // TODO: change to default values - identity matrices - but need to figure out what shape of identity matrix to choose
-
-      for (auto node : all_nodes) {
+      for (const auto& node : all_nodes) {
          // Only propagate if this node has a gradient
-         if (node->grad != 0.0 && node->backward_fn) {
-               node->backward_fn();
-         }
-      }
+        if constexpr (std::is_same<T,double>::value){
+            if (node->grad != 0.0 && node->backward_fn) {
+                  node->backward_fn();
+            }
+        }else if constexpr (std::is_same<T,simplenet::Tensor>::value){
+            if (simplenet::Tensor::has_nonzero_gradient(node->grad) && node->backward_fn) {
+                  node->backward_fn();
+            }
+        }
 
+      }
       return end_node->grad;
    }
-
-
-
 
 }
