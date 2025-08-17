@@ -61,7 +61,7 @@ namespace simplenet{
    class Node {
     public:
         T val;
-        T grad;
+        T grad; // delay grad creation and use jacobians to solbe the broadcasting problem
         std::vector<std::shared_ptr<Node<T>>> inputs;// PARENTS-  using stl shared pointer
         std::vector<std::weak_ptr<Node<T>>> outputs; // CHILDREN- using stl weak pointer - to break the cycle of shared_ptr references in inputs and outputs
         std::function<void()> backward_fn; // will be used for backward pass rather than the gradients
@@ -97,7 +97,7 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                // TODO - change this function as not correct with Tensors
+                // TODO - change this function as not correct with Tensors -  shape changes and broadcasting has a role to play here
                 node->backward_fn = [a, b, node](){
                     a->grad += node->grad;  // dc/da = b
                     b->grad += node->grad;  // dc/db = a
@@ -116,7 +116,7 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                // TODO - change this function as not correct with Tensors
+                // TODO - change this function as not correct with Tensors -  shape changes and broadcasting has a role to play here
                 node->backward_fn = [a, b, node](){
                     a->grad += node->grad*1.0;  // dc/da = 1
                     b->grad += node->grad*-1.0;  // dc/db = -1
@@ -133,7 +133,7 @@ namespace simplenet{
 
                 node->inputs = {a,b};
 
-                // TODO - change this function as not correct with Tensors
+                // TODO - change this function as not correct with Tensors - shape changes and broadcasting has a role to play here
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
@@ -157,7 +157,7 @@ namespace simplenet{
                 node->inputs = {a};
                 a->outputs.push_back(node);
 
-                // TODO - change this function as not correct with Tensors
+                // TODO - change this function as not correct with Tensors - shape changes and broadcasting has a role to play here
                 node->backward_fn = [a, divisor, node]() {
                     a->grad += node->grad * (1.0 / divisor);  // dc/da = 1/divisor
                 };
@@ -181,8 +181,6 @@ namespace simplenet{
 
             return node;
         }
-
-
 
     };
 

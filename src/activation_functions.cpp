@@ -8,6 +8,7 @@
 // TODO: edit according to autogradient and Node implementations in the autogradient.h/.cpp files
 // TODO: make tensor activation functions
 
+// TODO: Just my 2 cents so far - activation functions might be a class that inherit the Node class as the functionality needs to be inherited and grad values need to be specified
 namespace simplenet::activation_functions{
 
     const double MY_PI = 3.141592653589793;

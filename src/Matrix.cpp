@@ -1,5 +1,7 @@
 # include "Matrix.h"
 
+// USE eigen for this  - this is not really used anywhere
+
 // TODO : implementation needed - division (inversion -  should work for constants and matrix inversion ), GEMM
 
 namespace simplenet{
@@ -26,7 +28,7 @@ namespace simplenet{
             }
         }
     }
-    
+
     //copy assignment operator
     template<typename T>
     Matrix<T>& Matrix<T>::operator=(const Matrix<T>& other) {
@@ -39,7 +41,7 @@ namespace simplenet{
         }
         return *this;
     }
-    
+
     // move assignment operator
     template<typename T>
     Matrix<T>&& Matrix<T>::operator=( Matrix<T>&& other) {
@@ -52,7 +54,7 @@ namespace simplenet{
         }
         return std::move(*this);
     }
-    
+
     // scalar multiplication
     template<typename T>
     Matrix<T>& Matrix<T>::operator*=(T scalar) {
@@ -63,8 +65,8 @@ namespace simplenet{
         }
         return *this;
     }
-    
-    
+
+
     // matrix multiplication
     template<typename T>
     Matrix<T> Matrix<T>::operator*(Matrix<T>&  mat) const {
@@ -81,7 +83,7 @@ namespace simplenet{
         }
         return result;
     }
-    
+
     template<typename T>
     Matrix<T>::Matrix(Matrix<T>& other){
         this->rows = other.rows;
@@ -93,7 +95,7 @@ namespace simplenet{
             }
         }
     }
-    
+
     template<typename T>
     Matrix<T>::Matrix(Matrix<T> &&other) {
         this->rows = other.rows;
@@ -101,34 +103,34 @@ namespace simplenet{
         std::swap(this->data, other.data);
         other.data = nullptr;
         other.rows = 0;
-        other.cols = 0; 
+        other.cols = 0;
     }
-    
-    
+
+
     template<typename T>
     void Matrix<T>::swapCols(int col1, int col2){
         if (col1 < 0 || col1 >= this->cols || col2 < 0 || col2 >= this->cols) {
             std::cerr << "Invalid column indices" << std::endl;
             return;
         }
-    
+
         for (int i = 0; i < this->rows; i++) {
             std::swap(this->data[i * this->cols + col1], this->data[i * this->cols + col2]);
         }
     }
-    
+
     template<typename T>
     void Matrix<T>::swapRows(int row1, int row2){
         if (row1 < 0 || row1 >= this->rows || row2 < 0 || row2 >= this->rows) {
             std::cerr << "Invalid row indices" << std::endl;
             return;
         }
-    
+
         for (int j = 0; j < this->cols; j++) {
             std::swap(this->data[row1 * this->cols + j], this->data[row2 * this->cols + j]);
-        }    
+        }
     }
-    
+
     template<typename T>
     std::ostream& operator<<(std::ostream& os, const Matrix<T>& matrix){
         for (int i = 0; i < matrix.rows; i++) {
@@ -139,7 +141,7 @@ namespace simplenet{
         }
         return os;
     }
-    
+
     template<typename T>
     void Matrix<T>::transpose(){
         // rows will be cols and cols will be rows
@@ -149,19 +151,19 @@ namespace simplenet{
             }
         }
     }
-    
+
     // Xavier initialization
     template<typename T>
     static Matrix<T> xavier(int inrows, int incols, int input_size, int output_size) {
-    
+
         std::random_device rd{};
         std::mt19937 gen{rd()};
-     
-    
+
+
         float stddev = sqrt(2.0 / (input_size + output_size));
-    
+
         std::normal_distribution<double> d{0.0,stddev};
-    
+
         Matrix m(inrows, incols);
         for (int i = 0; i < inrows; i++) {
             for (int j = 0; j < incols; j++) {
@@ -169,8 +171,8 @@ namespace simplenet{
             }
         }
         return m;
-    } 
-    
+    }
+
     template<typename T>
     bool Matrix<T>::operator==(const Matrix<T> &m) const{
         if (this->rows != m.rows || this->cols != m.cols) {
@@ -189,5 +191,5 @@ namespace simplenet{
     bool Matrix<T>::operator!=(const Matrix<T> &m) const {
         return !(*this == m);
     }
-    
+
 }
