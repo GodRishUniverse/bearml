@@ -164,7 +164,7 @@ namespace simplenet{
 
         std::normal_distribution<double> d{0.0,stddev};
 
-        Matrix m(inrows, incols);
+        Matrix<T> m(inrows, incols);
         for (int i = 0; i < inrows; i++) {
             for (int j = 0; j < incols; j++) {
                 m.set(i, j, static_cast<T>(d(gen)));

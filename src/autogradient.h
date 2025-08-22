@@ -97,7 +97,7 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                // TODO - change this function as not correct with Tensors -  shape changes and broadcasting has a role to play here
+                // TODO - change this function as not correct with Tensors -  shape changes and broadcasting has a role to play here - if forward does broadcasting then backward should do reduce
                 node->backward_fn = [a, b, node](){
                     a->grad += node->grad;  // dc/da = b
                     b->grad += node->grad;  // dc/db = a

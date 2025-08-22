@@ -603,13 +603,21 @@ namespace simplenet{
                     ll N = sizeOfTensor();
                     for (ll idx = 0; idx < N; ++idx) {
                         // same flat-to-multi decode as above
+
+                        std::vector<int> coords(outShape.size(), 0);
                         ll tmp = idx, offO = 0;
-                        for (size_t d = 0; d < outShape.size(); ++d) {
-                            int coord = tmp / this->strides[d];
-                            tmp %= this->strides[d];
-                            offO += coord * oView.strides[d];
+
+                        for (int d = outShape.size() - 1; d >= 0; --d) {
+                            coords[d] = tmp % outShape[d];
+                            tmp /= outShape[d];
                         }
-                        data[idx] += other.data[offO];
+
+                        // Now compute offsets using broadcast strides
+                        for (size_t d = 0; d < outShape.size(); ++d) {
+                            offO += coords[d] * oView.strides[d];
+                        }
+
+                        data[idx] += oView.data[offO];
                     }
                 } else {
                     for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
@@ -690,13 +698,21 @@ namespace simplenet{
                     ll N = sizeOfTensor();
                     for (ll idx = 0; idx < N; ++idx) {
                         // same flat-to-multi decode as above
+
+                        std::vector<int> coords(outShape.size(), 0);
                         ll tmp = idx, offO = 0;
-                        for (size_t d = 0; d < outShape.size(); ++d) {
-                            int coord = tmp / strides[d];
-                            tmp %= strides[d];
-                            offO += coord * oView.strides[d];
+
+                        for (int d = outShape.size() - 1; d >= 0; --d) {
+                            coords[d] = tmp % outShape[d];
+                            tmp /= outShape[d];
                         }
-                        data[idx] -= other.data[offO];
+
+                        // Now compute offsets using broadcast strides
+                        for (size_t d = 0; d < outShape.size(); ++d) {
+                            offO += coords[d] * oView.strides[d];
+                        }
+
+                        data[idx] -= oView.data[offO];
                     }
                 } else {
                     for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
@@ -923,7 +939,7 @@ namespace simplenet{
             }
 
             template <typename T>
-            T flatten(); // has an inplace and Tensor return type specialization in the cpp file
+            T flatten(int start_dim =0, int end_dim = -1); // has an inplace and Tensor return type specialization in the cpp file
 
             // unsqueeze
             // Finalized
