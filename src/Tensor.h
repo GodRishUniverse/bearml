@@ -122,6 +122,30 @@ namespace simplenet{
                 return v;
             }
 
+            // Opposite of broadcasting
+            static Tensor makeReducedView(const Tensor &t, const std::vector<int>& targetShape) {
+                Tensor v= t; // v can own its data -> the shape will change
+                std::vector<int> currentShape = v.getShape();
+                // 3 Cases to consider here ->
+                // Fall through cases exist here
+                //  3. If current shape has more size then target shape-> flatten the v shape till the same size
+                //  2. If the index position values differ then basically to a sum in the currentShape onto the target shape
+                //      - if targetShape has higher value here then target is copied
+                //  1. if the index and values on the index are the same leave as it is.
+
+                // 3. If current shape has more size then target shape-> flatten the v shape till the same size
+                if (v.shape.size() > targetShape.size()){
+                    // we flatten v till a point
+                    v.flatten<void>(0, v.shape.size()- targetShape.size());
+                }
+
+                // iterate from right to left to see which shapes match and which dont
+
+
+
+                return v;
+            }
+
             static bool isScalar(const Tensor& t) {
                 if (t.shape.empty()) return true;
                 for (int dim : t.shape) {
@@ -938,8 +962,45 @@ namespace simplenet{
                 computeStrides();
             }
 
+            // flatten - inplace
             template <typename T>
-            T flatten(int start_dim =0, int end_dim = -1); // has an inplace and Tensor return type specialization in the cpp file
+            T flatten(int start_dim =0, int end_dim = -1, bool keepdims=false)
+                // has a Tensor return type specialization in the cpp file
+            {
+
+                // default value of end_dim is -1
+                if (end_dim == -1){
+                    end_dim = this->shape.size()-1;
+                }
+
+                if (start_dim <0 || start_dim>=this->shape.size() || start_dim>end_dim ||  end_dim>=this->shape.size() || end_dim  < 0){
+                    throw std::invalid_argument("Start Dim and End Dims not the appropriate ranges-> CHECK");
+                }
+
+                std::vector<int> temp;
+                ll total = 1;
+                for (ll i = 0; i < this->shape.size(); i++){
+                    if (keepdims){
+                        if (i>=start_dim && i<=end_dim){
+                            total *= this->shape[i];
+                            temp.push_back((i ==end_dim) ? total: 1);
+                        } else{
+                            temp.push_back(this->shape[i]);
+                        }
+                    } else{
+                        if (i<start_dim || i>end_dim){
+                            temp.push_back(this->shape[i]);
+                        } else {
+                            total *= this->shape[i];
+                            if (i == end_dim) temp.push_back(total);
+                        }
+                    }
+
+                }
+
+                this->shape =temp;
+                computeStrides();
+            }
 
             // unsqueeze
             // Finalized

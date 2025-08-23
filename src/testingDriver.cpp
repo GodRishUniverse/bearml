@@ -174,6 +174,11 @@ int main() {
     cout << x->grad << endl;
     cout << y->grad << endl;
 
+    // simplenet::Tensor c({3,2,4});
+    // c.set(1.0, {0,1,1});
+    // cout << c << endl;
+    // c = c.flatten<simplenet::Tensor>(1 );
+    // cout << c << endl;
 
 
 }
