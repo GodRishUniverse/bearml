@@ -1,6 +1,6 @@
 # SimpleNet
 
-Implementing Neural Networks in C++
+Deep Learning Framework: Implementing Neural Networks in C++
 
 ## Why?
 
@@ -60,4 +60,5 @@ Another thing that I started with was using the identity matrix for when we do t
 
 ## Acknowledgements
 I would like to thank Dr. Usman Alim at the University of Calgary to help me rethink my backward pass (using jacobians)
+
 I would like to thank Anthropic for their Claude models as I used the "learning" style to clear my thoughts and help me understand better (especially batched mat mul and reduce operations - my understanding had very large gaps that it helped me fill in)
