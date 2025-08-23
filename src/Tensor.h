@@ -124,6 +124,15 @@ namespace simplenet{
 
             // Opposite of broadcasting
             static Tensor makeReducedView(const Tensor &t, const std::vector<int>& targetShape) {
+
+                // TODO: ANALYZE THE SHAPES before doing any copy operations
+                // Idea -   First pass: analyze the shapes and build a "recipe" of operations
+                //          Second pass: execute the recipe
+                // Some questions that Claude helped me to think more about -
+                // Which dimensions need to be flattened together?
+                // Which dimensions need to be summed (with keepdims)?
+                // What order should these operations happen in?
+
                 Tensor v= t; // v can own its data -> the shape will change
                 std::vector<int> currentShape = v.getShape();
                 // 3 Cases to consider here ->
@@ -136,11 +145,11 @@ namespace simplenet{
                 // 3. If current shape has more size then target shape-> flatten the v shape till the same size
                 if (v.shape.size() > targetShape.size()){
                     // we flatten v till a point
-                    v.flatten<void>(0, v.shape.size()- targetShape.size());
+                    v.flatten<void>(0, v.shape.size()- targetShape.size(), false); // we do not want to keep the dimensions
                 }
 
-                // iterate from right to left to see which shapes match and which dont
-
+                // iterate from right to left to see which shapes match and which dont- THING to figure out
+                // TODO: PROBLEM: sumation will change shapes so need to figure out how to do it efficiently
 
 
                 return v;
@@ -962,9 +971,9 @@ namespace simplenet{
                 computeStrides();
             }
 
-            // flatten - inplace
+            // flatten - inplace whenT is void
             template <typename T>
-            T flatten(int start_dim =0, int end_dim = -1, bool keepdims=false)
+            inline T flatten(int start_dim =0, int end_dim = -1, bool keepdims=false)
                 // has a Tensor return type specialization in the cpp file
             {
 

@@ -23,7 +23,8 @@ The Autodiff works on the
 * Simple (double) based automatic differentiation for: addition, subtraction, multiplication and division
 * Tensor library with adddition, subtraction, equivalence check, broadcasting is applied to both addition and subtraction
 * Batched Matrix Multiplication for the CPU was implemented
-* Broadcasting of tensors for multiplication and addition and subtraction was implemented -
+* Broadcasting of tensors for multiplication and addition and subtraction was implemented
+* flattening operations were extended to match how Pytorch flatten works with keepdims and start and end dimension specifications
 
 ## What do we need to complete
 
@@ -41,9 +42,11 @@ The Autodiff works on the
 * Implement Autodiff for activation functions
   * **FIX AUTODIFF Backward functions for each operation to check for Tensors - IMPORTANT**
   * Also make template specifications for them
-* Implement reduce_to_shape(grad_out, in_shape)
-  * Refactor each op’s backward_fn to compute raw grads in out_shape, then call reduce_to_shape into input.grad.
-  * Matmul backward: unbatched first, then batched + broadcasted batches (reduce back).
+* Implement reduce_to_shape(Tensor grad_out, target_shape)
+  * We use the flatten and summation/aggregation to do so - PROBLEM: sumation will change shapes so need to figure out how to do it efficiently
+
+* Refactor each op’s backward_fn to compute raw grads in out_shape, then call reduce_to_shape into input.grad.
+* Matmul backward: unbatched first, then batched + broadcasted batches (reduce back).
 
 
 ## Roadblocks I faced
@@ -53,3 +56,8 @@ So one of the first roadblocks that I faced is that (I have spent months on this
 Implementing batched multiplication wasn't as straight forward as expected as the computation for each batch coordinate was also needed to be done according to the broadcasting done - brodcasted shape and then using the strides with it
 
 Another thing that I started with was using the identity matrix for when we do the backward pass for the Tensors, however, The Jacobian computation requires using a whole Tensor of Ones (1s) rather than an identity matrix. Moreover, using the  identity matrix is also flawed because the identity matrix only exists for square matrices and in our case we do not use square matrices - we also have rectangular matrices to consider when we change shapes.
+
+
+## Acknowledgements
+I would like to thank Dr. Usman Alim at the University of Calgary to help me rethink my backward pass (using jacobians)
+I would like to thank Anthropic for their Claude models as I used the "learning" style to clear my thoughts and help me understand better (especially batched mat mul and reduce operations - my understanding had very large gaps that it helped me fill in)
