@@ -122,8 +122,8 @@ namespace simplenet{
                 return v;
             }
 
-            // Opposite of broadcasting
-            static Tensor makeReducedView(const Tensor &t, const std::vector<int>& targetShape) {
+            // Opposite of broadcasting - NOT A VIEW OPERATION
+            static Tensor reduce(const Tensor &t, const std::vector<int>& targetShape) {
 
                 // TODO: ANALYZE THE SHAPES before doing any copy operations
                 // Idea -   First pass: analyze the shapes and build a "recipe" of operations
@@ -149,11 +149,20 @@ namespace simplenet{
                 }
 
                 // iterate from right to left to see which shapes match and which dont- THING to figure out
-                // TODO: PROBLEM: sumation will change shapes so need to figure out how to do it efficiently
+                // ~~PROBLEM: sumation will change shapes so need to figure out how to do it efficiently~~
+                // Solution - this is not a view operation and so memory reallocation will have to be done as there is no way to manipulate strides here as far as my research shows
+                // WILL use our sum function created below
 
 
                 return v;
             }
+
+            // The idea for a reduction is summation and flattening so this just makes it explicit
+            static Tensor flatten_and_sum_to_shape(const Tensor &t, const std::vector<int>& targetShape){
+                return reduce(t, targetShape);
+            }
+
+
 
             static bool isScalar(const Tensor& t) {
                 if (t.shape.empty()) return true;
@@ -300,6 +309,53 @@ namespace simplenet{
                 }
                 return false;
             }
+
+            // in place summation across a dimension
+            Tensor sum(int dim, bool keepdims = false){
+                if (dim<0 || dim>=getShape().size()){
+                    throw std::invalid_argument("DIM not in the correct range!");
+                }
+
+                // edge cases to consider - when we only have a vector then sum will give a scalar
+                if (shape.size()==1 && dim ==0){
+                    // no need to check keep dims as if keepdims is false then it will be a scalar anyways
+                    Tensor new_t({1});
+                    for (ll i =0; i < sizeOfTensor(); i++){
+                        new_t.getTensorDataFlat()[0]+=data[i];
+                    }
+                    return new_t;
+                }
+
+                std::vector<int> newShape = shape;
+                int oldDim = newShape[dim];
+                newShape[dim] = 1; // we will change the shape afterwards
+
+                ll offset_new_shape{1};
+                for (int d = dim+1; d <newShape.size(); d++){
+                    offset_new_shape*=newShape[d];
+                }
+
+                ll offset_old{offset_new_shape*oldDim};
+
+                Tensor new_t(newShape);
+                double* flat_data = new_t.getTensorDataFlat();
+
+                ll dest_idx = 0;
+                for (ll v =0; v<sizeOfTensor(); v+=offset_old){
+                    for (ll s = 0; s<offset_new_shape;s++){
+                        double val {};
+                        for (int idx = 0; idx<oldDim; idx++){
+                            val+= data[v+idx*offset_new_shape+s];
+                        }
+                        flat_data[dest_idx]= val;
+                        dest_idx++;
+                    }
+                }
+                new_t.flatten<void>(dim, dim+1, keepdims); // done inplace
+                return new_t;
+            }
+
+
             // TODO
             // static Tensor identity_matrix(std::vector<int>& sizePassed, int n) {
             //     Tensor t (sizePassed);
