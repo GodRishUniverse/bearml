@@ -312,7 +312,7 @@ namespace simplenet{
 
             // in place summation across a dimension
             Tensor sum(int dim, bool keepdims = false){
-                if (dim<0 || dim>=getShape().size()){
+                if (dim<0 || dim>=shape.size()){
                     throw std::invalid_argument("DIM not in the correct range!");
                 }
 
@@ -351,7 +351,8 @@ namespace simplenet{
                         dest_idx++;
                     }
                 }
-                new_t.flatten<void>(dim, dim+1, keepdims); // done inplace
+                if (keepdims) return new_t;
+                new_t.flatten<void>((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
                 return new_t;
             }
 

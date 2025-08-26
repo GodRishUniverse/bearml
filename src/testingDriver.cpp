@@ -183,7 +183,8 @@ int main() {
     simplenet::Tensor d({2,2,3,4,2});
     d.linspace(1,97);
     cout << d << endl;
+    cout << d.getShape().size() << endl;
 
-    cout << d.sum(2,true) << endl;
+    cout << d.sum(4,false) << endl;
 
 }
