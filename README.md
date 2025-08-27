@@ -1,4 +1,4 @@
-# SimpleNet
+# SimpleNet: a `mini-pytorch` in pure C++/CUDA
 
 Deep Learning Framework: Implementing Neural Networks in C++
 
@@ -56,9 +56,3 @@ So one of the first roadblocks that I faced is that (I have spent months on this
 Implementing batched multiplication wasn't as straight forward as expected as the computation for each batch coordinate was also needed to be done according to the broadcasting done - brodcasted shape and then using the strides with it
 
 Another thing that I started with was using the identity matrix for when we do the backward pass for the Tensors, however, The Jacobian computation requires using a whole Tensor of Ones (1s) rather than an identity matrix. Moreover, using the  identity matrix is also flawed because the identity matrix only exists for square matrices and in our case we do not use square matrices - we also have rectangular matrices to consider when we change shapes.
-
-
-## Acknowledgements
-I would like to thank Dr. Usman Alim at the University of Calgary to help me rethink my backward pass (using jacobians)
-
-I would like to thank Anthropic for their Claude models as I used the "learning" style to clear my thoughts and help me understand better (especially batched mat mul and reduce operations - my understanding had very large gaps that it helped me fill in)

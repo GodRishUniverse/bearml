@@ -16,6 +16,7 @@ using ll = long long; // can also use int_fast64_t
 
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
 // TODO: element-wise divide
+// TODO: allow float values as well (half precision) - template specialize equal to
 
 #ifndef TENSOR_H
 #define TENSOR_H
@@ -310,7 +311,7 @@ namespace simplenet{
                 return false;
             }
 
-            // in place summation across a dimension
+            // in place summation across a dimension - works like torch.sum()
             Tensor sum(int dim, bool keepdims = false){
                 if (dim<0 || dim>=shape.size()){
                     throw std::invalid_argument("DIM not in the correct range!");
