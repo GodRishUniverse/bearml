@@ -19,6 +19,7 @@ using ll = long long; // can also use int_fast64_t
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
 // TODO: element-wise divide
 // TODO: allow float values as well (half precision) - template specialize equal to
+// TODO: Refactor code base to segregate some code as one file is becoming too large
 
 #ifndef TENSOR_H
 #define TENSOR_H

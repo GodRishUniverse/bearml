@@ -25,6 +25,7 @@ The Autodiff works on the
 * Batched Matrix Multiplication for the CPU was implemented
 * Broadcasting of tensors for multiplication and addition and subtraction was implemented
 * flattening operations were extended to match how Pytorch flatten works with keepdims and start and end dimension specifications
+* reduce operation (opposite of broadcasting)
 
 ## What do we need to complete
 
@@ -42,9 +43,11 @@ The Autodiff works on the
 * Implement Autodiff for activation functions
   * **FIX AUTODIFF Backward functions for each operation to check for Tensors - IMPORTANT**
   * Also make template specifications for them
-* Implement reduce_to_shape(Tensor grad_out, target_shape)
-  * We use the flatten and summation/aggregation to do so - PROBLEM: sumation will change shapes so need to figure out how to do it efficiently
-
+* ~~Implement reduce_to_shape(Tensor grad_out, target_shape)~~
+  * ~~We use the flatten and summation/aggregation to do so - PROBLEM: sumation will change shapes so need to figure out how to do it efficiently~~
+* Implement Transpose function
+* **refactor code base -**
+  * reduce code in one file -> `Tensor.h` file
 * Refactor each op’s backward_fn to compute raw grads in out_shape, then call reduce_to_shape into input.grad.
 * Matmul backward: unbatched first, then batched + broadcasted batches (reduce back).
 
@@ -56,3 +59,6 @@ So one of the first roadblocks that I faced is that (I have spent months on this
 Implementing batched multiplication wasn't as straight forward as expected as the computation for each batch coordinate was also needed to be done according to the broadcasting done - brodcasted shape and then using the strides with it
 
 Another thing that I started with was using the identity matrix for when we do the backward pass for the Tensors, however, The Jacobian computation requires using a whole Tensor of Ones (1s) rather than an identity matrix. Moreover, using the  identity matrix is also flawed because the identity matrix only exists for square matrices and in our case we do not use square matrices - we also have rectangular matrices to consider when we change shapes.
+
+### Current Hurdle
+Another roadblock in front of me is the reduction and transpose operations to be applied in the backward passes to take into account the cases for broadcasting operations. I am not sure about that right now...
