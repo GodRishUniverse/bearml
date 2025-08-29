@@ -8,6 +8,7 @@
 
 #include "Eigen/Dense" // IMPORTING eigen for BLAS functions
 #include "Eigen/src/Core/Matrix.h"
+#include "utils/shape_utils.h"
 
 // #include <cmath>
 #include <iomanip>
@@ -41,17 +42,9 @@ namespace simplenet{
             Tensor() : data(nullptr), owns_data(false) {};
 
 
-            bool negOrZeroInSizeCheck(const std::vector<int>& sizePassedDown) const {
-                for (const int & i : sizePassedDown){
-                    if (i < 1){
-                        return true;
-                    }
-                }
-                return false;
-            };
 
             bool sizeCheck(const std::vector<int>& sizePassedDown) const {
-                if (negOrZeroInSizeCheck(sizePassedDown)){
+                if (utils::negOrZeroInSizeCheck(sizePassedDown)){
                     return false;
                 }
 
@@ -76,52 +69,13 @@ namespace simplenet{
 
             // TODO MAY CHANGE ACTIVATION FUNCTIONS IMPLEMENTATION - they need double* data
 
-            //works
-            static std::vector<int> computeBroadcastShape(
-                const std::vector<int>& A, const std::vector<int>& B)
-            {
-                size_t n = std::max(A.size(), B.size());
-                std::vector<int> a(A), b(B);
-                a.insert(a.begin(), n - A.size(), 1);
-                b.insert(b.begin(), n - B.size(), 1);
-
-                std::vector<int> out(n);
-                for (size_t i = 0; i < n; ++i) {
-                    if (a[i] == b[i] || a[i] == 1 || b[i] == 1) {
-                        out[i] = std::max(a[i], b[i]);
-                    } else {
-                        throw std::invalid_argument("Shapes not broadcastable");
-                    }
-                }
-                return out;
-            }
-
-            // TODO: check if this works or not - computeBroadcastStrides
-            static std::vector<int> computeBroadcastStrides(
-                const std::vector<int>&   origShape,
-                const std::vector<int>&    origStrides,
-                const std::vector<int>&   targetShape)
-            {
-                size_t n = targetShape.size();
-                // pad on the left
-                std::vector<int>  s = origShape;
-                std::vector<int>  st = origStrides;
-                s.insert(s.begin(), n - s.size(), 1);
-                st.insert(st.begin(), n - st.size(), 0);
-
-                std::vector<int> out(n);
-                for (size_t i = 0; i < n; ++i) {
-                    out[i] = (s[i] == targetShape[i] ? st[i] : 0);
-                }
-                return out;
-            }
 
             // TODO: COMPLETTE IMPLEMENTATION - problem here is that we would need to implement broadcasted mul, add and subtract differently as the memory is not copied when broadcasted and the
             static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
                 Tensor v;            // default-constructed
                 v.data    = t.data;
                 v.shape   = newShape;
-                v.strides = computeBroadcastStrides(t.shape, t.strides, newShape);
+                v.strides = utils::computeBroadcastStrides(t.shape, t.strides, newShape);
                 v.owns_data = false; // we do not want the broadcasted tensors to own the data that it points - so we do not double delete
                 return v;
             }
@@ -220,7 +174,7 @@ namespace simplenet{
                     batch_shape = a_batch_dims;
                 } else {
                     // Both have batch dimensions - broadcast them
-                    batch_shape = computeBroadcastShape(a_batch_dims, b_batch_dims);
+                    batch_shape = utils::computeBroadcastShape(a_batch_dims, b_batch_dims);
                 }
 
 
@@ -487,7 +441,7 @@ namespace simplenet{
 
             // constructor when size and data are provided
             Tensor(std::vector<int> sizePassed) : owns_data(true){ // we own the data here
-                if (negOrZeroInSizeCheck(sizePassed)){
+                if (utils::negOrZeroInSizeCheck(sizePassed)){
                     throw std::invalid_argument("Size cannot have a negative or zero");
                 }
                 shape = sizePassed;
@@ -720,7 +674,7 @@ namespace simplenet{
                 }
 
                 // broadcast path
-                auto outShape = computeBroadcastShape(A.shape, B.shape);
+                auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
                 Tensor  C(outShape);
 
                 // make “broadcasted views” - we copy as we do not want the original shapes and strides of A and B to change
@@ -752,7 +706,7 @@ namespace simplenet{
             Tensor& operator+=(const Tensor &other) {
                 // broadcast or exact-shape
                 if (shape != other.shape) {
-                    auto outShape = computeBroadcastShape(shape, other.shape);
+                    auto outShape = utils::computeBroadcastShape(shape, other.shape);
                     // we require that *this already has exactly outShape:
                     // otherwise you'd need to reallocate or error.
                     if (shape != outShape)
@@ -816,7 +770,7 @@ namespace simplenet{
                 }
 
                 // broadcast path
-                auto outShape = computeBroadcastShape(A.shape, B.shape);
+                auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
                 Tensor  C(outShape);
 
                 // make “broadcasted views”
@@ -848,7 +802,7 @@ namespace simplenet{
             Tensor& operator-=(const Tensor &other) {
                     // broadcast or exact-shape
                     if (shape != other.shape) {
-                    auto outShape = computeBroadcastShape(shape, other.shape);
+                    auto outShape = utils::computeBroadcastShape(shape, other.shape);
                     // we require that *this already has exactly outShape:
                     // otherwise you'd need to reallocate or error.
                     if (shape != outShape)
