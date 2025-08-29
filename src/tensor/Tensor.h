@@ -6,13 +6,13 @@
 #include <string>
 #include <algorithm>
 
-#include "eigen-3.4.0/Eigen/Dense" // IMPORTING eigen for BLAS functions
-#include "eigen-3.4.0/Eigen/src/Core/Matrix.h"
+#include "Eigen/Dense" // IMPORTING eigen for BLAS functions
+#include "Eigen/src/Core/Matrix.h"
 
 // #include <cmath>
 #include <iomanip>
 
-#include "op.h"
+#include "operations/op.h"
 
 using ll = long long; // can also use int_fast64_t
 
@@ -147,6 +147,43 @@ namespace simplenet{
                     shape_lit+= std::to_string(shapePassed[i]) + ", ";
                 }
                 return shape_lit;
+            }
+
+            std::vector<int> flatten_(int start_dim =0, int end_dim = -1, bool keepdims=false)
+                // has a Tensor return type specialization in the cpp file
+            {
+
+                // default value of end_dim is -1
+                if (end_dim == -1){
+                    end_dim = this->shape.size()-1;
+                }
+
+                if (start_dim <0 || start_dim>=this->shape.size() || start_dim>end_dim ||  end_dim>=this->shape.size() || end_dim  < 0){
+                    throw std::invalid_argument("Start Dim and End Dims not the appropriate ranges-> CHECK");
+                }
+
+                std::vector<int> temp;
+                ll total = 1;
+                for (ll i = 0; i < this->shape.size(); i++){
+                    if (keepdims){
+                        if (i>=start_dim && i<=end_dim){
+                            total *= this->shape[i];
+                            temp.push_back((i ==end_dim) ? total: 1);
+                        } else{
+                            temp.push_back(this->shape[i]);
+                        }
+                    } else{
+                        if (i<start_dim || i>end_dim){
+                            temp.push_back(this->shape[i]);
+                        } else {
+                            total *= this->shape[i];
+                            if (i == end_dim) temp.push_back(total);
+                        }
+                    }
+
+                }
+
+                return temp;
             }
 
             // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
@@ -312,7 +349,7 @@ namespace simplenet{
                 // DO all operations here
                 for (const auto& op : operations) {
                     if (op.type == Operations::ReductionOp::FLATTEN) {
-                        v.flatten<void>(op.startDim, op.endDim, op.keepdims);
+                        v.flatten_inplace(op.startDim, op.endDim, op.keepdims);
                     } else if (op.type == Operations::ReductionOp::SUM) {
                         v = v.sum(op.startDim, op.keepdims);
                     }
@@ -385,7 +422,7 @@ namespace simplenet{
                     }
                 }
                 if (keepdims) return new_t;
-                new_t.flatten<void>((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
+                new_t.flatten_inplace((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
                 return new_t;
             }
 
@@ -1061,45 +1098,15 @@ namespace simplenet{
                 computeStrides();
             }
 
-            // flatten - inplace whenT is void
-            template <typename T>
-            inline T flatten(int start_dim =0, int end_dim = -1, bool keepdims=false)
-                // has a Tensor return type specialization in the cpp file
-            {
+            Tensor flatten(int start_dim =0, int end_dim = -1, bool keepdims=false);
 
-                // default value of end_dim is -1
-                if (end_dim == -1){
-                    end_dim = this->shape.size()-1;
-                }
-
-                if (start_dim <0 || start_dim>=this->shape.size() || start_dim>end_dim ||  end_dim>=this->shape.size() || end_dim  < 0){
-                    throw std::invalid_argument("Start Dim and End Dims not the appropriate ranges-> CHECK");
-                }
-
-                std::vector<int> temp;
-                ll total = 1;
-                for (ll i = 0; i < this->shape.size(); i++){
-                    if (keepdims){
-                        if (i>=start_dim && i<=end_dim){
-                            total *= this->shape[i];
-                            temp.push_back((i ==end_dim) ? total: 1);
-                        } else{
-                            temp.push_back(this->shape[i]);
-                        }
-                    } else{
-                        if (i<start_dim || i>end_dim){
-                            temp.push_back(this->shape[i]);
-                        } else {
-                            total *= this->shape[i];
-                            if (i == end_dim) temp.push_back(total);
-                        }
-                    }
-
-                }
-
-                this->shape =temp;
+            // flatten - inplace
+            void flatten_inplace(int start_dim =0, int end_dim = -1, bool keepdims=false){
+                this->shape = Tensor::flatten_(start_dim, end_dim, keepdims);
                 computeStrides();
             }
+
+
 
             // unsqueeze
             // Finalized

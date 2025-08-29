@@ -9,8 +9,8 @@
 #include <type_traits>
 
 
-#include "Tensor.h"
-#include "Matrix.h"
+#include "tensor/Tensor.h"
+#include "matrix/Matrix.h"
 #include "activation_functions.cpp"
 
 #ifndef AUTO_NODE_H
@@ -185,6 +185,12 @@ namespace simplenet{
         }
 
     };
+
+    namespace autogradient {
+        template <typename T>
+        T backward(std::shared_ptr<simplenet::Node<T>> end_node, bool accumulate = false);
+    }
+
 
    // Edges will be operation types on two different Nodes (also same node as well)
    // - need to think how gradients will change with some different operations like Permute

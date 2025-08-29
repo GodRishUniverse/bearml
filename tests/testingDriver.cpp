@@ -1,9 +1,10 @@
-// #include "Matrix.cpp"
-#include "Tensor.cpp"
-#include "Tensor.h"
-#include "autogradient.cpp"
+#include "tensor/Tensor.h"
+#include "matrix/Matrix.h"
+#include "autograd/autogradient.h"
+#include "operations/op.h"
 
 #include <iostream>
+
 using namespace std;
 
 int main() {
@@ -137,12 +138,12 @@ int main() {
     // cout << a << endl;
     //
 
-    // simplenet::Tensor veca ({3,3});
-    // simplenet::Tensor vecb ({3});
-    // veca.set(201.0, {1, 0});
-    // vecb.set(2.0, {1});
+    simplenet::Tensor veca ({3,3});
+    simplenet::Tensor vecb ({3});
+    veca.set(201.0, {1, 0});
+    vecb.set(2.0, {1});
 
-    // cout << veca * vecb << endl;
+    cout << veca * vecb << endl;
 
     // double x_val=  4.0;
     // double y_val = 2.0;
@@ -160,31 +161,31 @@ int main() {
     // cout << y->grad << endl;
 
     simplenet::Tensor a ({1,1,4,5});
-    simplenet::Tensor b ({1,2,5,5});
+    simplenet::Tensor b ({1,2,5,6});
 
-    // cout << a * b << endl;
+    cout << a * b << endl;
 
 
-    shared_ptr<simplenet::Node<simplenet::Tensor>> x = simplenet::Node<simplenet::Tensor>::make_node(a); // calling static function
-    shared_ptr<simplenet::Node<simplenet::Tensor>> y = simplenet::Node<simplenet::Tensor>::make_node(b); // calling static function
+    // shared_ptr<simplenet::Node<simplenet::Tensor>> x = simplenet::Node<simplenet::Tensor>::make_node(a); // calling static function
+    // shared_ptr<simplenet::Node<simplenet::Tensor>> y = simplenet::Node<simplenet::Tensor>::make_node(b); // calling static function
 
-    auto z = x*y ;
+    // auto z = x*y ;
 
-    cout << simplenet::autogradient::backward(z) << endl;
-    cout << x->grad << endl;
-    cout << y->grad << endl;
+    // cout << simplenet::autogradient::backward(z) << endl;
+    // cout << x->grad << endl;
+    // cout << y->grad << endl;
 
-    // simplenet::Tensor c({3,2,4});
-    // c.set(1.0, {0,1,1});
-    // cout << c << endl;
-    // c = c.flatten<simplenet::Tensor>(1 );
-    // cout << c << endl;
+    simplenet::Tensor c({3,2,4});
+    c.set(1.0, {0,1,1});
+    cout << c << endl;
+    c =  c.flatten(1, -1, true );
+    cout << c << endl;
 
-    // simplenet::Tensor d({2,2,3,4,2});
-    // d.linspace(1,97);
-    // cout << d << endl;
-    // cout << d.getShape().size() << endl;
+    simplenet::Tensor d({2,2,3,4,2});
+    d.linspace(1,97);
+    cout << d << endl;
+    cout << d.getShape().size() << endl;
 
-    // cout << d.sum(4,false) << endl;
+    cout << d.sum(4,false) << endl;
 
 }
