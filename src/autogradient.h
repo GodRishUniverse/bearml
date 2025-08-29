@@ -87,6 +87,8 @@ namespace simplenet{
             }
         }
 
+        // TODO: need to think through how to apply the reduce operation for the multiplication
+
         // TODO - change
         friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
                 std::shared_ptr<Node<T>> node  = make_node(a->val+b->val);
