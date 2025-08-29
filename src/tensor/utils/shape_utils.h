@@ -5,11 +5,36 @@
 #include <stdexcept>
 #include <algorithm>
 
+using ll = long long;
+
 namespace simplenet {
     namespace utils {
 
 
         bool negOrZeroInSizeCheck(const std::vector<int>& sizePassedDown);
+
+        static bool isSizeValid(const std::vector<int>& sizePassedDown, const ll& sizeOfTensor) {
+            if (negOrZeroInSizeCheck(sizePassedDown)){
+                return false;
+            }
+
+            ll total = 1; // cause size may be huge
+            for (const int & i : sizePassedDown){
+                total*= i;
+            }
+
+            return (total == sizeOfTensor);
+        }
+
+        // checks if the index is valid or not
+        static bool isIndexValid(std::vector<int>& sizePassedDown, const std::vector<int>& shape) {
+            for (size_t i = 0 ; i < shape.size(); i++){
+                if (sizePassedDown[i] <0 || sizePassedDown[i] >= shape[i]){
+                    return false;
+                }
+            }
+            return true;
+        }
 
         //works
         static std::vector<int> computeBroadcastShape(

@@ -25,7 +25,7 @@ The Autodiff works on the
 * Batched Matrix Multiplication for the CPU was implemented
 * Broadcasting of tensors for multiplication and addition and subtraction was implemented
 * flattening operations were extended to match how Pytorch flatten works with keepdims and start and end dimension specifications
-* reduce operation (opposite of broadcasting)
+* refactored code
 
 ## What do we need to complete
 
@@ -43,11 +43,9 @@ The Autodiff works on the
 * Implement Autodiff for activation functions
   * **FIX AUTODIFF Backward functions for each operation to check for Tensors - IMPORTANT**
   * Also make template specifications for them
-* ~~Implement reduce_to_shape(Tensor grad_out, target_shape)~~
-  * ~~We use the flatten and summation/aggregation to do so - PROBLEM: sumation will change shapes so need to figure out how to do it efficiently~~
+* Implement reduce_to_shape(Tensor grad_out, target_shape) -> **CURRENT APPROACH IS FLAWED**
+  * We use the flatten and summation/aggregation to do so - PROBLEM: sumation will change shapes so need to figure out how to do it efficiently
 * Implement Transpose function
-* **refactor code base -**
-  * reduce code in one file -> `Tensor.h` file
 * Refactor each op’s backward_fn to compute raw grads in out_shape, then call reduce_to_shape into input.grad.
 * Matmul backward: unbatched first, then batched + broadcasted batches (reduce back).
 

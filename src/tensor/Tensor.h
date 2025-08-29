@@ -8,7 +8,10 @@
 
 #include "Eigen/Dense" // IMPORTING eigen for BLAS functions
 #include "Eigen/src/Core/Matrix.h"
+
 #include "utils/shape_utils.h"
+#include "utils/debug_utils.h"
+#include "utils/linalg_utils.h"
 
 // #include <cmath>
 #include <iomanip>
@@ -21,6 +24,9 @@ using ll = long long; // can also use int_fast64_t
 // TODO: element-wise divide
 // TODO: allow float values as well (half precision) - template specialize equal to
 // TODO: Refactor code base to segregate some code as one file is becoming too large
+// TODO MAY CHANGE ACTIVATION FUNCTIONS IMPLEMENTATION - they need double* data
+
+
 
 #ifndef TENSOR_H
 #define TENSOR_H
@@ -36,41 +42,9 @@ namespace simplenet{
             double * data;
             bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
 
-            double * getTensorDataFlat() const { return this->data; };
-
             // default constructor - added for edge cases - private ONLY
             Tensor() : data(nullptr), owns_data(false) {};
 
-
-
-            bool sizeCheck(const std::vector<int>& sizePassedDown) const {
-                if (utils::negOrZeroInSizeCheck(sizePassedDown)){
-                    return false;
-                }
-
-                ll total = 1; // cause size may be huge
-                for (const int & i : sizePassedDown){
-                    total*= i;
-                }
-
-                return (total == this->sizeOfTensor());
-            }
-
-            // checks if the index is valid or not
-            bool indexCheck(std::vector<int>& sizePassedDown) const {
-
-                for (size_t i = 0 ; i < this->shape.size(); i++){
-                    if (sizePassedDown[i] <0 || sizePassedDown[i] >= this->shape[i]){
-                        return false;
-                    }
-                }
-                return true;
-            }
-
-            // TODO MAY CHANGE ACTIVATION FUNCTIONS IMPLEMENTATION - they need double* data
-
-
-            // TODO: COMPLETTE IMPLEMENTATION - problem here is that we would need to implement broadcasted mul, add and subtract differently as the memory is not copied when broadcasted and the
             static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
                 Tensor v;            // default-constructed
                 v.data    = t.data;
@@ -79,8 +53,6 @@ namespace simplenet{
                 v.owns_data = false; // we do not want the broadcasted tensors to own the data that it points - so we do not double delete
                 return v;
             }
-
-
 
             static bool isScalar(const Tensor& t) {
                 if (t.shape.empty()) return true;
@@ -92,15 +64,6 @@ namespace simplenet{
 
             static double getScalarValue(const Tensor& t){
                 return t.data[0];
-            }
-
-
-            static std::string debugShapes(std::vector<int> shapePassed){
-                std::string shape_lit = "";
-                for (size_t i = 0; i <shapePassed.size(); i++){
-                    shape_lit+= std::to_string(shapePassed[i]) + ", ";
-                }
-                return shape_lit;
             }
 
             std::vector<int> flatten_(int start_dim =0, int end_dim = -1, bool keepdims=false)
@@ -249,73 +212,26 @@ namespace simplenet{
 
         public:
 
-            // Opposite of broadcasting - NOT A VIEW OPERATION
-            static Tensor reduce(const Tensor &t, const std::vector<int>& targetShape) {
+            // constructor when size and data are provided
+            Tensor(std::vector<int> sizePassed) : owns_data(true){ // we own the data here
+                if (utils::negOrZeroInSizeCheck(sizePassed)){
+                    throw std::invalid_argument("Size cannot have a negative or zero");
+                }
+                shape = sizePassed;
+                computeStrides(); // compute strides
 
-                // Idea -   First pass: analyze the shapes and build a "recipe" of operations
-                //          Second pass: execute the recipe
-                // Some questions that helped me to think more about -
-                //      Which dimensions need to be flattened together?
-                //      Which dimensions need to be summed (with keepdims)?
-                //      What order should these operations happen in?
-                //      How would I search this?
-                std::vector<Operations::ReductionOp> operations;
-                std::vector<int> currentShape = t.getShape();
-
-                // 3 Cases to consider here ->
-                // Fall through cases exist here
-                //  3. If current shape has more size then target shape-> flatten the v shape till the same size
-                //  2. If the index position values differ then basically to a sum in the currentShape onto the target shape
-                //      - if targetShape has higher value here then target is copied
-                //  1. if the index and values on the index are the same leave as it is.
-
-                // 3. If current shape has more size then target shape-> flatten the v shape till the same size
-                if (currentShape.size() > targetShape.size()){
-                    int dimsToFlatten = currentShape.size() - targetShape.size(); // we flatten v till a point
-
-                    operations.push_back({Operations::ReductionOp::FLATTEN, 0, dimsToFlatten, false});  // v.flatten<void>(0, v.shape.size()- targetShape.size(), false); // we do not want to keep the dimensions
-                    // Update shape after flattening for further analysis
-                    int flattenedSize = 1;
-                    for (int i = 0; i < dimsToFlatten; i++) {
-                        flattenedSize *= currentShape[i];
-                    }
-                    currentShape.erase(currentShape.begin(), currentShape.begin() + dimsToFlatten);
-                    currentShape.insert(currentShape.begin(), flattenedSize);
+                ll total = 1; // cause size may be huge
+                for (const int & i : shape){
+                    total*= i;
                 }
 
-                // compare dimensions and add sum operations where needed
-                for (int i = currentShape.size() - 1; i >= 0; i--) {
-                    if (currentShape[i] != targetShape[i]) {
-                        if (targetShape[i] == 1) {
-                            operations.push_back({Operations::ReductionOp::SUM, i, i, true});
-                            currentShape[i] = 1;
-                        } else {
-                            throw std::invalid_argument("Incompatible shapes for reduce operation");
-                        }
-                    }
+                // std::cout << "Total Size: " << total<< std::endl;
+
+                data = new double[total];
+                for (ll start = 0; start<total; start++){
+                    data[start] = 0.0;
                 }
-
-                // iterate from right to left to see which shapes match and which dont- THING to figure out
-                // ~~PROBLEM: sumation will change shapes so need to figure out how to do it efficiently~~
-                // Solution - this is not a view operation and so memory reallocation will have to be done as there is no way to manipulate strides here as far as my research shows
-                // WILL use our sum function created below
-                Tensor v = t;
-                // DO all operations here
-                for (const auto& op : operations) {
-                    if (op.type == Operations::ReductionOp::FLATTEN) {
-                        v.flatten_inplace(op.startDim, op.endDim, op.keepdims);
-                    } else if (op.type == Operations::ReductionOp::SUM) {
-                        v = v.sum(op.startDim, op.keepdims);
-                    }
-                }
-                return v;
-            }
-
-            // The idea for a reduction is summation and flattening so this just makes it explicit
-            static Tensor flatten_and_sum_to_shape(const Tensor &t, const std::vector<int>& targetShape){
-                return reduce(t, targetShape);
-            }
-
+            };
 
             // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
             void fill(double v){
@@ -327,7 +243,7 @@ namespace simplenet{
             static bool has_nonzero_gradient(Tensor& t){
                 // we only have to check if there is at least one of the numbers that is non-zero
                 for (ll i =0;i<t.sizeOfTensor(); i++){
-                    if (std::abs(t.getTensorDataFlat()[i]) > 1e-12) {
+                    if (std::abs(t.data[i]) > 1e-12) {
                         return true;
                     }
                 }
@@ -345,7 +261,7 @@ namespace simplenet{
                     // no need to check keep dims as if keepdims is false then it will be a scalar anyways
                     Tensor new_t({1});
                     for (ll i =0; i < sizeOfTensor(); i++){
-                        new_t.getTensorDataFlat()[0]+=data[i];
+                        new_t.data[0]+=data[i];
                     }
                     return new_t;
                 }
@@ -362,7 +278,7 @@ namespace simplenet{
                 ll offset_old{offset_new_shape*oldDim};
 
                 Tensor new_t(newShape);
-                double* flat_data = new_t.getTensorDataFlat();
+                double* flat_data = new_t.data;
 
                 ll dest_idx = 0;
                 for (ll v =0; v<sizeOfTensor(); v+=offset_old){
@@ -439,27 +355,6 @@ namespace simplenet{
             }
 
 
-            // constructor when size and data are provided
-            Tensor(std::vector<int> sizePassed) : owns_data(true){ // we own the data here
-                if (utils::negOrZeroInSizeCheck(sizePassed)){
-                    throw std::invalid_argument("Size cannot have a negative or zero");
-                }
-                shape = sizePassed;
-                computeStrides(); // compute strides
-
-                ll total = 1; // cause size may be huge
-                for (const int & i : shape){
-                    total*= i;
-                }
-
-                // std::cout << "Total Size: " << total<< std::endl;
-
-                data = new double[total];
-                for (ll start = 0; start<total; start++){
-                    data[start] = 0.0;
-                }
-            };
-
             /**
              * @brief Get the value at the given index
              * @param index The index to get the value at. Must be of size equal to the shape of the tensor.
@@ -469,11 +364,11 @@ namespace simplenet{
             double get(std::vector<int>& index) const {
 
                 if (index.size() != shape.size()){
-                    throw std::invalid_argument("Invalid index size: \nPassed:" + debugShapes(index)+"\nExpected:" +debugShapes(this->shape)+"\n");
+                    throw std::invalid_argument("Invalid index size: \nPassed:" + utils::debugShapes(index)+"\nExpected:" +utils::debugShapes(this->shape)+"\n");
                 }
 
-                if (indexCheck(index) == false){
-                    throw std::invalid_argument("Invalid index shape: \nPassed" + debugShapes(index)+"\nExpected:" +debugShapes(this->shape)+"\n");
+                if (utils::isIndexValid(index, this->shape) == false){
+                    throw std::invalid_argument("Invalid index shape: \nPassed" + utils::debugShapes(index)+"\nExpected:" + utils::debugShapes(this->shape)+"\n");
                 }
 
                 size_t off = 0;
@@ -919,8 +814,8 @@ namespace simplenet{
                         throw std::invalid_argument("Vector dimensions must match for dot product");
                     }
                     // matches - calling Eigen
-                    Eigen::Map<const Eigen::VectorXd> vec_a(a.getTensorDataFlat(), a_shape[0]);
-                    Eigen::Map<const Eigen::VectorXd> vec_b(b.getTensorDataFlat(), b_shape[0]);
+                    Eigen::Map<const Eigen::VectorXd> vec_a(a.data, a_shape[0]);
+                    Eigen::Map<const Eigen::VectorXd> vec_b(b.data, b_shape[0]);
 
                     Tensor output({1});
                     output.data[0] = vec_a.dot(vec_b);
@@ -1045,7 +940,7 @@ namespace simplenet{
             // reshape
             void reshape(std::vector<int> new_shape){
                 // check multipliability
-                if (sizeCheck(new_shape) == false){
+                if (utils::isSizeValid(new_shape, this->sizeOfTensor()) == false){
                     throw std::invalid_argument("Invalid shape - needs to be multipliable to original shape");
                 }
                 this->shape = new_shape;
@@ -1059,8 +954,6 @@ namespace simplenet{
                 this->shape = Tensor::flatten_(start_dim, end_dim, keepdims);
                 computeStrides();
             }
-
-
 
             // unsqueeze
             // Finalized
@@ -1127,7 +1020,7 @@ namespace simplenet{
                 std::copy(this->data, this->data + stride, temp + 0);
                 ll start = stride;
                 for (const Tensor& tensor : tensors){
-                    double * tempData = tensor.getTensorDataFlat();
+                    double * tempData = tensor.data;
 
                     std::copy(tempData, tempData + stride, temp + start); // copy the data
                     start += stride;

@@ -188,4 +188,8 @@ int main() {
 
     cout << d.sum(4,false) << endl;
 
+    cout << d << endl;
+
+    cout << simplenet::linear_algebra::reduce(d, {2,3,4,2} ) << endl;
+
 }
