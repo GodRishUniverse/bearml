@@ -140,8 +140,15 @@ namespace simplenet{
                 b->outputs.push_back(node);
 
                 node->backward_fn = [a, b, node](){
-                    a->grad +=  node->grad * b->val;  // dc/da = b
-                    b->grad +=  node->grad * a->val; // dc/db = a
+                    if (std::is_same<T, simplenet::Tensor>::value){
+                        // NEED TO CREATE REDUCTION OPERATION here
+                        a->grad += node->grad * b->val.transpose(); // grad_a = grad * b^T
+                        b->grad += a->val.transpose() * node->grad; // grad_b = a^T * grad
+                    }else{
+                        // case for doubles
+                        a->grad += node->grad * b->val; // grad_a = grad * b^T
+                        b->grad += a->val * node->grad; // grad_b = a^T * grad
+                    }
                 };
 
 

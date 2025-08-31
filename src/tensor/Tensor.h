@@ -31,6 +31,12 @@ using ll = long long; // can also use int_fast64_t
 #ifndef TENSOR_H
 #define TENSOR_H
 namespace simplenet{
+
+    // forward declaration
+    namespace linear_algebra {
+       Tensor batchedMatMul(const Tensor& a, const Tensor& b); // Forward declare the friend function
+    }
+
     class Tensor {
 
         // ==============================PRIVATE========================================
@@ -46,6 +52,7 @@ namespace simplenet{
             Tensor() : data(nullptr), owns_data(false) {};
 
             static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
+                //TODO: NEED TO RECORD WHICH DIMS WERE BROADCASTED so that we can do reduce on them
                 Tensor v;            // default-constructed
                 v.data    = t.data;
                 v.shape   = newShape;
@@ -103,111 +110,6 @@ namespace simplenet{
                 return temp;
             }
 
-            // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
-            static Tensor batchedMatMul(const Tensor& a, const Tensor& b){
-                // TODO: figure out how batched mat mul will be implemented and use Eigen for mul as it does not have an inbuilt batch mat mul
-                //
-                // can do normal mat mul for elements
-                std::vector<int> a_size = a.getShape();
-                std::vector<int> b_size = b.getShape();
-
-                // [a1, a2, ..., an, am] * [b1, b2, ..., bm, bk]
-                // We need to treat these as batches of
-                // batches_(a1*a2*...*)[an, am] * batches_(b1*b2*...*)[bm, bk] work on so each version of [an,am]*[bm*bk] are multiplied with
-                // An example of a working version is alson
-                // [2,1,4,5] * [2,3,5,6] -> [2,3,4,6] as the output shape - broadcasting done
-                // Get matrix dimensions (last two dimensions from each Tensor)
-                int a_rows = a_size[a_size.size() - 2];
-                int a_cols = a_size[a_size.size() - 1];
-                int b_rows = b_size[b_size.size() - 2];
-                int b_cols = b_size[b_size.size() - 1];
-
-                if (a_cols != b_rows){
-                    throw std::invalid_argument("SHAPES are incompatible for batched matmul: "+ std::to_string(a_cols) + " != " + std::to_string(b_rows));
-                }
-
-                // Compute broadcast shape for batch dimensions
-                std::vector<int> a_batch_dims(a_size.begin(), a_size.end() - 2);
-                std::vector<int> b_batch_dims(b_size.begin(), b_size.end() - 2);
-
-                std::vector<int> batch_shape;
-                if (a_batch_dims.empty()) {
-                    batch_shape = b_batch_dims;
-                } else if (b_batch_dims.empty()) {
-                    batch_shape = a_batch_dims;
-                } else {
-                    // Both have batch dimensions - broadcast them
-                    batch_shape = utils::computeBroadcastShape(a_batch_dims, b_batch_dims);
-                }
-
-
-                // Create output shape: batch_shape + [a_rows, b_cols]
-                std::vector<int> output_shape = batch_shape;
-                output_shape.push_back(a_rows);
-                output_shape.push_back(b_cols);
-
-                Tensor result(output_shape); // we have our result here
-
-                // Create broadcast views for the full shapes (including matrix dims)
-                std::vector<int> full_a_shape = batch_shape;
-                full_a_shape.push_back(a_rows);
-                full_a_shape.push_back(a_cols);
-
-                std::vector<int> full_b_shape = batch_shape;
-                full_b_shape.push_back(b_rows);
-                full_b_shape.push_back(b_cols);
-
-                Tensor a_view = makeBroadcastView(a, full_a_shape);
-                Tensor b_view = makeBroadcastView(b, full_b_shape);
-
-                // Perform batched matrix multiplication
-                ll matrix_size_a = a_rows * a_cols;
-                ll matrix_size_b = b_rows * b_cols;
-                ll matrix_size_result = a_rows * b_cols;
-
-
-                ll total_batch_size {1};
-                for (int i : batch_shape){
-                    total_batch_size*=i;
-                }
-                total_batch_size = (total_batch_size>0) ? total_batch_size : 1;
-
-                // loop over the total batch size -
-                for (ll batch_index = 0; batch_index<total_batch_size; batch_index++){
-                    // now since we have the batch index with us we will be using the batch_coordinates
-                    std::vector<int> batch_coords(batch_shape.size());
-                    ll tmp = batch_index; // get the current batch index
-                    // HERE we convert our current batched index in the total to the coordinates in the actual tensor
-                    for (int d = batch_shape.size() - 1; d >= 0; --d) {
-                        if (batch_shape[d] > 0) {
-                            batch_coords[d] = tmp % batch_shape[d];
-                            tmp /= batch_shape[d];
-                        }
-                    }
-
-                    // Calculate offsets for this batch
-                    ll offset_a = 0, offset_b = 0;
-                    for (size_t d = 0; d < batch_shape.size(); ++d) {
-                        offset_a += batch_coords[d] * a_view.strides[d]; // if stride is zero somewhere in the broadcasted view then the computations make use of the same memory - no copies done
-                        offset_b += batch_coords[d] * b_view.strides[d]; // if stride is zero somewhere in the broadcasted view then the computations make use of the same memory - no copies done
-                    }
-
-                    // Get pointers to the matrices for this batch
-                    double* mat_a_ptr = a_view.data + offset_a;
-                    double* mat_b_ptr = b_view.data + offset_b;
-                    double* result_ptr = result.data + batch_index * matrix_size_result;
-
-                    // Use Eigen for the actual matrix multiplication - actual batched mat mul
-                    Eigen::Map<const Eigen::MatrixXd> mat_a(mat_a_ptr, a_rows, a_cols);
-                    Eigen::Map<const Eigen::MatrixXd> mat_b(mat_b_ptr, b_rows, b_cols);
-                    Eigen::Map<Eigen::MatrixXd> result_mat(result_ptr, a_rows, b_cols);
-
-                    result_mat = mat_a * mat_b;
-                }
-
-                return result;
-            }
-
             // ==============================PRIVATE========================================
 
         public:
@@ -233,124 +135,53 @@ namespace simplenet{
                 }
             };
 
-            // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
-            void fill(double v){
-                for (ll i =0;i<sizeOfTensor(); i++){
-                    this->data[i] = v;
-                }
+            // copy constructor
+            Tensor(const Tensor& other) : owns_data(true) { // we own the data when we copy;
+                this->shape = other.shape;
+                this->strides = other.strides;
+                this->data = new double[other.sizeOfTensor()];
+                std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
             }
 
-            static bool has_nonzero_gradient(Tensor& t){
-                // we only have to check if there is at least one of the numbers that is non-zero
-                for (ll i =0;i<t.sizeOfTensor(); i++){
-                    if (std::abs(t.data[i]) > 1e-12) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            // in place summation across a dimension - works like torch.sum()
-            Tensor sum(int dim, bool keepdims = false){
-                if (dim<0 || dim>=shape.size()){
-                    throw std::invalid_argument("DIM not in the correct range!");
-                }
-
-                // edge cases to consider - when we only have a vector then sum will give a scalar
-                if (shape.size()==1 && dim ==0){
-                    // no need to check keep dims as if keepdims is false then it will be a scalar anyways
-                    Tensor new_t({1});
-                    for (ll i =0; i < sizeOfTensor(); i++){
-                        new_t.data[0]+=data[i];
-                    }
-                    return new_t;
-                }
-
-                std::vector<int> newShape = shape;
-                int oldDim = newShape[dim];
-                newShape[dim] = 1; // we will change the shape afterwards
-
-                ll offset_new_shape{1};
-                for (int d = dim+1; d <newShape.size(); d++){
-                    offset_new_shape*=newShape[d];
-                }
-
-                ll offset_old{offset_new_shape*oldDim};
-
-                Tensor new_t(newShape);
-                double* flat_data = new_t.data;
-
-                ll dest_idx = 0;
-                for (ll v =0; v<sizeOfTensor(); v+=offset_old){
-                    for (ll s = 0; s<offset_new_shape;s++){
-                        double val {};
-                        for (int idx = 0; idx<oldDim; idx++){
-                            val+= data[v+idx*offset_new_shape+s];
-                        }
-                        flat_data[dest_idx]= val;
-                        dest_idx++;
-                    }
-                }
-                if (keepdims) return new_t;
-                new_t.flatten_inplace((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
-                return new_t;
-            }
-
-
-            // TODO
-            // static Tensor identity_matrix(std::vector<int>& sizePassed, int n) {
-            //     Tensor t (sizePassed);
-            //     // fill the diagonals with one
-            //     if (sizePassed.size() ==1){
-            //         // vector basically - does also work for scalars
-            //         if (sizePassed[0] != n){
-            //             std::invalid_argument("Identity vector is just 1s and size should match what is entered");
-            //         }
-            //         for (int r =0; r < sizePassed[0]; r++){
-            //             t.set(1.0, {r});
-            //         }
-            //     } else if (sizePassed.size() ==2){
-            //         if (sizePassed[sizePassed.size()-1] != n || sizePassed[sizePassed.size()-2]!=n){
-            //             std::invalid_argument("Identity matrices are only defined for square matrices");
-            //         }
-            //         for (int r =0; r < sizePassed[0]; r++){
-            //             t.set(1.0, {r,r}); // diagonals only
-            //         }
-            //     } else{
-            //         // batched matrix - set individually to identity matrix
-            //         //TODO:
-            //     }
-
-            //     return t;
-            // }
-
-            // // acts as an alias for the identity matrix
-            // static Tensor eye(std::vector<int>& sizePassed, int n){
-            //     return identity_matrix(sizePassed, n);
-            // }
-
-
-
-            // linspace function  to edit the current tensor
-            Tensor& linspace(double start, double end){
-                ll long_size = this->sizeOfTensor();
-                double size = static_cast<double>(long_size);
-                double step = (end-start)/(size);
-                for (size_t i =0; i < long_size ; i++){
-                    this->data[i] = start;
-                    start+=step;
+            // copy assignment operator
+            Tensor& operator=(const Tensor& other) {
+                if (this != &other) {
+                    delete[] data;
+                    this->shape = other.shape;
+                    this->strides = other.strides;
+                    this->owns_data = true;  // Copy always owns its data
+                    this->data = new double[other.sizeOfTensor()];
+                    std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
                 }
                 return *this;
             }
 
+            // move constructor
+            Tensor(Tensor&& other): owns_data(other.owns_data) {
+                this->shape = other.shape;
+                this->data = other.data;
+                this->strides = other.strides;
+                other.data = nullptr;
+            }
 
+            // move assignment operator
+            Tensor& operator=(Tensor&& other) {
+                if (this != &other) {
+                    delete[] data;
+                    this->shape = other.shape;
+                    this->data = other.data;
+                    this->strides = other.strides;
+                    this->owns_data = other.owns_data;
+                    other.data = nullptr;
+                    other.owns_data = false;
+                }
+                return *this;
+            }
 
-            void computeStrides() {
-                strides.resize(shape.size());
-                size_t s = 1;
-                for (int d = shape.size()-1; d >= 0; --d) {
-                    strides[d] = s;
-                    s *= shape[d];
+            // destructor
+            ~Tensor(){
+                if (owns_data && data != nullptr){
+                    delete[] data; // we now only delete if the owner is deleted
                 }
             }
 
@@ -377,16 +208,6 @@ namespace simplenet{
                 return data[off];
             }
 
-            void printShape() const {
-                std::cout << "Shape: [";
-                for (ll i = 0; i < this->shape.size(); i++){
-                    std::cout << this->shape[i];
-                    if (i != this->shape.size()-1){
-                        std::cout << ", ";
-                    }
-                }
-                std::cout << "]" << std::endl;
-            }
 
 
             void set(double val, std::vector<int> index) const {
@@ -465,6 +286,19 @@ namespace simplenet{
 
                 data[off] = val;
             }
+
+            // helper function
+            void printShape() const {
+                std::cout << "Shape: [";
+                for (ll i = 0; i < this->shape.size(); i++){
+                    std::cout << this->shape[i];
+                    if (i != this->shape.size()-1){
+                        std::cout << ", ";
+                    }
+                }
+                std::cout << "]" << std::endl;
+            }
+
             // helper function
             ll sizeOfTensor() const {
                 ll total = 1; // cause size may be huge
@@ -474,61 +308,13 @@ namespace simplenet{
                 return total;
             }
 
-            // copy constructor
-            Tensor(const Tensor& other) : owns_data(true) { // we own the data when we copy;
-                this->shape = other.shape;
-                this->strides = other.strides;
-                this->data = new double[other.sizeOfTensor()];
-                std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
-            }
 
-            // copy assignment operator
-            Tensor& operator=(const Tensor& other) {
-                if (this != &other) {
-                    delete[] data;
-                    this->shape = other.shape;
-                    this->strides = other.strides;
-                    this->owns_data = true;  // Copy always owns its data
-                    this->data = new double[other.sizeOfTensor()];
-                    std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
-                }
-                return *this;
-            }
-
-            // move constructor
-            Tensor(Tensor&& other): owns_data(other.owns_data) {
-                this->shape = other.shape;
-                this->data = other.data;
-                this->strides = other.strides;
-                other.data = nullptr;
-            }
-
-            // move assignment operator
-            Tensor& operator=(Tensor&& other) {
-                if (this != &other) {
-                    delete[] data;
-                    this->shape = other.shape;
-                    this->data = other.data;
-                    this->strides = other.strides;
-                    this->owns_data = other.owns_data;
-                    other.data = nullptr;
-                    other.owns_data = false;
-                }
-                return *this;
-            }
-
-            // destructor
-            ~Tensor(){
-                if (owns_data && data != nullptr){
-                    delete[] data; // we now only delete if the owner is deleted
-                }
-            }
-
-            // Helper functions
+            // helper functions
             std::vector<int> getShape() const {
                 return this->shape;
             }
 
+            // helper function
             std::vector<int> getStrides() const {
                 return this->strides;
             }
@@ -559,6 +345,10 @@ namespace simplenet{
                 return os;
             }
 
+
+            // ================================ OPERATIONS ========================================================================
+
+            // --------------------------------ADDITION----------------------------------------------------------------------------
             // friend function - add tensors
             friend Tensor operator+(const Tensor &A, const Tensor &B) {
                 if (A.shape == B.shape) {
@@ -653,6 +443,10 @@ namespace simplenet{
             friend Tensor operator+(const double& b, const Tensor &A) {
                 return A+b; // same as above
             }
+
+
+            // --------------------------------SUBTRACTION-------------------------------------------------------------------------
+
 
 
             // friend function - subtract tensors
@@ -753,6 +547,9 @@ namespace simplenet{
                 return C;
             }
 
+            // --------------------------------MULTIPLICATION----------------------------------------------------------------------
+
+
             // Hadamard product
             friend Tensor hadamard(const Tensor &a, const Tensor &other) {
                 if (a.shape != other.shape){
@@ -766,6 +563,10 @@ namespace simplenet{
                 }
                 return result;
             }
+
+
+            // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
+            friend Tensor linear_algebra::batchedMatMul(const Tensor& a, const Tensor& b);
 
 
             // element wise multiply
@@ -860,7 +661,7 @@ namespace simplenet{
 
                 // CASE 5: batched batched matmul
                 if (a_shape.size() > 2 && b_shape.size() > 2) {
-                    return batchedMatMul(a, b);
+                    return linear_algebra::batchedMatMul(a, b);
                 }
 
                 // SHOULD NEVER REACH HERE
@@ -879,40 +680,182 @@ namespace simplenet{
             }
 
 
-            // TODO: implement general transpose
-            static Tensor transpose(const Tensor& t, int dim0, int dim1){
-                // We want to transpose dim0 and dim1
-                std::vector<int> shape = t.getShape();
+            // --------------------------------EQUALITY--------------------------------------------------------------------------
 
-                // Validate dimensions
-                if (dim0 < 0 || dim0 >= shape.size() || dim1 < 0 || dim1 >= shape.size()) {
-                     throw std::invalid_argument("Invalid dimensions for transpose");
-                }
 
-                // 3 cases:
-                //  - Case 1: 1 as the shape return the same thing - scalar - If transposing the same dimension or a single element tensor, return a copy
-                if (dim0 == dim1 || t.sizeOfTensor() <= 1) {
-                    return t;
-                }
-
-                //  - Case 2: Matrix transpose - swap rows and columns
-                if (shape.size() == 2 || (dim0 == 0 && dim1 ==1)){
-                    std::vector<int> temp = shape;
-                    std::reverse(shape.begin()+(shape.size()-2), shape.end()); // reverse the shape
-                    Tensor n (shape); // new matrix with reversed shape (transposed)
-
-                    for (int r = 0 ; r<temp[shape.size()-2]; r++){
-                        for (int c = 0; c < temp[shape.size()-1]; c++){
-                            // CHANGE BELOW AS ONLY WORKS WHEN THE shape.size()= 2 so a MATRIX
-                            n.set(t.data[r*temp[shape.size()-1]+c], {c,r}); // FLAWED as this does not work for a general case of n-dim tensors when you want to transpose last two dims
+            // will change as float precision is added
+            friend bool operator==(const Tensor &a, const Tensor &b){
+                if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
+                    // NOTE: std::abs is better for doubles
+                    for (size_t i = 0; i<a.sizeOfTensor(); i++){
+                        if (std::abs(a.data[i]-b.data[i]) >= 1e-12){ // check if the error is greater than 10^-15
+                            return false;
                         }
                     }
-                    return n; // transposed
+                    return true;
+                }
+                return false;
+            }
+
+
+            friend bool operator!=(const Tensor &a, const Tensor &b){
+                return !(a==b);
+            }
+
+
+
+            //
+
+
+            // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
+            void fill(double v){
+                for (ll i =0;i<sizeOfTensor(); i++){
+                    this->data[i] = v;
+                }
+            }
+
+            static bool has_nonzero_gradient(Tensor& t){
+                // we only have to check if there is at least one of the numbers that is non-zero
+                for (ll i =0;i<t.sizeOfTensor(); i++){
+                    if (std::abs(t.data[i]) > 1e-12) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+
+            Tensor flatten(int start_dim =0, int end_dim = -1, bool keepdims=false);
+
+            // flatten - inplace
+            void flatten_inplace(int start_dim =0, int end_dim = -1, bool keepdims=false){
+                this->shape = Tensor::flatten_(start_dim, end_dim, keepdims);
+                computeStrides();
+            }
+
+            // in place summation across a dimension - works like torch.sum()
+            Tensor sum(int dim, bool keepdims = false){
+                if (dim<0 || dim>=shape.size()){
+                    throw std::invalid_argument("DIM not in the correct range!");
                 }
 
-                //  - Case 3: general dims
-                // TODO: implement
+                // edge cases to consider - when we only have a vector then sum will give a scalar
+                if (shape.size()==1 && dim ==0){
+                    // no need to check keep dims as if keepdims is false then it will be a scalar anyways
+                    Tensor new_t({1});
+                    for (ll i =0; i < sizeOfTensor(); i++){
+                        new_t.data[0]+=data[i];
+                    }
+                    return new_t;
+                }
 
+                std::vector<int> newShape = shape;
+                int oldDim = newShape[dim];
+                newShape[dim] = 1; // we will change the shape afterwards
+
+                ll offset_new_shape{1};
+                for (int d = dim+1; d <newShape.size(); d++){
+                    offset_new_shape*=newShape[d];
+                }
+
+                ll offset_old{offset_new_shape*oldDim};
+
+                Tensor new_t(newShape);
+                double* flat_data = new_t.data;
+
+                ll dest_idx = 0;
+                for (ll v =0; v<sizeOfTensor(); v+=offset_old){
+                    for (ll s = 0; s<offset_new_shape;s++){
+                        double val {};
+                        for (int idx = 0; idx<oldDim; idx++){
+                            val+= data[v+idx*offset_new_shape+s];
+                        }
+                        flat_data[dest_idx]= val;
+                        dest_idx++;
+                    }
+                }
+                if (keepdims) return new_t;
+                new_t.flatten_inplace((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
+                return new_t;
+            }
+
+
+            // TODO
+            // static Tensor identity_matrix(std::vector<int>& sizePassed, int n) {
+            //     Tensor t (sizePassed);
+            //     // fill the diagonals with one
+            //     if (sizePassed.size() ==1){
+            //         // vector basically - does also work for scalars
+            //         if (sizePassed[0] != n){
+            //             std::invalid_argument("Identity vector is just 1s and size should match what is entered");
+            //         }
+            //         for (int r =0; r < sizePassed[0]; r++){
+            //             t.set(1.0, {r});
+            //         }
+            //     } else if (sizePassed.size() ==2){
+            //         if (sizePassed[sizePassed.size()-1] != n || sizePassed[sizePassed.size()-2]!=n){
+            //             std::invalid_argument("Identity matrices are only defined for square matrices");
+            //         }
+            //         for (int r =0; r < sizePassed[0]; r++){
+            //             t.set(1.0, {r,r}); // diagonals only
+            //         }
+            //     } else{
+            //         // batched matrix - set individually to identity matrix
+            //         //TODO:
+            //     }
+
+            //     return t;
+            // }
+
+            // // acts as an alias for the identity matrix
+            // static Tensor eye(std::vector<int>& sizePassed, int n){
+            //     return identity_matrix(sizePassed, n);
+            // }
+
+
+            // linspace function  to edit the current tensor
+            Tensor& linspace(double start, double end){
+                ll long_size = this->sizeOfTensor();
+                double size = static_cast<double>(long_size);
+                double step = (end-start)/(size);
+                for (size_t i =0; i < long_size ; i++){
+                    this->data[i] = start;
+                    start+=step;
+                }
+                return *this;
+            }
+
+
+
+            void computeStrides() {
+                strides.resize(shape.size());
+                size_t s = 1;
+                for (int d = shape.size()-1; d >= 0; --d) {
+                    strides[d] = s;
+                    s *= shape[d];
+                }
+            }
+
+
+            Tensor transpose(){
+                // 2 cases:
+                // Case 1: 1 as the shape return the same thing - scalar - If transposing the same dimension or a single element tensor, return a copy
+                if (sizeOfTensor() <= 1 ) {
+                    return *this;
+                }
+                // Case 2: Transpose the last 2 dims
+                std::vector<int> new_shape = this->shape;
+                std::reverse(new_shape.begin()+(new_shape.size()-2), new_shape.end()); // reverse the shape
+                Tensor n (new_shape); // new matrix with reversed shape (transposed)
+                ll offset = new_shape[new_shape.size()-1]*new_shape[new_shape.size()-2];
+                for (ll s = 0; s<n.sizeOfTensor(); s+=offset){
+                    for (int r = 0 ; r<new_shape[this->shape.size()-2]; r++){
+                        for (int c = 0; c < new_shape[this->shape.size()-1]; c++){
+                            n.data[s+r*new_shape[new_shape.size()-1]+c] = this->data[s+c*this->shape[this->shape.size()-1]+r]; // transpose last two dims
+                        }
+                    }
+                }
+                return n; // transposed
             }
 
 
@@ -947,13 +890,6 @@ namespace simplenet{
                 computeStrides();
             }
 
-            Tensor flatten(int start_dim =0, int end_dim = -1, bool keepdims=false);
-
-            // flatten - inplace
-            void flatten_inplace(int start_dim =0, int end_dim = -1, bool keepdims=false){
-                this->shape = Tensor::flatten_(start_dim, end_dim, keepdims);
-                computeStrides();
-            }
 
             // unsqueeze
             // Finalized
@@ -1032,26 +968,6 @@ namespace simplenet{
                 }
                 this->data = temp;
             }
-
-
-            friend bool operator==(const Tensor &a, const Tensor &b){
-                if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
-                    // NOTE: std::abs is better for doubles
-                    for (size_t i = 0; i<a.sizeOfTensor(); i++){
-                        if (std::abs(a.data[i]-b.data[i]) >= 1e-12){ // check if the error is greater than 10^-15
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-                return false;
-            }
-
-
-            friend bool operator!=(const Tensor &a, const Tensor &b){
-                return !(a==b);
-            }
-
 
         };
 }

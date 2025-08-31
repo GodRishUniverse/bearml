@@ -6,6 +6,9 @@
 namespace simplenet {
     class Tensor; // forward declaration
     namespace linear_algebra {
+
+        Tensor batchedMatMul(const Tensor& a, const Tensor& b);
+
         // // Opposite of broadcasting - NOT A VIEW OPERATION
         // Tensor reduce(const Tensor &t, const std::vector<int>& targetShape);
 

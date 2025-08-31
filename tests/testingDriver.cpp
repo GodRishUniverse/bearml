@@ -190,6 +190,9 @@ int main() {
 
     cout << d << endl;
 
-    cout << simplenet::linear_algebra::reduce(d, {2,3,4,2} ) << endl;
+
+    cout << d.transpose() << endl;
+
+    // cout << simplenet::linear_algebra::reduce(d, {2,3,4,2} ) << endl;
 
 }

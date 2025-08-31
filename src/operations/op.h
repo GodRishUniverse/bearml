@@ -5,10 +5,21 @@
 
 namespace simplenet {
     namespace Operations {
+
+        // REDUCTION AND BROADCAST OPS
+        // BroadcastOp::PAD is reversed by ReductionOp::FLATTEN
+        // BroadcastOp::BROADCAST is reversed by ReductionOp::SUM
+
+        struct BroadcastOp {
+               enum Type { BROADCAST, PAD } type;
+               int dimIndex, originalSize, targetSize;
+        };
+
+
         struct ReductionOp {
-               enum Type { FLATTEN, SUM } type;
-               int startDim, endDim;
-               bool keepdims;
+               enum Type { FLATTEN, SUM, MEAN } type;
+               int dimIndex;
+               bool keepdims = true; // we would not be doing this
         };
     }
 }
