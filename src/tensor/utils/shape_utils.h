@@ -4,6 +4,8 @@
 #include <numeric>
 #include <stdexcept>
 #include <algorithm>
+#include "operations/op.h"
+
 
 using ll = long long;
 
@@ -42,11 +44,23 @@ namespace simplenet {
         {
             size_t n = std::max(A.size(), B.size()); // get the maximum shape
             std::vector<int> a(A), b(B); // get two copies here
+
+            std::vector<Operations::BroadcastOp> a_stack;
+            std::vector<Operations::BroadcastOp> b_stack;
+
+
             a.insert(a.begin(), n - A.size(), 1); // expand the shape by padding with 1s
+            for (size_t i =0; i < n-A.size(); i++){
+                Operations::BroadcastOp op = Operations::BroadcastOp(Operations::BroadcastOp::PAD, i, 0,1);
+                a_stack.push_back(op);
+            }
             b.insert(b.begin(), n - B.size(), 1); // expand the shape by padding withs 1s
+            for (size_t i =0; i < n-B.size(); i++){
+                Operations::BroadcastOp op = Operations::BroadcastOp(Operations::BroadcastOp::PAD, i, 0,1);
+                b_stack.push_back(op);
+            }
 
-
-            //TODO: USE STACK OF Operations::BroadcastOp for storing the broadcast operations which can be popped and reversed by the Reduction::Op
+            // TODO: USE STACK OF Operations::BroadcastOp for storing the broadcast operations which can be popped and reversed by the Reduction::Op
             // NEED TO figure out how the reduction::OP vector would be passed to the class so that reduce operations can occur as well in the autogradient Node class
             std::vector<int> out(n);// final shape outputted
             for (size_t i = 0; i < n; ++i) {
@@ -54,11 +68,34 @@ namespace simplenet {
                 if (a[i] == b[i] || a[i] == 1 || b[i] == 1) {
                     // reverse of this is basically summation across i with keepdims=false -> but how to know which tensor -> using an if statement maybe?
                     out[i] = std::max(a[i], b[i]);
+                    if (a[i] != out[i]){
+                        Operations::BroadcastOp op_a = Operations::BroadcastOp(Operations::BroadcastOp::BROADCAST, i, a[i],out[i]);
+                        a_stack.push_back(op_a);
+                    }
+                    if (b[i] != out[i]){
+                        Operations::BroadcastOp op_b = Operations::BroadcastOp(Operations::BroadcastOp::BROADCAST, i, b[i],out[i]);
+                        b_stack.push_back(op_b);
+                    }
                 } else {
                     throw std::invalid_argument("Shapes not broadcastable"); // both are non-1 and have different shapes
                 }
             }
-            return out;
+            // Construct reduction OPs order
+            std::vector<Operations::ReductionOp> ops_to_execute_a;
+            std::vector<Operations::ReductionOp> ops_to_execute_b;
+
+            while(!a_stack.empty()){
+                Operations::BroadcastOp op = a_stack[a_stack.size()-1]; a_stack.pop_back();
+                ops_to_execute_a.push_back(Operations::ReductionOp::convert(op));
+            }
+
+            while(!b_stack.empty()){
+                Operations::BroadcastOp op = b_stack[b_stack.size()-1]; b_stack.pop_back();
+                ops_to_execute_b.push_back(Operations::ReductionOp::convert(op));
+            }
+
+
+            return out; // need to return both lists of ops to execute
         }
 
         static std::vector<int> computeBroadcastStrides(

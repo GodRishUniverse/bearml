@@ -26,6 +26,8 @@ The Autodiff works on the
 * Broadcasting of tensors for multiplication and addition and subtraction was implemented
 * flattening operations were extended to match how Pytorch flatten works with keepdims and start and end dimension specifications
 * refactored code
+* transpose
+* reduce_shape - > NEED TO TEST if it works or not
 
 ## What do we need to complete
 
@@ -43,11 +45,14 @@ The Autodiff works on the
 * Implement Autodiff for activation functions
   * **FIX AUTODIFF Backward functions for each operation to check for Tensors - IMPORTANT**
   * Also make template specifications for them
-* Implement reduce_to_shape(Tensor grad_out, target_shape) -> **CURRENT APPROACH IS FLAWED**
-  * We use the flatten and summation/aggregation to do so - PROBLEM: sumation will change shapes so need to figure out how to do it efficiently
-* Implement Transpose function
-* Refactor each op’s backward_fn to compute raw grads in out_shape, then call reduce_to_shape into input.grad.
-* Matmul backward: unbatched first, then batched + broadcasted batches (reduce back).
+* Implement reduce_to_shape(Tensor grad_out, target_shape) -> **CURRENT APPROACH NEEDS TESTING**
+  * We use the flatten and summation/aggregation to do so - ~~PROBLEM: sumation will change shapes so need to figure out how to do it efficiently~~
+
+
+* Refactor each op’s backward_fn to compute raw grads in out_shape, then call reduce_to_shape into input.grad
+
+
+* **IMPORTANT: we would need to BASICALLY DECLARE NEW GRAD OPS so that we can pass the order of reduce ops back to the Node class in computational graph**
 
 
 ## Roadblocks I faced

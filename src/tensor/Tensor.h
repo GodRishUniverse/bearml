@@ -23,8 +23,8 @@ using ll = long long; // can also use int_fast64_t
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
 // TODO: element-wise divide
 // TODO: allow float values as well (half precision) - template specialize equal to
-// TODO: Refactor code base to segregate some code as one file is becoming too large
 // TODO MAY CHANGE ACTIVATION FUNCTIONS IMPLEMENTATION - they need double* data
+
 
 
 
@@ -35,6 +35,7 @@ namespace simplenet{
     // forward declaration
     namespace linear_algebra {
        Tensor batchedMatMul(const Tensor& a, const Tensor& b); // Forward declare the friend function
+       Tensor reduce(const Tensor& a, std::vector<Operations::Reduction>& ops); // forward declare for the friend reduce
     }
 
     class Tensor {
@@ -567,6 +568,8 @@ namespace simplenet{
 
             // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
             friend Tensor linear_algebra::batchedMatMul(const Tensor& a, const Tensor& b);
+
+            friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<Operations::Reduction>& ops);
 
 
             // element wise multiply

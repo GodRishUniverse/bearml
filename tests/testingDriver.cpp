@@ -188,10 +188,11 @@ int main() {
 
     cout << d.sum(4,false) << endl;
 
+
+    cout << "FLATTENING IN PLACE" << endl;
+    d.flatten_inplace(1,2,false);
     cout << d << endl;
 
-
-    cout << d.transpose() << endl;
 
     // cout << simplenet::linear_algebra::reduce(d, {2,3,4,2} ) << endl;
 

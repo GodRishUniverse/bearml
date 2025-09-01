@@ -1,5 +1,6 @@
 #include "linalg_utils.h"
 #include "tensor/Tensor.h"
+#include <cstddef>
 
 namespace simplenet {
     namespace linear_algebra {
@@ -107,6 +108,20 @@ namespace simplenet {
             }
 
             return result;
+        }
+
+
+        Tensor reduce(const Tensor& a, std::vector<Operations::Reduction>& ops){
+            Tensor res = a; // copy operation
+            for (size_t i =0; i <ops.size(); i++){
+                Operations::ReductionOp op = ops[i];
+                if (op.type == Operations::ReductionOp::SUM){
+                    res = res.sum(op.dimIndex, op.keepdim);
+                }else if (op.type == Operations::ReductionOp::FLATTEN) {
+                    res.flatten_inplace(op.dimIndex, op.dimIndex+1, false); // I HOPE WE DONT GET AN ERROR
+                }
+            }
+            return res;
         }
 
 
