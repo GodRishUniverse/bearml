@@ -19,7 +19,7 @@ namespace simplenet {
         struct ReductionOp {
             enum Type { FLATTEN, SUM, MEAN } type;
             int dimIndex;
-            bool keepdims = true; // we would not be doing this
+            bool keepdim = true; // we would not be doing this
 
             // TODO: this might change as we dont pass in originalSize and targetSize
             static ReductionOp convert(BroadcastOp broadcastOp){

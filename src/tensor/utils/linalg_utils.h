@@ -9,7 +9,7 @@ namespace simplenet {
 
         Tensor batchedMatMul(const Tensor& a, const Tensor& b);
 
-        Tensor reduce(const Tensor& a, std::vector<Operations::Reduction>& ops);
+        Tensor reduce(const Tensor& a, std::vector<Operations::ReductionOp>& ops);
 
         // // Opposite of broadcasting - NOT A VIEW OPERATION
         // Tensor reduce(const Tensor &t, const std::vector<int>& targetShape);

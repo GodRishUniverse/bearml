@@ -49,11 +49,14 @@ The Autodiff works on the
   * We use the flatten and summation/aggregation to do so - ~~PROBLEM: sumation will change shapes so need to figure out how to do it efficiently~~
 
 
+* **IMPORTANT** Got some feedback from an LLM that said i should rethink backwardop inversion to reductionop as it has too less information
+  *  rethink on whether the BroadCastOp is correctly inverted to ReductionOp  or not in computeBroadcastShape
+
 * Refactor each op’s backward_fn to compute raw grads in out_shape, then call reduce_to_shape into input.grad
+  * **IMPORTANT**: we would need to BASICALLY DECLARE NEW GRAD OPS so that we can pass the order of reduce ops back to the Node class in computational graph
 
-
-* **IMPORTANT: we would need to BASICALLY DECLARE NEW GRAD OPS so that we can pass the order of reduce ops back to the Node class in computational graph**
-
+* Rectify Transpose for vector operations as well -> column transpose or row transpose
+  * Same needs to modified in multiplication in `autogradient.h`
 
 ## Roadblocks I faced
 
@@ -63,5 +66,10 @@ Implementing batched multiplication wasn't as straight forward as expected as th
 
 Another thing that I started with was using the identity matrix for when we do the backward pass for the Tensors, however, The Jacobian computation requires using a whole Tensor of Ones (1s) rather than an identity matrix. Moreover, using the  identity matrix is also flawed because the identity matrix only exists for square matrices and in our case we do not use square matrices - we also have rectangular matrices to consider when we change shapes.
 
+Another roadblock was Eigen -> it used column major format rather than row major -> **so I will remove Eigen down the line and have changed it to not use Column Major Format now**: [StackOverFlow Link that verifies this](https://stackoverflow.com/questions/61140594/why-eigen-use-column-major-by-default-instead-of-row-major)
+
+Transpose is still a roadblock... when I say transpose I mean n-dim Transpose and not matrix transpose (that is already implemented) as I'm not sure how that works (example would be something like [2,3,4,5,6,7] transposed at dim 0 and dim 3 to get [5,3,4,2,6,7]) -> Im assuming offsets will change and rest should be the same. Need to verify...
+
+
 ### Current Hurdle
-Another roadblock in front of me is the reduction and transpose operations to be applied in the backward passes to take into account the cases for broadcasting operations. I am not sure about that right now...
+Another roadblock in front of me is the reduction and transpose operations to be applied in the backward passes to take into account the cases for broadcasting operations. I have implemented tranpose, but I need to think about how to segregate ops (addition, subtraction, multiplication) for gradients in Tensor class as we need to pass the shapes to autogradient to do the reduce method to get grads backward.

@@ -141,6 +141,7 @@ namespace simplenet{
 
                 node->backward_fn = [a, b, node](){
                     if (std::is_same<T, simplenet::Tensor>::value){
+                        // TODO: does not always work as the case of vectors have a different idea for transpose
                         // NEED TO CREATE REDUCTION OPERATION here
                         a->grad += node->grad * b->val.transpose(); // grad_a = grad * b^T
                         b->grad += a->val.transpose() * node->grad; // grad_b = a^T * grad

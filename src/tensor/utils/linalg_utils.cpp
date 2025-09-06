@@ -39,7 +39,9 @@ namespace simplenet {
                 batch_shape = a_batch_dims;
             } else {
                 // Both have batch dimensions - broadcast them
-                batch_shape = utils::computeBroadcastShape(a_batch_dims, b_batch_dims);
+                auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(a_batch_dims, b_batch_dims);
+                batch_shape = outputShapeAfterBroadcastWithReductionsAsWll.first;
+                auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
             }
 
 
@@ -99,19 +101,22 @@ namespace simplenet {
                 double* mat_b_ptr = b_view.data + offset_b;
                 double* result_ptr = result.data + batch_index * matrix_size_result;
 
-                // Use Eigen for the actual matrix multiplication - actual batched mat mul
-                Eigen::Map<const Eigen::MatrixXd> mat_a(mat_a_ptr, a_rows, a_cols);
-                Eigen::Map<const Eigen::MatrixXd> mat_b(mat_b_ptr, b_rows, b_cols);
-                Eigen::Map<Eigen::MatrixXd> result_mat(result_ptr, a_rows, b_cols);
+                using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
-                result_mat = mat_a * mat_b;
+
+                // Use Eigen for the actual matrix multiplication - actual batched mat mul
+                Eigen::Map<const MatrixRowMajor> mat_a(mat_a_ptr, a_rows, a_cols);
+                Eigen::Map<const MatrixRowMajor> mat_b(mat_b_ptr, b_rows, b_cols);
+                Eigen::Map<MatrixRowMajor> result_mat(result_ptr, a_rows, b_cols);
+
+                result_mat =( mat_a * mat_b);
             }
 
             return result;
         }
 
 
-        Tensor reduce(const Tensor& a, std::vector<Operations::Reduction>& ops){
+        Tensor reduce(const Tensor& a, std::vector<Operations::ReductionOp>& ops){
             Tensor res = a; // copy operation
             for (size_t i =0; i <ops.size(); i++){
                 Operations::ReductionOp op = ops[i];

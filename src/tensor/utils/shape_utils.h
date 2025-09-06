@@ -1,5 +1,6 @@
 #pragma once
 
+#include <utility>
 #include <vector>
 #include <numeric>
 #include <stdexcept>
@@ -38,8 +39,8 @@ namespace simplenet {
             return true;
         }
 
-        //works
-        static std::vector<int> computeBroadcastShape(
+        //TODO: rethink on whether the BroadCastOp is correctly inverted to ReductionOp  or not in computeBroadcastShape
+        static std::pair< std::vector<int>, std::pair< std::vector<int>, std::vector<int>>> computeBroadcastShape(
             const std::vector<int>& A, const std::vector<int>& B)
         {
             size_t n = std::max(A.size(), B.size()); // get the maximum shape
@@ -95,7 +96,7 @@ namespace simplenet {
             }
 
 
-            return out; // need to return both lists of ops to execute
+            return {out, {a,b}}; // need to return both lists of ops to execute
         }
 
         static std::vector<int> computeBroadcastStrides(

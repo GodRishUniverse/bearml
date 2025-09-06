@@ -19,6 +19,8 @@
 #include "operations/op.h"
 
 using ll = long long; // can also use int_fast64_t
+using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
 
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
 // TODO: element-wise divide
@@ -35,7 +37,7 @@ namespace simplenet{
     // forward declaration
     namespace linear_algebra {
        Tensor batchedMatMul(const Tensor& a, const Tensor& b); // Forward declare the friend function
-       Tensor reduce(const Tensor& a, std::vector<Operations::Reduction>& ops); // forward declare for the friend reduce
+       Tensor reduce(const Tensor& a, std::vector<Operations::ReductionOp>& ops); // forward declare for the friend reduce
     }
 
     class Tensor {
@@ -360,7 +362,9 @@ namespace simplenet{
                 }
 
                 // broadcast path
-                auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
+                auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(A.shape, B.shape);
+                auto outShape = outputShapeAfterBroadcastWithReductionsAsWll.first;
+                auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
                 Tensor  C(outShape);
 
                 // make “broadcasted views” - we copy as we do not want the original shapes and strides of A and B to change
@@ -392,7 +396,9 @@ namespace simplenet{
             Tensor& operator+=(const Tensor &other) {
                 // broadcast or exact-shape
                 if (shape != other.shape) {
-                    auto outShape = utils::computeBroadcastShape(shape, other.shape);
+                    auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(shape, other.shape);
+                    auto outShape = outputShapeAfterBroadcastWithReductionsAsWll.first;
+                    auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
                     // we require that *this already has exactly outShape:
                     // otherwise you'd need to reallocate or error.
                     if (shape != outShape)
@@ -460,7 +466,9 @@ namespace simplenet{
                 }
 
                 // broadcast path
-                auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
+                auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(A.shape, B.shape);
+                auto outShape = outputShapeAfterBroadcastWithReductionsAsWll.first;
+                auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
                 Tensor  C(outShape);
 
                 // make “broadcasted views”
@@ -492,7 +500,10 @@ namespace simplenet{
             Tensor& operator-=(const Tensor &other) {
                     // broadcast or exact-shape
                     if (shape != other.shape) {
-                    auto outShape = utils::computeBroadcastShape(shape, other.shape);
+
+                    auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(shape, other.shape);
+                    auto outShape = outputShapeAfterBroadcastWithReductionsAsWll.first;
+                    auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
                     // we require that *this already has exactly outShape:
                     // otherwise you'd need to reallocate or error.
                     if (shape != outShape)
@@ -557,7 +568,6 @@ namespace simplenet{
                     throw std::invalid_argument("Tensors must have the same shape");
                 }
 
-
                 Tensor result(a.shape);
                 for (ll i = 0; i < a.sizeOfTensor(); i++){
                     result.data[i] = a.data[i] * other.data[i];
@@ -569,7 +579,7 @@ namespace simplenet{
             // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
             friend Tensor linear_algebra::batchedMatMul(const Tensor& a, const Tensor& b);
 
-            friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<Operations::Reduction>& ops);
+            friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<Operations::ReductionOp>& ops);
 
 
             // element wise multiply
@@ -581,13 +591,11 @@ namespace simplenet{
             }
             // for when the operations are reversed
             friend Tensor operator*(const double& b, const Tensor &A) {
-                return A*b; // order of multiplication doesn't matter here
+                return A*b; // order of multiplication doesn't matter here -> does it?
             }
 
 
 
-
-            // TODO: friend function - multiply tensors - dot product (GEMM)
             friend Tensor operator*(const Tensor &a, const Tensor &b) {
 
                 // 5 cases that need to be checked for this
@@ -633,9 +641,7 @@ namespace simplenet{
                         throw std::invalid_argument("Matrix columns must match vector size");
                     }
                     // matches - calling Eigen
-                    // using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
-
-                    Eigen::Map<const Eigen::MatrixXd> mat_a(a.data, a_shape[0], a_shape[1]);
+                    Eigen::Map<const MatrixRowMajor> mat_a(a.data, a_shape[0], a_shape[1]);
                     Eigen::Map<const Eigen::VectorXd> vec_b(b.data, b_shape[0]);
 
                     Tensor result({a_shape[0]});
@@ -651,13 +657,12 @@ namespace simplenet{
                         throw std::invalid_argument("Matrix dimensions incompatible for multiplication");
                     }
 
-                    // using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
-                    Eigen::Map<const Eigen::MatrixXd> mat_a(a.data, a_shape[0], a_shape[1]);
-                    Eigen::Map<const Eigen::MatrixXd> mat_b(b.data, b_shape[0], b_shape[1]);
+                    Eigen::Map<const MatrixRowMajor> mat_a(a.data, a_shape[0], a_shape[1]);
+                    Eigen::Map<const MatrixRowMajor> mat_b(b.data, b_shape[0], b_shape[1]);
 
                     Tensor result({a_shape[0], b_shape[1]});
-                    Eigen::Map< Eigen::MatrixXd> result_mat(result.data, a_shape[0], b_shape[1]);
-                    result_mat = mat_a * mat_b;
+                    Eigen::Map<MatrixRowMajor> result_mat(result.data, a_shape[0], b_shape[1]);
+                    result_mat = (mat_a * mat_b);
 
                     return result;
                 }
@@ -841,12 +846,17 @@ namespace simplenet{
 
 
             Tensor transpose(){
-                // 2 cases:
+                // 3 cases:
                 // Case 1: 1 as the shape return the same thing - scalar - If transposing the same dimension or a single element tensor, return a copy
                 if (sizeOfTensor() <= 1 ) {
-                    return *this;
+                    return *this; // copy op
                 }
-                // Case 2: Transpose the last 2 dims
+
+                // Case 2: Vectors
+                // TODO: ROW Tranpose or COLUMN Transpose
+
+
+                // Case 3: Transpose the last 2 dims
                 std::vector<int> new_shape = this->shape;
                 std::reverse(new_shape.begin()+(new_shape.size()-2), new_shape.end()); // reverse the shape
                 Tensor n (new_shape); // new matrix with reversed shape (transposed)
