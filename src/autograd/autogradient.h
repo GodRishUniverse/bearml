@@ -11,7 +11,6 @@
 
 #include "tensor/Tensor.h"
 #include "matrix/Matrix.h"
-#include "activation_functions.cpp"
 
 #ifndef AUTO_NODE_H
 #define AUTO_NODE_H
@@ -101,8 +100,16 @@ namespace simplenet{
 
                 // TODO - change this function as not correct with Tensors -  shape changes and broadcasting has a role to play here - if forward does broadcasting then backward should do reduce
                 node->backward_fn = [a, b, node](){
-                    a->grad += node->grad;  // dc/da = b
-                    b->grad += node->grad;  // dc/db = a
+                    if (std::is_same<T, simplenet::Tensor>::value){
+                        //TODO: NOT CORRECT - FIX IT
+                        a->grad += node->grad;  // dc/da = b
+                        b->grad += node->grad;  // dc/db = a
+                    }else{
+                        // case for doubles
+                        a->grad += node->grad;  // dc/da = b
+                        b->grad += node->grad;  // dc/db = a
+                    }
+
                 };
 
                 return node;
@@ -120,10 +127,16 @@ namespace simplenet{
 
                 // TODO - change this function as not correct with Tensors -  shape changes and broadcasting has a role to play here
                 node->backward_fn = [a, b, node](){
-                    a->grad += node->grad*1.0;  // dc/da = 1
-                    b->grad += node->grad*-1.0;  // dc/db = -1
+                    if (std::is_same<T, simplenet::Tensor>::value){
+                        // TODO: NOT CORRECT - FIX IT
+                        a->grad += node->grad*1.0;  // dc/da = 1
+                        b->grad += node->grad*-1.0;  // dc/db = -1
+                    }else{
+                        // case for doubles
+                        a->grad += node->grad*1.0;  // dc/da = 1
+                        b->grad += node->grad*-1.0;  // dc/db = -1
+                    }
                 };
-
 
                 return node;
         }
@@ -151,8 +164,6 @@ namespace simplenet{
                         b->grad += a->val * node->grad; // grad_b = a^T * grad
                     }
                 };
-
-
                 return node;
         }
 
@@ -169,9 +180,9 @@ namespace simplenet{
 
                 // TODO - change this function as not correct with Tensors - shape changes and broadcasting has a role to play here
                 node->backward_fn = [a, divisor, node]() {
+                    // TODO FIX
                     a->grad += node->grad * (1.0 / divisor);  // dc/da = 1/divisor
                 };
-
 
                 return node;
         }

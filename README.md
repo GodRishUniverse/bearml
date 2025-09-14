@@ -31,9 +31,11 @@ The Autodiff works on the
 
 ## What do we need to complete
 
-* Integrate Caffe2 : [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
+* Integrate Caffe2 IF NEEDED: [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
+
 * ~~Implement broadcasting properly as it is required for tensor multiplication - there is another bug in the print code because the tensor shape changes but not the data so it accesses beyond what is allocated - **PROBLEM**~~
   * ~~Potential solution is to basically set a boolean to see if it is a broadcasted tensor or nott - PLAN IS TO MAKE BORADCAST A PRIVATE FUNCTION SO THE BROADCASTED TENSOR VANISHES AFTER COMPUTATION is APPLIED~~
+
 * Just use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) ~~Implement Tensor multiplication (GEMM and not Tensor Product - both are infact different)~~
   * ~~[Multi dim Transpose](https://www.iaeng.org/publication/WCE2010/WCE2010_pp1838-1841.pdf)~~
   * ~~Use Kahman Summation~~
@@ -42,15 +44,16 @@ The Autodiff works on the
   * ~~The problem is not matmul or vector-mat mul or vector-vector mul - rather batched mat mul - what I now understand is how batched matmul works and I give an example here~~
     ~~`When we multiply [2,3,4] with [2,4,5] -> [2,3,5] because the first is a 2-batch of [3,4] matrices and the next one is the 2-batch of [4,5] matrices`~~
     ~~This is one reason why when doing batched mul only the last 2 indices can differ but the rest HAVE TO BE THE SAME.~~
+
 * Implement Autodiff for activation functions
-  * **FIX AUTODIFF Backward functions for each operation to check for Tensors - IMPORTANT**
-  * Also make template specifications for them
-* Implement reduce_to_shape(Tensor grad_out, target_shape) -> **CURRENT APPROACH NEEDS TESTING**
+
+* Implement reduce_to_shape(Tensor grad_out, target_shape) -> **CURRENT APPROACH NEEDS FURTHER TESTING**
   * We use the flatten and summation/aggregation to do so - ~~PROBLEM: sumation will change shapes so need to figure out how to do it efficiently~~
 
 * Rectify Transpose for vector operations as well -> column transpose or row transpose
   * Same needs to modified in multiplication in `autogradient.h`
 
+* **FIX the `autogradient.h` file to have reduce operations everywhere**.
 ## Roadblocks I faced
 
 So one of the first roadblocks that I faced is that (I have spent months on this - not completely but relatively speaking) implementing GEMM on the CPU without a prebaked library is hard.

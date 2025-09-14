@@ -1,7 +1,6 @@
 #include "tensor/Tensor.h"
 #include "matrix/Matrix.h"
 #include "autograd/autogradient.h"
-#include "operations/op.h"
 
 #include <iostream>
 #include <vector>
@@ -163,6 +162,9 @@ int main() {
 
     simplenet::Tensor a ({1,1,4,5});
     simplenet::Tensor b ({1,2,5,6});
+
+    a.linspace(1,97);
+    b.linspace(1,10);
 
     cout << a * b << endl;
 
