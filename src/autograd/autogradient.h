@@ -86,9 +86,7 @@ namespace simplenet{
             }
         }
 
-        // TODO: need to think through how to apply the reduce operation for the multiplication
 
-        // TODO - change
         friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
                 std::shared_ptr<Node<T>> node  = make_node(a->val+b->val);
                 // node->grad = a->grad + b->grad;  // c = a + b     =>    dc = da + db
@@ -98,12 +96,12 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                // TODO - change this function as not correct with Tensors -  shape changes and broadcasting has a role to play here - if forward does broadcasting then backward should do reduce
                 node->backward_fn = [a, b, node](){
                     if (std::is_same<T, simplenet::Tensor>::value){
-                        //TODO: NOT CORRECT - FIX IT
-                        a->grad += node->grad;  // dc/da = b
-                        b->grad += node->grad;  // dc/db = a
+                        std::vector<int> temp_a =  a->grad.getShape();
+                        std::vector<int> temp_b = b->grad.getShape();
+                        a->grad += simplenet::linear_algebra::reduce(node->grad, temp_a);  // dc/da = b
+                        b->grad += simplenet::linear_algebra::reduce(node->grad, temp_b);  // dc/db = a
                     }else{
                         // case for doubles
                         a->grad += node->grad;  // dc/da = b
@@ -125,12 +123,13 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                // TODO - change this function as not correct with Tensors -  shape changes and broadcasting has a role to play here
                 node->backward_fn = [a, b, node](){
                     if (std::is_same<T, simplenet::Tensor>::value){
-                        // TODO: NOT CORRECT - FIX IT
-                        a->grad += node->grad*1.0;  // dc/da = 1
-                        b->grad += node->grad*-1.0;  // dc/db = -1
+                        std::vector<int> temp_a =  a->grad.getShape();
+                        std::vector<int> temp_b = b->grad.getShape();
+
+                        a->grad += simplenet::linear_algebra::reduce(node->grad,temp_a);  // dc/da = 1
+                        b->grad += simplenet::linear_algebra::reduce(node->grad * -1.0,temp_b);  // dc/db = -1
                     }else{
                         // case for doubles
                         a->grad += node->grad*1.0;  // dc/da = 1
@@ -148,7 +147,6 @@ namespace simplenet{
 
                 node->inputs = {a,b};
 
-                // TODO - change this function as not correct with Tensors - shape changes and broadcasting has a role to play here
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 

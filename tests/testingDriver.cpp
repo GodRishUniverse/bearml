@@ -160,8 +160,8 @@ int main() {
     // cout << x->grad << endl;
     // cout << y->grad << endl;
 
-    simplenet::Tensor a ({1,1,4,5});
-    simplenet::Tensor b ({1,2,5,6});
+    simplenet::Tensor a ({1,1,5,5});
+    simplenet::Tensor b ({1,2,5,5});
 
     a.linspace(1,97);
     b.linspace(1,10);
@@ -172,7 +172,7 @@ int main() {
     shared_ptr<simplenet::Node<simplenet::Tensor>> x = simplenet::Node<simplenet::Tensor>::make_node(a); // calling static function
     shared_ptr<simplenet::Node<simplenet::Tensor>> y = simplenet::Node<simplenet::Tensor>::make_node(b); // calling static function
 
-    auto z = x*y ;
+    auto z = x*y + x;
 
     cout << simplenet::autogradient::backward(z) << endl;
     cout << x->grad << endl;
