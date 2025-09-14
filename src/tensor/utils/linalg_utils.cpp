@@ -39,9 +39,7 @@ namespace simplenet {
                 batch_shape = a_batch_dims;
             } else {
                 // Both have batch dimensions - broadcast them
-                auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(a_batch_dims, b_batch_dims);
-                batch_shape = outputShapeAfterBroadcastWithReductionsAsWll.first;
-                auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
+                batch_shape = utils::computeBroadcastShape(a_batch_dims, b_batch_dims);
             }
 
 
@@ -116,17 +114,21 @@ namespace simplenet {
         }
 
 
-        Tensor reduce(const Tensor& a, std::vector<Operations::ReductionOp>& ops){
-            Tensor res = a; // copy operation
-            for (size_t i =0; i <ops.size(); i++){
-                Operations::ReductionOp op = ops[i];
-                if (op.type == Operations::ReductionOp::SUM){
-                    res = res.sum(op.dimIndex, op.keepdim);
-                }else if (op.type == Operations::ReductionOp::FLATTEN) {
-                    res.flatten_inplace(op.dimIndex, op.dimIndex+1, false); // I HOPE WE DONT GET AN ERROR
+
+
+        // Maybe I was thinking too much as this works
+        Tensor reduce(const Tensor& a, std::vector<int>& afterShape){
+            Tensor b = a;
+            while (b.getShape().size() > afterShape.size()){
+                b = b.sum(0, false); // we dont keep the dims
+            }
+            // Now we compare with the already existing values
+            for (size_t i = 0; i<b.getShape().size(); i++){
+                if (b.getShape()[i] != afterShape[i]){
+                    b =b.sum(i, true); // we keep the dims
                 }
             }
-            return res;
+            return b;
         }
 
 
@@ -136,7 +138,7 @@ namespace simplenet {
         // // Opposite of broadcasting - NOT A VIEW OPERATION
         // Tensor reduce(const Tensor &t, const std::vector<int>& targetShape) {
 
-        //     // TODO: NEED TO FIGURE OUT AN INVALID REDUCTION
+        //     //  NEED TO FIGURE OUT AN INVALID REDUCTION
 
         //     // Idea -   First pass: analyze the shapes and build a "recipe" of operations
         //     //          Second pass: execute the recipe

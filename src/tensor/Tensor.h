@@ -16,8 +16,6 @@
 // #include <cmath>
 #include <iomanip>
 
-#include "operations/op.h"
-
 using ll = long long; // can also use int_fast64_t
 using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
@@ -37,7 +35,7 @@ namespace simplenet{
     // forward declaration
     namespace linear_algebra {
        Tensor batchedMatMul(const Tensor& a, const Tensor& b); // Forward declare the friend function
-       Tensor reduce(const Tensor& a, std::vector<Operations::ReductionOp>& ops); // forward declare for the friend reduce
+       Tensor reduce(const Tensor& a, std::vector<int>& afterShape); // forward declare for the friend reduce
     }
 
     class Tensor {
@@ -362,9 +360,7 @@ namespace simplenet{
                 }
 
                 // broadcast path
-                auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(A.shape, B.shape);
-                auto outShape = outputShapeAfterBroadcastWithReductionsAsWll.first;
-                auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
+                auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
                 Tensor  C(outShape);
 
                 // make “broadcasted views” - we copy as we do not want the original shapes and strides of A and B to change
@@ -396,9 +392,8 @@ namespace simplenet{
             Tensor& operator+=(const Tensor &other) {
                 // broadcast or exact-shape
                 if (shape != other.shape) {
-                    auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(shape, other.shape);
-                    auto outShape = outputShapeAfterBroadcastWithReductionsAsWll.first;
-                    auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
+
+                    auto outShape = utils::computeBroadcastShape(shape, other.shape);
                     // we require that *this already has exactly outShape:
                     // otherwise you'd need to reallocate or error.
                     if (shape != outShape)
@@ -466,9 +461,7 @@ namespace simplenet{
                 }
 
                 // broadcast path
-                auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(A.shape, B.shape);
-                auto outShape = outputShapeAfterBroadcastWithReductionsAsWll.first;
-                auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
+                auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
                 Tensor  C(outShape);
 
                 // make “broadcasted views”
@@ -500,10 +493,7 @@ namespace simplenet{
             Tensor& operator-=(const Tensor &other) {
                     // broadcast or exact-shape
                     if (shape != other.shape) {
-
-                    auto outputShapeAfterBroadcastWithReductionsAsWll = utils::computeBroadcastShape(shape, other.shape);
-                    auto outShape = outputShapeAfterBroadcastWithReductionsAsWll.first;
-                    auto [a_reduced, b_reduced] = outputShapeAfterBroadcastWithReductionsAsWll.second;
+                    auto outShape = utils::computeBroadcastShape(shape, other.shape);
                     // we require that *this already has exactly outShape:
                     // otherwise you'd need to reallocate or error.
                     if (shape != outShape)
@@ -579,7 +569,7 @@ namespace simplenet{
             // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
             friend Tensor linear_algebra::batchedMatMul(const Tensor& a, const Tensor& b);
 
-            friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<Operations::ReductionOp>& ops);
+            friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<int>& afterShape);
 
 
             // element wise multiply

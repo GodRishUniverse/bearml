@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 #include <stdexcept>
-#include "operations/op.h"
+
 
 namespace simplenet {
     class Tensor; // forward declaration
@@ -9,7 +9,7 @@ namespace simplenet {
 
         Tensor batchedMatMul(const Tensor& a, const Tensor& b);
 
-        Tensor reduce(const Tensor& a, std::vector<Operations::ReductionOp>& ops);
+         Tensor reduce(const Tensor& a, std::vector<int>& afterShape);
 
         // // Opposite of broadcasting - NOT A VIEW OPERATION
         // Tensor reduce(const Tensor &t, const std::vector<int>& targetShape);

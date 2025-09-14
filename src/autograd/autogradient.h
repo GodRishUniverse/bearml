@@ -141,10 +141,10 @@ namespace simplenet{
 
                 node->backward_fn = [a, b, node](){
                     if (std::is_same<T, simplenet::Tensor>::value){
-                        // TODO: does not always work as the case of vectors have a different idea for transpose
-                        // NEED TO CREATE REDUCTION OPERATION here
-                        a->grad += node->grad * b->val.transpose(); // grad_a = grad * b^T
-                        b->grad += a->val.transpose() * node->grad; // grad_b = a^T * grad
+                        std::vector<int> temp_a =  a->grad.getShape();
+                        std::vector<int> temp_b = b->grad.getShape();
+                        a->grad += simplenet::linear_algebra::reduce(node->grad * b->val.transpose(),temp_a); // grad_a = grad * b^T
+                        b->grad += simplenet::linear_algebra::reduce(a->val.transpose() * node->grad, temp_b); // grad_b = a^T * grad
                     }else{
                         // case for doubles
                         a->grad += node->grad * b->val; // grad_a = grad * b^T

@@ -4,6 +4,7 @@
 #include "operations/op.h"
 
 #include <iostream>
+#include <vector>
 
 using namespace std;
 
@@ -166,34 +167,36 @@ int main() {
     cout << a * b << endl;
 
 
-    // shared_ptr<simplenet::Node<simplenet::Tensor>> x = simplenet::Node<simplenet::Tensor>::make_node(a); // calling static function
-    // shared_ptr<simplenet::Node<simplenet::Tensor>> y = simplenet::Node<simplenet::Tensor>::make_node(b); // calling static function
+    shared_ptr<simplenet::Node<simplenet::Tensor>> x = simplenet::Node<simplenet::Tensor>::make_node(a); // calling static function
+    shared_ptr<simplenet::Node<simplenet::Tensor>> y = simplenet::Node<simplenet::Tensor>::make_node(b); // calling static function
 
-    // auto z = x*y ;
+    auto z = x*y ;
 
-    // cout << simplenet::autogradient::backward(z) << endl;
-    // cout << x->grad << endl;
-    // cout << y->grad << endl;
+    cout << simplenet::autogradient::backward(z) << endl;
+    cout << x->grad << endl;
+    cout << y->grad << endl;
 
-    simplenet::Tensor c({3,2,4});
-    c.set(1.0, {0,1,1});
-    cout << c << endl;
-    c =  c.flatten(1, -1, true );
-    cout << c << endl;
+    // simplenet::Tensor c({3,2,4});
+    // c.set(1.0, {0,1,1});
+    // cout << c << endl;
+    // c =  c.flatten(1, -1, true );
+    // cout << c << endl;
 
-    simplenet::Tensor d({2,2,3,4,2});
-    d.linspace(1,97);
-    cout << d << endl;
-    cout << d.getShape().size() << endl;
+    // simplenet::Tensor d({2,2,3,4,2});
+    // d.linspace(1,97);
+    // cout << d << endl;
+    // cout << d.getShape().size() << endl;
 
-    cout << d.sum(4,false) << endl;
-
-
-    cout << "FLATTENING IN PLACE" << endl;
-    d.flatten_inplace(1,2,false);
-    cout << d << endl;
+    // cout << d.sum(4,false) << endl;
 
 
-    // cout << simplenet::linear_algebra::reduce(d, {2,3,4,2} ) << endl;
+    // cout << "FLATTENING IN PLACE" << endl;
+    // d.flatten_inplace(1,2,false);
+    // cout << d << endl;
+
+
+    // simplenet::Tensor test_tensor_for_reduce({7,2,2,3,4,2});
+    // vector<int> test_temp = {2,2,4,2};
+    // cout << simplenet::linear_algebra::reduce(test_tensor_for_reduce,test_temp  )<< endl;
 
 }

@@ -48,13 +48,6 @@ The Autodiff works on the
 * Implement reduce_to_shape(Tensor grad_out, target_shape) -> **CURRENT APPROACH NEEDS TESTING**
   * We use the flatten and summation/aggregation to do so - ~~PROBLEM: sumation will change shapes so need to figure out how to do it efficiently~~
 
-
-* **IMPORTANT** Got some feedback from an LLM that said i should rethink backwardop inversion to reductionop as it has too less information
-  *  rethink on whether the BroadCastOp is correctly inverted to ReductionOp  or not in computeBroadcastShape
-
-* Refactor each op’s backward_fn to compute raw grads in out_shape, then call reduce_to_shape into input.grad
-  * **IMPORTANT**: we would need to BASICALLY DECLARE NEW GRAD OPS so that we can pass the order of reduce ops back to the Node class in computational graph
-
 * Rectify Transpose for vector operations as well -> column transpose or row transpose
   * Same needs to modified in multiplication in `autogradient.h`
 
@@ -71,5 +64,15 @@ Another roadblock was Eigen -> it used column major format rather than row major
 Transpose is still a roadblock... when I say transpose I mean n-dim Transpose and not matrix transpose (that is already implemented) as I'm not sure how that works (example would be something like [2,3,4,5,6,7] transposed at dim 0 and dim 3 to get [5,3,4,2,6,7]) -> Im assuming offsets will change and rest should be the same. Need to verify...
 
 
+~~Another roadblock in front of me is the reduction and transpose operations to be applied in the backward passes to take into account the cases for broadcasting operations. I have implemented tranpose, but I need to think about how to segregate ops (addition, subtraction, multiplication) for gradients in Tensor class as we need to pass the shapes to autogradient to do the reduce method to get grads backward.~~
+
+
 ### Current Hurdle
-Another roadblock in front of me is the reduction and transpose operations to be applied in the backward passes to take into account the cases for broadcasting operations. I have implemented tranpose, but I need to think about how to segregate ops (addition, subtraction, multiplication) for gradients in Tensor class as we need to pass the shapes to autogradient to do the reduce method to get grads backward.
+...
+
+
+### Citations [will formalize]
+
+> [1] [Thank you u/brandonpelfrey](https://www.reddit.com/r/algorithms/comments/1naehk1/comment/ndpkcqr/)
+>
+> [2]
