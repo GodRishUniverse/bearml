@@ -41,19 +41,27 @@ namespace simplenet {
                     std::normal_distribution<double> d{0.0,stddev};
 
                     // Case 1: vector or scalar
-
+                    if (t.getShape().size()==1){
+                        for (int i = 0; i < t.getShape()[0]; i++) {
+                            t.set_with_offset(0, 0,i, d(gen));
+                        }
+                    }
                     // Case 2: matrix
-                    ll batches = t.sizeOfTensor();
-                    int rows = t.getShape()[t.getShape().size()-2];
-                    int cols = t.getShape()[t.getShape().size()-1];
-                    batches/= ( rows*cols );
+                    else if (t.getShape().size()>=2){
+                        ll batches = t.sizeOfTensor();
+                        int rows = t.getShape()[t.getShape().size()-2];
+                        int cols = t.getShape()[t.getShape().size()-1];
+                        batches/= ( rows*cols );
 
-                    for (ll b = 0; b <batches; b++){
-                        for (int i = 0; i < rows; i++) {
-                            for (int j = 0; j < cols; j++) {
-                                t.set_with_offset(b, i,j, d(gen));
+                        for (ll b = 0; b <batches; b++){
+                            for (int i = 0; i < rows; i++) {
+                                for (int j = 0; j < cols; j++) {
+                                    t.set_with_offset(b, i,j, d(gen));
+                                }
                             }
                         }
+                    }else{
+                        std::invalid_argument("Not a proper Shape -> Should not reach here");
                     }
                 }
 
