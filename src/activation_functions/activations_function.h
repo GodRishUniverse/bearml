@@ -8,6 +8,8 @@
 #include "autograd/autogradient.h"
 #include "tensor/Tensor.h"
 
+using ll = long long;
+
 #ifndef ACTIVATION_FUNCTIONS
 namespace simplenet {
 
@@ -21,6 +23,8 @@ namespace simplenet {
 
                 // we will assume at least one input - may change it
                 virtual simplenet::Node<Tensor> forward(std::shared_ptr<simplenet::Node<Tensor>> x) = 0; // pure virtual function
+
+                virtual Tensor get_detached_value(Tensor& t) = 0;
 
                 virtual void initialize_parameters() {}
 
@@ -36,13 +40,21 @@ namespace simplenet {
 
                     std::normal_distribution<double> d{0.0,stddev};
 
-                    Matrix<T> m(inrows, incols);
-                    for (int i = 0; i < inrows; i++) {
-                        for (int j = 0; j < incols; j++) {
-                            m.set(i, j, static_cast<T>(d(gen)));
+                    // Case 1: vector or scalar
+
+                    // Case 2: matrix
+                    ll batches = t.sizeOfTensor();
+                    int rows = t.getShape()[t.getShape().size()-2];
+                    int cols = t.getShape()[t.getShape().size()-1];
+                    batches/= ( rows*cols );
+
+                    for (ll b = 0; b <batches; b++){
+                        for (int i = 0; i < rows; i++) {
+                            for (int j = 0; j < cols; j++) {
+                                t.set_with_offset(b, i,j, d(gen));
+                            }
                         }
                     }
-                    return m;
                 }
 
                 // He initialization -> TODO: will implement
@@ -71,7 +83,11 @@ namespace simplenet {
 
                 // we override this from Module class
                 std::shared_ptr<simplenet::Node<Tensor>> forward(std::shared_ptr<simplenet::Node<Tensor>> x) override{
-                    return x * W + B;
+                    return x * W + B; // convert input shape to output shape
+                }
+
+                Tensor get_detached_value(Tensor& t)override {
+                    return (t*W +B)->val;
                 }
 
                 // we will perform Xavier Init here
@@ -79,8 +95,6 @@ namespace simplenet {
                     // default initialization is always 0 as we already know as that is what our Tensor class does
                     if (this->initializaion_method == "Zero") {}
                     else if (this->initialization_method == "Xavier") this->xavier_init(W->val, input_size, output_size);
-
-
                     // we dont initialize the bias Tensor at the moment
                 };
 

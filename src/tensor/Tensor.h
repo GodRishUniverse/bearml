@@ -288,6 +288,12 @@ namespace simplenet{
                 data[off] = val;
             }
 
+            // TODO: add test to check offset values
+            void set_with_offset(ll offset, int row, int col, double val){
+                // assumes offset is passed correctly at the moment
+                data[offset+row*(this->shape[this->shape.size()-1])+col] = val;
+            }
+
             // helper function
             void printShape() const {
                 std::cout << "Shape: [";
