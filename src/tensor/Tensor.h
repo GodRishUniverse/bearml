@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
@@ -664,7 +665,7 @@ namespace simplenet{
                 }
 
                 // CASE 5: batched batched matmul
-                if (a_shape.size() > 2 && b_shape.size() > 2) {
+                if (a_shape.size() >= 2 && b_shape.size() >= 2) {
                     return linear_algebra::batchedMatMul(a, b);
                 }
 
@@ -706,6 +707,17 @@ namespace simplenet{
                 return !(a==b);
             }
 
+
+
+            //----------------------------------------exp------------------------------------------------------
+            static Tensor exp(Tensor& t){
+                // std::cout <<"EXPONENTIATED" <<std::endl;
+                Tensor  a = t; // copied
+                for (ll i =0; i<t.sizeOfTensor(); i++){
+                    a.data[i] = std::exp(t.data[i]);
+                }
+                return a;
+            }
 
 
             //

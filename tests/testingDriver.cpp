@@ -1,6 +1,7 @@
 #include "tensor/Tensor.h"
 #include "matrix/Matrix.h"
 #include "autograd/autogradient.h"
+#include "activation_functions/modules.h"
 
 #include <iostream>
 #include <vector>
@@ -195,10 +196,24 @@ int main() {
     // cout << "FLATTENING IN PLACE" << endl;
     // d.flatten_inplace(1,2,false);
     // cout << d << endl;
+    //
+
 
 
     // simplenet::Tensor test_tensor_for_reduce({7,2,2,3,4,2});
     // vector<int> test_temp = {2,2,4,2};
     // cout << simplenet::linear_algebra::reduce(test_tensor_for_reduce,test_temp  )<< endl;
+
+    simplenet::Tensor tester({1,2,4,5});
+    tester.linspace(1,10);
+
+
+    shared_ptr<simplenet::Node<simplenet::Tensor>> node = simplenet::Node<simplenet::Tensor>::make_node(tester);
+
+    // simplenet::neural_network::Linear layer1 = simplenet::neural_network::Linear(5, 10);
+    // cout << "after linear layer" << endl;
+    // cout << layer1(node)->val << endl;
+
+    cout<<exponent(node)->val <<endl;
 
 }

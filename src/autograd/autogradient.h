@@ -7,6 +7,7 @@
 #include <functional>
 #include <map>
 #include <type_traits>
+#include <iostream>
 
 
 #include "tensor/Tensor.h"
@@ -186,19 +187,37 @@ namespace simplenet{
         }
 
         // unary operator: e^x
-        friend std::shared_ptr<Node<T>> exp(std::shared_ptr<Node<T>> a){
-            //TODO: will need to use template specialization for Tensors and Matrices
-            std::shared_ptr<Node<T>> node  = make_node(exp(a->val)); // TODO: implement exp for tensors and matrices
-            //  c = exp(a)     =>    dc/da = exp(a)
+        friend std::shared_ptr<Node<T>> exponent(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                // std::cout <<"EXPONENTIATED TENSOR NODE" <<std::endl;
 
-            node->inputs = {a};
-            a->outputs.push_back(node);
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::exp(a->val)); // TODO: implement exp for tensors and matrices
+                //  c = exp(a)     =>    dc/da = exp(a)
 
-            node->backward_fn = [a, node]() {
-                a->grad += node->grad * exp(a->val);  //  dc/da = exp(a)
-            };
+                node->inputs = {a};
+                a->outputs.push_back(node);
 
-            return node;
+                node->backward_fn = [a, node]() {
+                    std::vector<int> a_shape = a->grad.getShape();
+                    a->grad +=  simplenet::linear_algebra::reduce(node->grad * node->val, a_shape);  //  dc/da = exp(a)
+                };
+
+                return node;
+            }else{
+                std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl;
+                std::shared_ptr<Node<T>> node  = make_node(exp(a->val)); // TODO: implement exp for tensors and matrices
+                //  c = exp(a)     =>    dc/da = exp(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                node->backward_fn = [a, node]() {
+                    a->grad += node->grad * node->val;  //  dc/da = exp(a)
+                };
+
+                return node;
+            }
+
         }
 
     };
