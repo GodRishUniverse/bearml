@@ -27,7 +27,9 @@ The Autodiff works on the
 * flattening operations were extended to match how Pytorch flatten works with keepdims and start and end dimension specifications
 * refactored code
 * transpose
-* reduce_shape - > NEED TO TEST if it works or not
+* reduce_shape - > works
+* Linear layer
+* exp function and its backward process
 
 ## What do we need to complete
 
