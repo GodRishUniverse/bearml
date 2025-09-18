@@ -1,10 +1,6 @@
 #include "autogradient.h"
 #include "tensor/Tensor.h"
 
-   // TODO: implement the reverse topological order traversal
-   // TODO: implement the gradient function
-   // TODO: implement the backward pass (which is the gradient function) - used in the autogradient namespace
-   // TODO: fix for MATRIX AND TENSOR Types
 using ll = long long;
 namespace simplenet {
     namespace autogradient{

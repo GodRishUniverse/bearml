@@ -23,9 +23,8 @@ using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eig
 
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
 // TODO: element-wise divide
-// TODO: allow float values as well (half precision) - template specialize equal to
-// TODO MAY CHANGE ACTIVATION FUNCTIONS IMPLEMENTATION - they need double* data
-
+// TODO: allow float values as well (32-bit precision) - template specialize equal to
+// TODO: do max and min operations -> comparing doubles and same size Tensors
 
 
 
@@ -709,7 +708,7 @@ namespace simplenet{
 
 
 
-            //----------------------------------------exp------------------------------------------------------
+            //----------------------------------------Exponential------------------------------------------------------
             static Tensor exp(Tensor& t){
                 // std::cout <<"EXPONENTIATED" <<std::endl;
                 Tensor  a = t; // copied
@@ -720,7 +719,56 @@ namespace simplenet{
             }
 
 
-            //
+            //----------------------------------------Max and Min------------------------------------------------------
+            static Tensor max(Tensor& t, double val){
+                // std::cout <<"MAX" <<std::endl;
+                Tensor  a = t; // copied
+                for (ll i =0; i<t.sizeOfTensor(); i++){
+                    a.data[i] = max({t.data[i], val});
+                }
+                return a;
+            }
+
+            static Tensor max(double val, Tensor& t){
+                return Tensor::max(t,val);
+            }
+
+            static Tensor max(Tensor& t, Tensor& s){
+                // std::cout <<"MAX" <<std::endl;
+                if (t.getShape() != s.getShape()){
+                    throw std::invalid_argument("Shapes dont match for max operation");
+                }
+                Tensor  a = t; // copied
+                for (ll i =0; i<t.sizeOfTensor(); i++){
+                    a.data[i] = max({t.data[i], s.data[i]});
+                }
+                return a;
+            }
+
+            static Tensor min(Tensor& t, double val){
+                // std::cout <<"MIN" <<std::endl;
+                Tensor  a = t; // copied
+                for (ll i =0; i<t.sizeOfTensor(); i++){
+                    a.data[i] = min({t.data[i], val});
+                }
+                return a;
+            }
+
+            static Tensor min(double val, Tensor& t){
+                return Tensor::min(t,val);
+            }
+
+            static Tensor min(Tensor& t, Tensor& s){
+                // std::cout <<"MIN" <<std::endl;
+                if (t.getShape() != s.getShape()){
+                    throw std::invalid_argument("Shapes dont match for min operation");
+                }
+                Tensor  a = t; // copied
+                for (ll i =0; i<t.sizeOfTensor(); i++){
+                    a.data[i] = min({t.data[i], s.data[i]});
+                }
+                return a;
+            }
 
 
             // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};

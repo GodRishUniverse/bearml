@@ -53,7 +53,6 @@ namespace simplenet{
     */
 
 
-    // TODO: implement the computational graph elements - binary and unary operations
 
    template<typename T> class  Node;
    // TODO: fix for MATRIX AND TENSOR Types - probably will need to provide template specializations
@@ -191,7 +190,7 @@ namespace simplenet{
             if constexpr (std::is_same<T, simplenet::Tensor>::value){
                 // std::cout <<"EXPONENTIATED TENSOR NODE" <<std::endl;
 
-                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::exp(a->val)); // TODO: implement exp for tensors and matrices
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::exp(a->val));
                 //  c = exp(a)     =>    dc/da = exp(a)
 
                 node->inputs = {a};
@@ -204,7 +203,7 @@ namespace simplenet{
 
                 return node;
             }else{
-                std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl;
+                std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
                 std::shared_ptr<Node<T>> node  = make_node(exp(a->val)); // TODO: implement exp for tensors and matrices
                 //  c = exp(a)     =>    dc/da = exp(a)
 
@@ -220,6 +219,27 @@ namespace simplenet{
 
         }
 
+        // unary operator: transpose
+        friend std::shared_ptr<Node<T>> transpose(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                std::shared_ptr<Node<T>> node  = make_node(a->val.transpose());
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                node->backward_fn = [a, node]() {
+                    a->grad +=  node->grad.transpose();
+                };
+
+                return node;
+            }
+
+            // we dont do anything for the doubles
+            return a; // unchanged
+        }
+
+
+
     };
 
     namespace autogradient {
@@ -227,14 +247,16 @@ namespace simplenet{
         T backward(std::shared_ptr<simplenet::Node<T>> end_node, bool accumulate = false);
     }
 
-
-   // Edges will be operation types on two different Nodes (also same node as well)
-   // - need to think how gradients will change with some different operations like Permute
-    // ANSWER to above question is:
-    // Permuting a tensor changes its shape but doesn't affect the underlying data or its relationships to
-    // other tensors in the computation graph. Consequently, the gradient of a permuted tensor is simply the permutation of the original gradient,
-    // with the same operations applied to the gradient's axes as were applied to the tensor's axes.
-
-
 }
 #endif
+
+
+
+
+// OLD NOTES
+// Edges will be operation types on two different Nodes (also same node as well)
+// - need to think how gradients will change with some different operations like Permute
+// ANSWER to above question is:
+// Permuting a tensor changes its shape but doesn't affect the underlying data or its relationships to
+// other tensors in the computation graph. Consequently, the gradient of a permuted tensor is simply the permutation of the original gradient,
+// with the same operations applied to the gradient's axes as were applied to the tensor's axes.
