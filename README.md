@@ -49,13 +49,13 @@ The Autodiff works on the
 
 * Implement Autodiff for activation functions
 
-* Implement reduce_to_shape(Tensor grad_out, target_shape) -> **CURRENT APPROACH NEEDS FURTHER TESTING**
-  * We use the flatten and summation/aggregation to do so - ~~PROBLEM: sumation will change shapes so need to figure out how to do it efficiently~~
+* Make Sequential Class to stack Classes in Neural Network
+
+* Implement autodiff for
 
 * Rectify Transpose for vector operations as well -> column transpose or row transpose
   * Same needs to modified in multiplication in `autogradient.h`
 
-* **FIX the `autogradient.h` file to have reduce operations everywhere**.
 ## Roadblocks I faced
 
 So one of the first roadblocks that I faced is that (I have spent months on this - not completely but relatively speaking) implementing GEMM on the CPU without a prebaked library is hard.
@@ -69,15 +69,22 @@ Another roadblock was Eigen -> it used column major format rather than row major
 Transpose is still a roadblock... when I say transpose I mean n-dim Transpose and not matrix transpose (that is already implemented) as I'm not sure how that works (example would be something like [2,3,4,5,6,7] transposed at dim 0 and dim 3 to get [5,3,4,2,6,7]) -> Im assuming offsets will change and rest should be the same. Need to verify...
 
 
-~~Another roadblock in front of me is the reduction and transpose operations to be applied in the backward passes to take into account the cases for broadcasting operations. I have implemented tranpose, but I need to think about how to segregate ops (addition, subtraction, multiplication) for gradients in Tensor class as we need to pass the shapes to autogradient to do the reduce method to get grads backward.~~
+~~Another roadblock in front of me is the reduction and transpose operations to be applied in the backward passes to take into account the cases for broadcasting operations. I have implemented tranpose, but I need to think about how to segregate ops (addition, subtraction, multiplication) for gradients in Tensor class as we need to pass the shapes to autogradient to do the reduce method to get grads backward.~~ -> Just thinking in terms of what braodcast does helped me - I don't know why it took me so long (my summation function was all that was needed)
 
 
 ### Current Hurdle
-...
+Implementing autodiff and backward ops for modulus and max,min functions
 
+$$ max(f(x), g(x)) = \frac{f(x) + g(x) - |f(x)-g(x)|}{2} $$
+
+... need to find out if min also has a format like this
+
+also need to think about subgradients and cases of discontinuities (I think PyTorch just puts 0 in these cases but need to be sure)
 
 ### Citations [will formalize]
 
 > [1] [Thank you u/brandonpelfrey](https://www.reddit.com/r/algorithms/comments/1naehk1/comment/ndpkcqr/)
 >
-> [2]
+> [2] [max() derivative formula](https://math.stackexchange.com/questions/368432/derivative-of-max-function)
+>
+>
