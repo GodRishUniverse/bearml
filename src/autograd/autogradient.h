@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <stdexcept>
 #include <typeinfo>
 #include <vector>
 #include <memory>
@@ -236,6 +237,40 @@ namespace simplenet{
 
             // we dont do anything for the doubles
             return a; // unchanged
+        }
+
+        // TODO: test and also add ops for when the max is double values
+        friend std::shared_ptr<Node<T>> max(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            // SHAPES HAVE TO BE THE SAME
+            if (a->val.getShape() != b->val.getShape()){
+                throw std::invalid_argument("Shapes incompatible for max operation to be backpropagated");
+            }
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::max(a->val, b->val));
+                node->inputs = {a,b};
+                a->outputs.push_back(node);
+                b->outputs.push_back(node);
+
+                node->backward_fn = [a ,b, node]() {
+                    // Create masks for a and b
+                    // like ->
+                    //  Tensor a_mask = (a->val >= b->val).cast<double>(); // 1 where a >= b, 0 elsewhere
+                    //  Tensor b_mask = (b->val >= a->val).cast<double>();  // 1 where b >= a, 0 elsewhere
+                    simplenet::Tensor a_mask = simplenet::Tensor::mask_of_greater_than_equal_to(a,b);
+                    simplenet::Tensor b_mask = simplenet::Tensor::mask_of_greater_than_equal_to(b,a);
+
+                    // Need to figure out how the multiplication of masks will be done - most probably hadamard
+                    a->grad +=  simplenet::linear_algebra::hadamard(node->grad, a_mask);
+                    b->grad +=  simplenet::linear_algebra::hadamard(node->grad, b_mask);
+
+                };
+
+                return node;
+            }else{
+              // To Implement
+            }
+
         }
 
 
