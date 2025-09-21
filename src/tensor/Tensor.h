@@ -20,7 +20,7 @@
 using ll = long long; // can also use int_fast64_t
 using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
-#define MIN_DIFF =  1e-12;
+
 
 
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
@@ -38,13 +38,22 @@ namespace simplenet{
     namespace linear_algebra {
        Tensor batchedMatMul(const Tensor& a, const Tensor& b); // Forward declare the friend function
        Tensor reduce(const Tensor& a, std::vector<int>& afterShape); // forward declare for the friend reduce
+       Tensor hadamard(const Tensor &a, const Tensor &other);
+
+       Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other);
+       Tensor mask_of_greater_than(const Tensor& first, const Tensor& other);
+       Tensor mask_of_less_than_equal_to(const Tensor& first, const Tensor& other);
+       Tensor mask_of_less_than(const Tensor& first, const Tensor& other);
+       Tensor mask_of_equal_to(const Tensor& first, const Tensor& other);
+
+
     }
 
     class Tensor {
 
         // ==============================PRIVATE========================================
         private:
-
+            static constexpr double MIN_DIFF = 1e-12;
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
 
@@ -561,17 +570,7 @@ namespace simplenet{
 
 
             // Hadamard product
-            static Tensor hadamard(const Tensor &a, const Tensor &other) {
-                if (a.shape != other.shape){
-                    throw std::invalid_argument("Tensors must have the same shape");
-                }
-
-                Tensor result(a.shape);
-                for (ll i = 0; i < a.sizeOfTensor(); i++){
-                    result.data[i] = a.data[i] * other.data[i];
-                }
-                return result;
-            }
+            friend Tensor linear_algebra::hadamard(const Tensor &a, const Tensor &other);
 
 
             // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
@@ -694,7 +693,7 @@ namespace simplenet{
                 if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
                     // NOTE: std::abs is better for doubles
                     for (size_t i = 0; i<a.sizeOfTensor(); i++){
-                        if (std::abs(a.data[i]-b.data[i]) >= MIN_DIFF){ // check if the error is greater than 10^-15
+                        if ((std::abs(a.data[i]-b.data[i])) >= Tensor::MIN_DIFF){ // check if the error is greater than 10^-15
                             return false;
                         }
                     }
@@ -710,48 +709,11 @@ namespace simplenet{
 
 
             // -----------------------------------------------Operations helpful in mask generations------------------
-            static Tensor mask_of_greater_than_equal_to(const Tensor& other) {
-                Tensor result(this->shape);
-
-                for (size_t i = 0; i < sizeOfTensor(); i++) {
-                    result.data[i] = (this->data[i] >= other.data[i]) ? 1.0 : 0.0;
-                }
-                return result;
-            }
-
-            static Tensor mask_of_greater_than(const Tensor& other) {
-                Tensor result(this->shape);
-                for (size_t i = 0; i < sizeOfTensor(); ++i) {
-                    result.data[i] = (this->data[i] > other.data[i]) ? 1.0: 0.0;
-                }
-                return result;
-            }
-
-            static Tensor mask_of_less_than_equal_to(const Tensor& other) {
-                Tensor result(this->shape);
-
-                for (size_t i = 0; i < sizeOfTensor(); i++) {
-                    result.data[i] = (this->data[i] <= other.data[i]) ? 1.0 : 0.0;
-                }
-                return result;
-            }
-
-            static Tensor mask_of_less_than(const Tensor& other) {
-                Tensor result(this->shape);
-                for (size_t i = 0; i < sizeOfTensor(); ++i) {
-                    result.data[i] = (this->data[i] < other.data[i]) ? 1.0: 0.0;
-                }
-                return result;
-            }
-
-            static Tensor mask_of_equal_to(const Tensor& other){
-                Tensor result(this->shape);
-                for (size_t i = 0; i < sizeOfTensor()); ++i) {
-                    result.data[i] = (std::abs(this->data[i] - other.data[i]) < MIN_DIFF) ? 1.0 : 0.0;
-                }
-                return result;
-            }
-
+            friend Tensor linear_algebra::mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other);
+            friend Tensor linear_algebra::mask_of_greater_than(const Tensor& first, const Tensor& other);
+            friend Tensor linear_algebra::mask_of_less_than_equal_to(const Tensor& first, const Tensor& other);
+            friend Tensor linear_algebra::mask_of_less_than(const Tensor& first, const Tensor& other);
+            friend Tensor linear_algebra::mask_of_equal_to(const Tensor& first, const Tensor& other);
 
             //----------------------------------------Exponential------------------------------------------------------
             static Tensor exp(Tensor& t){
@@ -769,7 +731,7 @@ namespace simplenet{
                 // std::cout <<"MAX" <<std::endl;
                 Tensor  a = t; // copied
                 for (ll i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = max({t.data[i], val});
+                    a.data[i] = std::max({t.data[i], val});
                 }
                 return a;
             }
@@ -785,7 +747,7 @@ namespace simplenet{
                 }
                 Tensor  a = t; // copied
                 for (ll i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = max({t.data[i], s.data[i]});
+                    a.data[i] = std::max({t.data[i], s.data[i]});
                 }
                 return a;
             }
@@ -794,7 +756,7 @@ namespace simplenet{
                 // std::cout <<"MIN" <<std::endl;
                 Tensor  a = t; // copied
                 for (ll i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = min({t.data[i], val});
+                    a.data[i] = std::min({t.data[i], val});
                 }
                 return a;
             }
@@ -810,7 +772,7 @@ namespace simplenet{
                 }
                 Tensor  a = t; // copied
                 for (ll i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = min({t.data[i], s.data[i]});
+                    a.data[i] = std::min({t.data[i], s.data[i]});
                 }
                 return a;
             }

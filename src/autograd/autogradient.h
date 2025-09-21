@@ -97,16 +97,28 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                node->backward_fn = [a, b, node](){
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_b = b;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_b, weak_node](){
+
+                    auto a_locked = weak_a.lock();
+                    auto b_locked = weak_b.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if (!a_locked || !b_locked || !node_locked) {
+                        return; // One of the nodes was destroyed
+                    }
                     if (std::is_same<T, simplenet::Tensor>::value){
-                        std::vector<int> temp_a =  a->grad.getShape();
-                        std::vector<int> temp_b = b->grad.getShape();
-                        a->grad += simplenet::linear_algebra::reduce(node->grad, temp_a);  // dc/da = b
-                        b->grad += simplenet::linear_algebra::reduce(node->grad, temp_b);  // dc/db = a
+                        std::vector<int> temp_a =  a_locked->grad.getShape();
+                        std::vector<int> temp_b = b_locked->grad.getShape();
+                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_a);  // dc/da = b
+                        b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_b);  // dc/db = a
                     }else{
                         // case for doubles
-                        a->grad += node->grad;  // dc/da = b
-                        b->grad += node->grad;  // dc/db = a
+                        a_locked->grad += node_locked->grad;  // dc/da = b
+                        b_locked->grad += node_locked->grad;  // dc/db = a
                     }
 
                 };
@@ -124,17 +136,31 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                node->backward_fn = [a, b, node](){
-                    if (std::is_same<T, simplenet::Tensor>::value){
-                        std::vector<int> temp_a =  a->grad.getShape();
-                        std::vector<int> temp_b = b->grad.getShape();
 
-                        a->grad += simplenet::linear_algebra::reduce(node->grad,temp_a);  // dc/da = 1
-                        b->grad += simplenet::linear_algebra::reduce(node->grad * -1.0,temp_b);  // dc/db = -1
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_b = b;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+
+                node->backward_fn = [weak_a, weak_b, weak_node](){
+                    auto a_locked = weak_a.lock();
+                    auto b_locked = weak_b.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if (!a_locked || !b_locked || !node_locked) {
+                        return; // One of the nodes was destroyed
+                    }
+
+                    if (std::is_same<T, simplenet::Tensor>::value){
+                        std::vector<int> temp_a =  a_locked->grad.getShape();
+                        std::vector<int> temp_b = b_locked->grad.getShape();
+
+                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad,temp_a);  // dc/da = 1
+                        b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * -1.0,temp_b);  // dc/db = -1
                     }else{
                         // case for doubles
-                        a->grad += node->grad*1.0;  // dc/da = 1
-                        b->grad += node->grad*-1.0;  // dc/db = -1
+                        a_locked->grad += node_locked->grad*1.0;  // dc/da = 1
+                        b_locked->grad += node_locked->grad*-1.0;  // dc/db = -1
                     }
                 };
 
@@ -151,16 +177,30 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                node->backward_fn = [a, b, node](){
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_b = b;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_b, weak_node](){
+
+                    auto a_locked = weak_a.lock();
+                    auto b_locked = weak_b.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if (!a_locked || !b_locked || !node_locked) {
+                        return; // One of the nodes was destroyed
+                    }
+
                     if (std::is_same<T, simplenet::Tensor>::value){
-                        std::vector<int> temp_a =  a->grad.getShape();
-                        std::vector<int> temp_b = b->grad.getShape();
-                        a->grad += simplenet::linear_algebra::reduce(node->grad * b->val.transpose(),temp_a); // grad_a = grad * b^T
-                        b->grad += simplenet::linear_algebra::reduce(a->val.transpose() * node->grad, temp_b); // grad_b = a^T * grad
+                        std::vector<int> temp_a =  a_locked->grad.getShape();
+                        std::vector<int> temp_b = b_locked->grad.getShape();
+                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * b_locked->val.transpose(),temp_a); // grad_a = grad * b^T
+                        b_locked->grad += simplenet::linear_algebra::reduce(a_locked->val.transpose() * node_locked->grad, temp_b); // grad_b = a^T * grad
                     }else{
                         // case for doubles
-                        a->grad += node->grad * b->val; // grad_a = grad * b^T
-                        b->grad += a->val * node->grad; // grad_b = a^T * grad
+                        a_locked->grad += node_locked->grad * b_locked->val; // grad_a = grad * b^T
+                        b_locked->grad += a_locked->val * node_locked->grad; // grad_b = a^T * grad
                     }
                 };
                 return node;
@@ -197,9 +237,18 @@ namespace simplenet{
                 node->inputs = {a};
                 a->outputs.push_back(node);
 
-                node->backward_fn = [a, node]() {
-                    std::vector<int> a_shape = a->grad.getShape();
-                    a->grad +=  simplenet::linear_algebra::reduce(node->grad * node->val, a_shape);  //  dc/da = exp(a)
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    std::vector<int> a_shape = a_locked->grad.getShape();
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * node_locked->val, a_shape);  //  dc/da = exp(a)
                 };
 
                 return node;
@@ -211,8 +260,18 @@ namespace simplenet{
                 node->inputs = {a};
                 a->outputs.push_back(node);
 
-                node->backward_fn = [a, node]() {
-                    a->grad += node->grad * node->val;  //  dc/da = exp(a)
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    a_locked->grad += node_locked->grad * node_locked->val;  //  dc/da = exp(a)
                 };
 
                 return node;
@@ -228,8 +287,14 @@ namespace simplenet{
                 node->inputs = {a};
                 a->outputs.push_back(node);
 
-                node->backward_fn = [a, node]() {
-                    a->grad +=  node->grad.transpose();
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+                    a_locked->grad +=  node_locked->grad.transpose();
                 };
 
                 return node;
@@ -252,17 +317,26 @@ namespace simplenet{
                 a->outputs.push_back(node);
                 b->outputs.push_back(node);
 
-                node->backward_fn = [a ,b, node]() {
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+                std::weak_ptr<Node<T>> weak_b = b;
+
+                node->backward_fn = [weak_a ,weak_b, weak_node]() {
+
+                    auto a_locked = weak_a.lock();
+                    auto b_locked = weak_b.lock();
+                    auto node_locked = weak_node.lock();
+
                     // Create masks for a and b
                     // like ->
                     //  Tensor a_mask = (a->val >= b->val).cast<double>(); // 1 where a >= b, 0 elsewhere
                     //  Tensor b_mask = (b->val >= a->val).cast<double>();  // 1 where b >= a, 0 elsewhere
-                    simplenet::Tensor a_mask = simplenet::Tensor::mask_of_greater_than_equal_to(a,b);
-                    simplenet::Tensor b_mask = simplenet::Tensor::mask_of_greater_than_equal_to(b,a);
+                    simplenet::Tensor a_mask = simplenet::linear_algebra::mask_of_greater_than_equal_to(a_locked->val,b_locked->val);
+                    simplenet::Tensor b_mask = simplenet::linear_algebra::mask_of_greater_than_equal_to(b_locked->val,a_locked->val);
 
                     // Need to figure out how the multiplication of masks will be done - most probably hadamard
-                    a->grad +=  simplenet::linear_algebra::hadamard(node->grad, a_mask);
-                    b->grad +=  simplenet::linear_algebra::hadamard(node->grad, b_mask);
+                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, a_mask);
+                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, b_mask);
 
                 };
 

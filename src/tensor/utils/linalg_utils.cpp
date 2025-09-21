@@ -131,6 +131,62 @@ namespace simplenet {
             return b;
         }
 
+        Tensor hadamard(const Tensor &a, const Tensor &other) {
+            if (a.shape != other.shape){
+                throw std::invalid_argument("Tensors must have the same shape");
+            }
+
+            Tensor result(a.shape);
+            for (ll i = 0; i < a.sizeOfTensor(); i++){
+                result.data[i] = a.data[i] * other.data[i];
+            }
+            return result;
+        }
+
+
+        // -----------------------------------------------Operations helpful in mask generations------------------
+        Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other) {
+            Tensor result(first.getShape());
+
+            for (size_t i = 0; i < first.sizeOfTensor(); i++) {
+                result.data[i] = (first.data[i] >= other.data[i]) ? 1.0 : 0.0;
+            }
+            return result;
+        }
+
+        Tensor mask_of_greater_than(const Tensor& first, const Tensor& other) {
+            Tensor result(first.getShape());
+            for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
+                result.data[i] = (first.data[i] > other.data[i]) ? 1.0: 0.0;
+            }
+            return result;
+        }
+
+        Tensor mask_of_less_than_equal_to(const Tensor& first, const Tensor& other) {
+            Tensor result(first.getShape());
+
+            for (size_t i = 0; i < first.sizeOfTensor(); i++) {
+                result.data[i] = (first.data[i] <= other.data[i]) ? 1.0 : 0.0;
+            }
+            return result;
+        }
+
+        Tensor mask_of_less_than(const Tensor& first, const Tensor& other) {
+            Tensor result(first.getShape());
+            for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
+                result.data[i] = (first.data[i] < other.data[i]) ? 1.0: 0.0;
+            }
+            return result;
+        }
+
+        Tensor mask_of_equal_to(const Tensor& first, const Tensor& other){
+            Tensor result(first.getShape());
+            for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
+                result.data[i] = (std::abs(first.data[i] - other.data[i]) < 1e-12) ? 1.0 : 0.0;
+            }
+            return result;
+        }
+
 
 
 

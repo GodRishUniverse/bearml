@@ -9,6 +9,7 @@ namespace simplenet {
        namespace{
           template <typename T>
           std::vector<std::shared_ptr<simplenet::Node<T>>> topological_sort(std::shared_ptr<simplenet::Node<T>> end_node){
+
              std::map<std::shared_ptr<simplenet::Node<T>>, ll> child_counts;
              std::vector<std::shared_ptr<simplenet::Node<T>>> stack;
              stack.push_back(end_node);
@@ -31,6 +32,9 @@ namespace simplenet {
                 std::shared_ptr<simplenet::Node<T>> node = childless_nodes[childless_nodes.size()-1]; childless_nodes.pop_back();
                 sorted.push_back(node); // like python yield
                 for (auto parent  : node->inputs){
+
+                   if (!parent) continue; // skip null
+
                    if (child_counts[parent] == 1){
                       childless_nodes.push_back(parent);
                    }else{
