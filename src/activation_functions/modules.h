@@ -144,6 +144,54 @@ namespace simplenet {
                 int get_in_shape() const { return input_size; }
                 int get_out_shape() const { return output_size; }
         };
+
+        // inherits from module -> need to test it
+        class ReLU : public Module{
+            public:
+                ReLU(int random_seed =42) : Module(random_seed){
+
+                }
+
+                std::shared_ptr<simplenet::Node<Tensor>> operator()(Tensor&x) override {
+                    return this->forward(x);
+                }
+
+                std::shared_ptr<simplenet::Node<Tensor>> operator()(std::shared_ptr<simplenet::Node<Tensor>> x) override {
+                    return this->forward(x);
+                }
+
+                // we override this from Module class
+                std::shared_ptr<simplenet::Node<Tensor>> forward(std::shared_ptr<simplenet::Node<Tensor>> x) override{
+                    std::vector<int> temp_shape = x->val.getShape();
+                    Tensor temp_zero(temp_shape);
+                    std::shared_ptr<simplenet::Node<Tensor>> mask_node = simplenet::Node<simplenet::Tensor>::make_node(temp_zero);
+                    return max(x, mask_node);
+                }
+
+                std::shared_ptr<simplenet::Node<Tensor>> forward(Tensor& x) override{
+                    std::vector<int> temp_shape = x.getShape();
+                    Tensor temp_zero(temp_shape);
+                    std::shared_ptr<simplenet::Node<Tensor>> mask_node = simplenet::Node<simplenet::Tensor>::make_node(temp_zero);
+                    std::shared_ptr<simplenet::Node<Tensor>> node_x = simplenet::Node<simplenet::Tensor>::make_node(x);
+                    return max(node_x, mask_node);
+                }
+
+                Tensor get_detached_value(Tensor& t)override {
+                    std::vector<int> temp_shape = t.getShape();
+                    Tensor temp_zero(temp_shape);
+                    std::shared_ptr<simplenet::Node<Tensor>> mask_node = simplenet::Node<simplenet::Tensor>::make_node(temp_zero);
+                    std::shared_ptr<simplenet::Node<Tensor>> node_t = simplenet::Node<simplenet::Tensor>::make_node(t);
+                    return (max(node_t, mask_node))->val;
+                }
+
+                Tensor get_detached_value(std::shared_ptr<simplenet::Node<Tensor>> t)override {
+                    std::vector<int> temp_shape = t->val.getShape();
+                    Tensor temp_zero(temp_shape);
+                    std::shared_ptr<simplenet::Node<Tensor>> mask_node = simplenet::Node<simplenet::Tensor>::make_node(temp_zero);
+                    return (max(t, mask_node))->val;
+                }
+
+        };
     }
 
 }
