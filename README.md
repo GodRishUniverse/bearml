@@ -30,6 +30,7 @@ The Autodiff works on the
 * reduce_shape - > works
 * Linear layer
 * exp function and its backward process
+* ReLU layer
 
 ## What do we need to complete
 

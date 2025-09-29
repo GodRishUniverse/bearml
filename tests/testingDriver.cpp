@@ -210,10 +210,18 @@ int main() {
 
     shared_ptr<simplenet::Node<simplenet::Tensor>> node = simplenet::Node<simplenet::Tensor>::make_node(tester);
 
-    // simplenet::neural_network::Linear layer1 = simplenet::neural_network::Linear(5, 10);
-    // cout << "after linear layer" << endl;
-    // cout << layer1(node)->val << endl;
+    simplenet::neural_network::Linear layer1 = simplenet::neural_network::Linear(5, 10);
+    cout << "after linear layer" << endl;
 
-    cout<<exponent(node)->val <<endl;
+    auto vvv = layer1(node);
+
+
+    simplenet::neural_network::ReLU layer_relu = simplenet::neural_network::ReLU();
+    cout << "after relu layer" << endl;
+
+    auto vvvv= layer_relu(vvv);
+
+    simplenet::autogradient::backward(vvvv);
+    cout << vvv->val << endl;
 
 }
