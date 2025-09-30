@@ -52,7 +52,7 @@ The Autodiff works on the
 
 * Make Sequential Class to stack Classes in Neural Network
 
-* Implement autodiff for
+* Implement SGD and Adam
 
 * Rectify Transpose for vector operations as well -> column transpose or row transpose
   * Same needs to modified in multiplication in `autogradient.h`
