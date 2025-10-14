@@ -90,6 +90,12 @@ also need to think about subgradients and cases of discontinuities (I think PyTo
 ### Current Hurdle
 ...
 
+
+### Open to Contributions
+
+This repository is open to contribute to. Please make an issue before submitting a MR.
+
+
 ### Citations [will formalize]
 
 > [1] [Thank you u/brandonpelfrey](https://www.reddit.com/r/algorithms/comments/1naehk1/comment/ndpkcqr/)
