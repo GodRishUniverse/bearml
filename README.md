@@ -31,6 +31,8 @@ The Autodiff works on the
 * Linear layer
 * exp function and its backward process
 * ReLU layer
+* nn.Module like abstract class for model creation
+
 
 ## What do we need to complete
 
@@ -52,6 +54,8 @@ The Autodiff works on the
 
 * Make Sequential Class to stack Classes in Neural Network
 
+* Implement loss functions
+
 * Implement SGD and Adam
 
 * Rectify Transpose for vector operations as well -> column transpose or row transpose
@@ -72,8 +76,8 @@ Transpose is still a roadblock... when I say transpose I mean n-dim Transpose an
 
 ~~Another roadblock in front of me is the reduction and transpose operations to be applied in the backward passes to take into account the cases for broadcasting operations. I have implemented tranpose, but I need to think about how to segregate ops (addition, subtraction, multiplication) for gradients in Tensor class as we need to pass the shapes to autogradient to do the reduce method to get grads backward.~~ -> Just thinking in terms of what braodcast does helped me - I don't know why it took me so long (my summation function was all that was needed)
 
+**The below problem might still be relevant but not at the moment as I solved it assuming 0 at the point of discontinuity**
 
-### Current Hurdle
 Implementing autodiff and backward ops for modulus and max,min functions
 
 $$ max(f(x), g(x)) = \frac{f(x) + g(x) - |f(x)-g(x)|}{2} $$
@@ -81,6 +85,10 @@ $$ max(f(x), g(x)) = \frac{f(x) + g(x) - |f(x)-g(x)|}{2} $$
 ... need to find out if min also has a format like this
 
 also need to think about subgradients and cases of discontinuities (I think PyTorch just puts 0 in these cases but need to be sure)
+
+
+### Current Hurdle
+...
 
 ### Citations [will formalize]
 
