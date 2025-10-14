@@ -132,8 +132,12 @@ namespace simplenet {
                 // we will perform Xavier Init here
                 void initialize_parameters() override{
                     // default initialization is always 0 as we already know as that is what our Tensor class does
-                    if (this->initialization_method == "Zero") {}
-                    else if (this->initialization_method == "Xavier") this->xavier_init(W->val, input_size, output_size, this->random_seed);
+                    if (this->initialization_method == "Zero") {
+                        // default behaviour
+                    }
+                    else if (this->initialization_method == "Xavier"){
+                        this->xavier_init(W->val, input_size, output_size, this->random_seed);
+                    }
                     // we dont initialize the bias Tensor at the moment
                 };
 

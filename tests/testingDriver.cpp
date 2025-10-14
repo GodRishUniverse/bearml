@@ -2,11 +2,33 @@
 #include "matrix/Matrix.h"
 #include "autograd/autogradient.h"
 #include "activation_functions/modules.h"
+#include "model_construct/model_construct.h"
+
 
 #include <iostream>
 #include <vector>
 
 using namespace std;
+
+class Model : public simplenet::neural_network::Model_Construct{
+    public:
+    simplenet::neural_network::Linear layer1;
+    simplenet::neural_network::ReLU nonlinearity;
+    simplenet::neural_network::Linear layer2;
+
+    Model(int in_shape, int out_shape):  layer1(in_shape, out_shape), nonlinearity(), layer2(out_shape, out_shape) {
+
+    }
+
+    std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(std::vector<simplenet::Tensor> inputs){
+        // assuming only x is passed in
+        auto x = simplenet::Node<simplenet::Tensor>::make_node(inputs[0]);
+
+        auto f1 = this->layer1(x);
+        auto f2 = this->nonlinearity(f1);
+        return this->layer2(f2);
+    }
+};
 
 int main() {
 
@@ -139,12 +161,12 @@ int main() {
     // cout << a << endl;
     //
 
-    simplenet::Tensor veca ({3,3});
-    simplenet::Tensor vecb ({3});
-    veca.set(201.0, {1, 0});
-    vecb.set(2.0, {1});
+    // simplenet::Tensor veca ({3,3});
+    // simplenet::Tensor vecb ({3});
+    // veca.set(201.0, {1, 0});
+    // vecb.set(2.0, {1});
 
-    cout << veca * vecb << endl;
+    // cout << veca * vecb << endl;
 
     // double x_val=  4.0;
     // double y_val = 2.0;
@@ -161,23 +183,23 @@ int main() {
     // cout << x->grad << endl;
     // cout << y->grad << endl;
 
-    simplenet::Tensor a ({1,1,5,5});
-    simplenet::Tensor b ({1,2,5,5});
+    // simplenet::Tensor a ({1,1,5,5});
+    // simplenet::Tensor b ({1,2,5,5});
 
-    a.linspace(1,97);
-    b.linspace(1,10);
+    // a.linspace(1,97);
+    // b.linspace(1,10);
 
-    cout << a * b << endl;
+    // cout << a * b << endl;
 
 
-    shared_ptr<simplenet::Node<simplenet::Tensor>> x = simplenet::Node<simplenet::Tensor>::make_node(a); // calling static function
-    shared_ptr<simplenet::Node<simplenet::Tensor>> y = simplenet::Node<simplenet::Tensor>::make_node(b); // calling static function
+    // shared_ptr<simplenet::Node<simplenet::Tensor>> x = simplenet::Node<simplenet::Tensor>::make_node(a); // calling static function
+    // shared_ptr<simplenet::Node<simplenet::Tensor>> y = simplenet::Node<simplenet::Tensor>::make_node(b); // calling static function
 
-    auto z = x*y + x;
+    // auto z = x*y + x;
 
-    cout << simplenet::autogradient::backward(z) << endl;
-    cout << x->grad << endl;
-    cout << y->grad << endl;
+    // cout << simplenet::autogradient::backward(z) << endl;
+    // cout << x->grad << endl;
+    // cout << y->grad << endl;
 
     // simplenet::Tensor c({3,2,4});
     // c.set(1.0, {0,1,1});
@@ -204,24 +226,36 @@ int main() {
     // vector<int> test_temp = {2,2,4,2};
     // cout << simplenet::linear_algebra::reduce(test_tensor_for_reduce,test_temp  )<< endl;
 
-    simplenet::Tensor tester({1,2,4,5});
-    tester.linspace(1,10);
+    // simplenet::Tensor tester({1,2,4,5});
+    // tester.linspace(1,10);
 
 
-    shared_ptr<simplenet::Node<simplenet::Tensor>> node = simplenet::Node<simplenet::Tensor>::make_node(tester);
+    // shared_ptr<simplenet::Node<simplenet::Tensor>> node = simplenet::Node<simplenet::Tensor>::make_node(tester);
 
-    simplenet::neural_network::Linear layer1 = simplenet::neural_network::Linear(5, 10);
-    cout << "after linear layer" << endl;
+    // simplenet::neural_network::Linear layer1 = simplenet::neural_network::Linear(5, 10);
+    // cout << "after linear layer" << endl;
 
-    auto vvv = layer1(node);
+    // auto vvv = layer1(node);
 
 
-    simplenet::neural_network::ReLU layer_relu = simplenet::neural_network::ReLU();
-    cout << "after relu layer" << endl;
+    // simplenet::neural_network::ReLU layer_relu = simplenet::neural_network::ReLU();
+    // cout << "after relu layer" << endl;
 
-    auto vvvv= layer_relu(vvv);
+    // auto vvvv= layer_relu(vvv);
 
-    simplenet::autogradient::backward(vvvv);
-    cout << vvv->val << endl;
+    // simplenet::autogradient::backward(vvvv);
+    // cout << vvv->val << endl;
+
+
+    Model testmodel = Model(2, 5);
+
+    simplenet::Tensor tester2({1,2});
+    tester2.linspace(1,2);
+
+    // so PyTorch uses its custom random number generator for initialization and so our initialization does not match and so for testing this what can be done is we basically get pytorch weights and see if the numbers match
+    cout << testmodel.forward({tester2})->val << endl;
+
+
+
 
 }
