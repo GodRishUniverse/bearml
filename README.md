@@ -55,8 +55,13 @@ The Autodiff works on the
 * Make Sequential Class to stack Classes in Neural Network
 
 * Implement loss functions
+  * L1 loss (MAE)
+  * L2 loss (MSE)
+  * log loss
 
 * Implement SGD and Adam
+  * Eps and Betas
+  * Regularization
 
 * Rectify Transpose for vector operations as well -> column transpose or row transpose
   * Same needs to modified in multiplication in `autogradient.h`
@@ -93,7 +98,7 @@ also need to think about subgradients and cases of discontinuities (I think PyTo
 
 ### Open to Contributions
 
-This repository is open to contribute to. Please make an issue before submitting a MR.
+This repository is open to contribute to. Please make an issue before submitting a MR (Merge Request).
 
 
 ### Citations [will formalize]

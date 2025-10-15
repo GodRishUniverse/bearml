@@ -37,6 +37,8 @@ namespace simplenet {
 
                 virtual void initialize_parameters() {}
 
+                // get all the parameters here
+                virtual std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() = 0;
 
                 // TODO: test this
                 static void xavier_init(Tensor& t, int input_size, int output_size, int seed) {
@@ -147,6 +149,11 @@ namespace simplenet {
 
                 int get_in_shape() const { return input_size; }
                 int get_out_shape() const { return output_size; }
+
+                std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() override{
+                    return {W,B};
+                }
+
         };
 
         // inherits from module -> need to test it
@@ -193,6 +200,11 @@ namespace simplenet {
                     Tensor temp_zero(temp_shape);
                     std::shared_ptr<simplenet::Node<Tensor>> mask_node = simplenet::Node<simplenet::Tensor>::make_node(temp_zero);
                     return (max(t, mask_node))->val;
+                }
+
+                // return nothing a relu layer does not have parameters
+                std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() override{
+                    return {};
                 }
 
         };

@@ -20,7 +20,7 @@ class Model : public simplenet::neural_network::Model_Construct{
 
     }
 
-    std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(std::vector<simplenet::Tensor> inputs){
+    std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(std::vector<simplenet::Tensor> inputs) override {
         // assuming only x is passed in
         auto x = simplenet::Node<simplenet::Tensor>::make_node(inputs[0]);
 
@@ -28,6 +28,23 @@ class Model : public simplenet::neural_network::Model_Construct{
         auto f2 = this->nonlinearity(f1);
         return this->layer2(f2);
     }
+
+    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() override {
+        std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params;
+
+        // collect parameters from layer1
+        auto l1_params = layer1.parameters();
+        params.insert(params.end(), l1_params.begin(), l1_params.end());
+
+        // ReLU has no parameters - although an override is there in the class
+
+        // collect parameters from layer2
+        auto l2_params = layer2.parameters();
+        params.insert(params.end(), l2_params.begin(), l2_params.end());
+
+        return params;
+    }
+
 };
 
 int main() {
