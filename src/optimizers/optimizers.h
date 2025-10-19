@@ -18,6 +18,7 @@ namespace simplenet {
                 public:
                     virtual ~Optimizer() = default;
                     virtual void step() = 0; // pure virtual function
+                    virtual void zero_grad() = 0; // pure virtual function
             };
 
             // Class definitions with default values to not get the errors -> need to add regularization and eps, betas
@@ -28,6 +29,7 @@ namespace simplenet {
                 public:
                     SGD(std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params, double learning_rate= 0.0001);
                     void step() override;
+                    void zero_grad() override;
             };
 
             class Adam: public Optimizer{
@@ -39,6 +41,7 @@ namespace simplenet {
                 public:
                     Adam(std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params, double learning_rate= 0.0001, double momentum = 0.001);
                     void step() override;
+                    void zero_grad() override;
             };
         }
     }

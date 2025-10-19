@@ -8,8 +8,12 @@ namespace simplenet {
 
            }
 
+           // Use this after doing backward pass on the computational graph
            void SGD::step(){
                // TODO
+               // for (auto p : this->params){
+               //     p->val -= learning_rate*p->grad;
+               // }
            }
 
 

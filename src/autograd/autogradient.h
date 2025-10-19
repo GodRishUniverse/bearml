@@ -207,25 +207,6 @@ namespace simplenet{
         }
 
 
-        // DIVISION is confusing - should only be done for numbers
-        // specialized for constants
-        // TODO: change for Tensors
-        friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
-                std::shared_ptr<Node<T>> node  = make_node(a->val/divisor); // TODO: implement Matrix and Tensor division for constant values
-                // node->grad = (a->grad*divisor)/ (divisor * divisor); //  c = a / b     =>    dc = (da *b  - a*db)/b^2
-
-                node->inputs = {a};
-                a->outputs.push_back(node);
-
-                // TODO - change this function as not correct with Tensors - shape changes and broadcasting has a role to play here
-                node->backward_fn = [a, divisor, node]() {
-                    // TODO FIX
-                    a->grad += node->grad * (1.0 / divisor);  // dc/da = 1/divisor
-                };
-
-                return node;
-        }
-
         // unary operator: e^x
         friend std::shared_ptr<Node<T>> exponent(std::shared_ptr<Node<T>> a){
             if constexpr (std::is_same<T, simplenet::Tensor>::value){
@@ -346,6 +327,119 @@ namespace simplenet{
             }
 
         }
+
+
+        // TODO: test and also add ops for when the min is double values
+        friend std::shared_ptr<Node<T>> min(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            // SHAPES HAVE TO BE THE SAME
+            if (a->val.getShape() != b->val.getShape()){
+                throw std::invalid_argument("Shapes incompatible for max operation to be backpropagated");
+            }
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::min(a->val, b->val));
+                node->inputs = {a,b};
+                a->outputs.push_back(node);
+                b->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+                std::weak_ptr<Node<T>> weak_b = b;
+
+                node->backward_fn = [weak_a ,weak_b, weak_node]() {
+
+                    auto a_locked = weak_a.lock();
+                    auto b_locked = weak_b.lock();
+                    auto node_locked = weak_node.lock();
+
+                    // Create masks for a and b
+                    // like ->
+                    //  Tensor a_mask = (a->val <= b->val).cast<double>(); // 1 where a <= b, 0 elsewhere
+                    //  Tensor b_mask = (b->val <= a->val).cast<double>();  // 1 where b <= a, 0 elsewhere
+                    simplenet::Tensor a_mask = simplenet::linear_algebra::mask_of_less_than_equal_to(a_locked->val,b_locked->val);
+                    simplenet::Tensor b_mask = simplenet::linear_algebra::mask_of_less_than_equal_to(b_locked->val,a_locked->val);
+
+                    // Need to figure out how the multiplication of masks will be done - most probably hadamard
+                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, a_mask);
+                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, b_mask);
+
+                };
+
+                return node;
+            }else{
+              // To Implement
+            }
+        }
+
+
+
+        // unary operator
+        // d|f(x)|/dx = sign(f(x))
+        friend std::shared_ptr<Node<T>> abs(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::abs(a->val));
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a , weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+                    simplenet::Tensor sign_mat = simplenet::linear_algebra::sign(a_locked->val);
+                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, sign_mat);
+                };
+
+                return node;
+            }else{
+              // To Implement
+            }
+        }
+
+
+        // unary operator
+        friend std::shared_ptr<Node<T>> mean(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::mean(a->val));
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a , weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+                    // TBD - need to think this
+                };
+
+                return node;
+            }else{
+              // To Implement
+            }
+        }
+
+
+        // DIVISION is confusing - should only be done for numbers
+        // specialized for constants
+        // TODO: change for Tensors
+        friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
+                std::shared_ptr<Node<T>> node  = make_node(a->val/divisor); // TODO: implement Matrix and Tensor division for constant values
+                // node->grad = (a->grad*divisor)/ (divisor * divisor); //  c = a / b     =>    dc = (da *b  - a*db)/b^2
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                // TODO - change this function as not correct with Tensors - shape changes and broadcasting has a role to play here
+                node->backward_fn = [a, divisor, node]() {
+                    // TODO FIX
+                    a->grad += node->grad * (1.0 / divisor);  // dc/da = 1/divisor
+                };
+
+                return node;
+        }
+
 
 
 

@@ -40,12 +40,28 @@ namespace simplenet{
        Tensor reduce(const Tensor& a, std::vector<int>& afterShape); // forward declare for the friend reduce
        Tensor hadamard(const Tensor &a, const Tensor &other);
 
-       Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other);
-       Tensor mask_of_greater_than(const Tensor& first, const Tensor& other);
-       Tensor mask_of_less_than_equal_to(const Tensor& first, const Tensor& other);
-       Tensor mask_of_less_than(const Tensor& first, const Tensor& other);
-       Tensor mask_of_equal_to(const Tensor& first, const Tensor& other);
+       // Tensor and Tensor
+       Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+       Tensor mask_of_greater_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+       Tensor mask_of_less_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+       Tensor mask_of_less_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+       Tensor mask_of_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
 
+       // Double and Tensor
+       Tensor mask_of_greater_than_equal_to(double first, const Tensor& other,  double first_val, double second_val);
+       Tensor mask_of_greater_than(double first, const Tensor& other,  double first_val, double second_val);
+       Tensor mask_of_less_than_equal_to(double first, const Tensor& other,  double first_val, double second_val);
+       Tensor mask_of_less_than(double first, const Tensor& other,  double first_val, double second_val);
+       Tensor mask_of_equal_to(double first, const Tensor& other,  double first_val, double second_val);
+
+       // Tensor and Double
+       Tensor mask_of_greater_than_equal_to(const Tensor& first, double other,  double first_val, double second_val);
+       Tensor mask_of_greater_than(const Tensor& first, double other,  double first_val, double second_val);
+       Tensor mask_of_less_than_equal_to(const Tensor& first, double other,  double first_val, double second_val);
+       Tensor mask_of_less_than(const Tensor& first, double other,  double first_val, double second_val);
+       Tensor mask_of_equal_to(const Tensor& first, double other,  double first_val, double second_val);
+
+       Tensor sign(const Tensor& a);
 
     }
 
@@ -684,6 +700,44 @@ namespace simplenet{
                  return *this;
             }
 
+            // -------------------------------DIVISION--------------------------------------------------------------------------
+
+            // element wise divide
+            friend Tensor operator/(const Tensor &A, const double& b) {
+                Tensor C(A.shape);
+                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                    C.data[i] = A.data[i]/b;
+                return C;
+            }
+
+            // element wise divide
+            friend Tensor operator/(const double& b, const Tensor &A) {
+                Tensor C(A.shape);
+                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                    C.data[i] = b/A.data[i];
+                return C;
+            }
+
+
+            friend Tensor operator/(const Tensor &a, const Tensor &b) {
+                if (b.shape.size() ==1 || a.shape.size() ==1){
+                    return a/b;
+                }
+
+                if (b.shape != a.shape){
+                    throw std::runtime_error("Shapes should match for element-wise divide");
+                }
+
+                // shapes match
+                Tensor C(a.shape);
+                for (ll i = 0, N = a.sizeOfTensor(); i < N; ++i)
+                    C.data[i] = a.data[i]/b.data[i];
+                return C;
+
+                // TODO: Another case exists but that is when matrix b is invertible and then it just becomes matrix mul
+            }
+
+
 
             // --------------------------------EQUALITY--------------------------------------------------------------------------
 
@@ -709,11 +763,31 @@ namespace simplenet{
 
 
             // -----------------------------------------------Operations helpful in mask generations------------------
-            friend Tensor linear_algebra::mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other);
-            friend Tensor linear_algebra::mask_of_greater_than(const Tensor& first, const Tensor& other);
-            friend Tensor linear_algebra::mask_of_less_than_equal_to(const Tensor& first, const Tensor& other);
-            friend Tensor linear_algebra::mask_of_less_than(const Tensor& first, const Tensor& other);
-            friend Tensor linear_algebra::mask_of_equal_to(const Tensor& first, const Tensor& other);
+            friend Tensor linear_algebra::mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other, double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_greater_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_less_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_less_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+
+
+
+            // Double and Tensor
+            friend Tensor linear_algebra::mask_of_greater_than_equal_to(double first, const Tensor& other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_greater_than(double first, const Tensor& other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_less_than_equal_to(double first, const Tensor& other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_less_than(double first, const Tensor& other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_equal_to(double first, const Tensor& other,  double first_val, double second_val);
+
+            // Tensor and Double
+            friend Tensor linear_algebra::mask_of_greater_than_equal_to(const Tensor& first, double other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_greater_than(const Tensor& first, double other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_less_than_equal_to(const Tensor& first, double other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_less_than(const Tensor& first, double other,  double first_val, double second_val);
+            friend Tensor linear_algebra::mask_of_equal_to(const Tensor& first, double other,  double first_val, double second_val);
+
+            // sign matrix
+            friend Tensor linear_algebra::sign(const Tensor& a);
+
 
             //----------------------------------------Exponential------------------------------------------------------
             static Tensor exp(Tensor& t){
@@ -776,6 +850,29 @@ namespace simplenet{
                 }
                 return a;
             }
+
+            //----------------------------------------Absolute value------------------------------------------------------
+            static Tensor abs(Tensor &t ){
+                Tensor  a = t; // copied
+                for (ll i =0; i<t.sizeOfTensor(); i++){
+                    a.data[i] = std::abs(t.data[i]);
+                }
+                return a;
+            }
+
+            //----------------------------------------Mean ------------------------------------------------------
+
+            // To be changed
+            static Tensor mean(Tensor &t ){
+                Tensor returnMean({1});
+                ll sizeTensor = t.sizeOfTensor();
+                for (ll i =0; i<sizeTensor; i++){
+                    returnMean.data[0] += t.data[i];
+                }
+                returnMean.data[0]/= static_cast<double>(sizeTensor);
+                return returnMean;
+            }
+
 
 
             // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};

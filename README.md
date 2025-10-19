@@ -32,6 +32,10 @@ The Autodiff works on the
 * exp function and its backward process
 * ReLU layer
 * nn.Module like abstract class for model creation
+* added a sign function
+* added double and Tensor comparison masks
+* element wise divide is done
+
 
 
 ## What do we need to complete
@@ -50,16 +54,16 @@ The Autodiff works on the
     ~~`When we multiply [2,3,4] with [2,4,5] -> [2,3,5] because the first is a 2-batch of [3,4] matrices and the next one is the 2-batch of [4,5] matrices`~~
     ~~This is one reason why when doing batched mul only the last 2 indices can differ but the rest HAVE TO BE THE SAME.~~
 
-* Implement Autodiff for activation functions
+* Implement Autodiff for activation functions -> will involve using unary and binary ops so is a matter of implementing Autodiff for operations
 
 * Make Sequential Class to stack Classes in Neural Network
 
 * Implement loss functions
-  * L1 loss (MAE)
+  * L1 loss (MAE) - **In-Progress**
   * L2 loss (MSE)
   * log loss
 
-* Implement SGD and Adam
+* Implement SGD and Adam **(After loss functions are made)**
   * Eps and Betas
   * Regularization
 

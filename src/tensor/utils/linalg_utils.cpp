@@ -1,6 +1,7 @@
 #include "linalg_utils.h"
 #include "tensor/Tensor.h"
 #include <cstddef>
+#include <stdexcept>
 
 namespace simplenet {
     namespace linear_algebra {
@@ -145,44 +146,159 @@ namespace simplenet {
 
 
         // -----------------------------------------------Operations helpful in mask generations------------------
-        Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other) {
+        Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val) {
+            if (first.getShape() != other.getShape()){
+                throw std::runtime_error("In >= Mask and shapes don't match");
+            }
             Tensor result(first.getShape());
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
-                result.data[i] = (first.data[i] >= other.data[i]) ? 1.0 : 0.0;
+                result.data[i] = (first.data[i] >= other.data[i]) ? first_val : second_val;
             }
             return result;
         }
 
-        Tensor mask_of_greater_than(const Tensor& first, const Tensor& other) {
+        Tensor mask_of_greater_than(const Tensor& first, const Tensor& other,  double first_val, double second_val) {
+            if (first.getShape() != other.getShape()){
+                throw std::runtime_error("In > Mask and shapes don't match");
+            }
             Tensor result(first.getShape());
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
-                result.data[i] = (first.data[i] > other.data[i]) ? 1.0: 0.0;
+                result.data[i] = (first.data[i] > other.data[i]) ? first_val: second_val;
             }
             return result;
         }
 
-        Tensor mask_of_less_than_equal_to(const Tensor& first, const Tensor& other) {
+        Tensor mask_of_less_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val) {
+            if (first.getShape() != other.getShape()){
+                throw std::runtime_error("In <= Mask and shapes don't match");
+            }
             Tensor result(first.getShape());
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
-                result.data[i] = (first.data[i] <= other.data[i]) ? 1.0 : 0.0;
+                result.data[i] = (first.data[i] <= other.data[i]) ? first_val : second_val;
             }
             return result;
         }
 
-        Tensor mask_of_less_than(const Tensor& first, const Tensor& other) {
+        Tensor mask_of_less_than(const Tensor& first, const Tensor& other,  double first_val, double second_val) {
+            if (first.getShape() != other.getShape()){
+                throw std::runtime_error("In < Mask and shapes don't match");
+            }
             Tensor result(first.getShape());
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
-                result.data[i] = (first.data[i] < other.data[i]) ? 1.0: 0.0;
+                result.data[i] = (first.data[i] < other.data[i]) ? first_val: second_val;
             }
             return result;
         }
 
-        Tensor mask_of_equal_to(const Tensor& first, const Tensor& other){
+        Tensor mask_of_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val){
+            if (first.getShape() != other.getShape()){
+                throw std::runtime_error("In = Mask and shapes don't match");
+            }
             Tensor result(first.getShape());
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
-                result.data[i] = (std::abs(first.data[i] - other.data[i]) < 1e-12) ? 1.0 : 0.0;
+                result.data[i] = (std::abs(first.data[i] - other.data[i]) < 1e-12) ? first_val : second_val;
+            }
+            return result;
+        }
+
+
+
+        // Double and Tensor
+        Tensor mask_of_greater_than_equal_to(double first, const Tensor& other,  double first_val, double second_val) {
+            Tensor result(other.getShape());
+
+            for (size_t i = 0; i < other.sizeOfTensor(); i++) {
+                result.data[i] = (first >= other.data[i]) ? first_val : second_val;
+            }
+            return result;
+        }
+
+        Tensor mask_of_greater_than(double first, const Tensor& other,  double first_val, double second_val){
+            Tensor result(other.getShape());
+
+            for (size_t i = 0; i < other.sizeOfTensor(); i++) {
+                result.data[i] = (first > other.data[i]) ? first_val : second_val;
+            }
+            return result;
+        }
+
+        Tensor mask_of_less_than_equal_to(double first, const Tensor& other,  double first_val, double second_val){
+            Tensor result(other.getShape());
+
+            for (size_t i = 0; i <  other.sizeOfTensor(); i++) {
+                result.data[i] = (first <= other.data[i]) ? first_val : second_val;
+            }
+            return result;
+        }
+
+        Tensor mask_of_less_than(double first, const Tensor& other,  double first_val, double second_val){
+            Tensor result(other.getShape());
+
+            for (size_t i = 0; i <  other.sizeOfTensor(); i++) {
+                result.data[i] = (first < other.data[i]) ? first_val : second_val;
+            }
+            return result;
+        }
+
+        Tensor mask_of_equal_to(double first, const Tensor& other,  double first_val, double second_val){
+           Tensor result(other.getShape());
+            for (size_t i = 0; i < other.sizeOfTensor(); ++i) {
+                result.data[i] = (std::abs(first - other.data[i]) < 1e-12) ? first_val : second_val;
+            }
+            return result;
+        }
+
+        // Tensor and Double
+        Tensor mask_of_greater_than_equal_to(const Tensor& first, double other,  double first_val, double second_val){
+            Tensor result(first.getShape());
+
+            for (size_t i = 0; i < first.sizeOfTensor(); i++) {
+                result.data[i] = (first.data[i] >= other) ? first_val : second_val;
+            }
+            return result;
+        }
+
+        Tensor mask_of_greater_than(const Tensor& first, double other,  double first_val, double second_val) {
+            Tensor result(first.getShape());
+            for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
+                result.data[i] = (first.data[i] > other) ? first_val: second_val;
+            }
+            return result;
+        }
+
+        Tensor mask_of_less_than_equal_to(const Tensor& first, double other,  double first_val, double second_val){
+            Tensor result(first.getShape());
+
+            for (size_t i = 0; i < first.sizeOfTensor(); i++) {
+                result.data[i] = (first.data[i] <= other) ? first_val : second_val;
+            }
+            return result;
+        }
+
+        Tensor mask_of_less_than(const Tensor& first, double other,  double first_val, double second_val){
+            Tensor result(first.getShape());
+
+            for (size_t i = 0; i < first.sizeOfTensor(); i++) {
+                result.data[i] = (first.data[i] < other) ? first_val : second_val;
+            }
+            return result;
+        }
+
+        Tensor mask_of_equal_to(const Tensor& first, double other,  double first_val, double second_val){
+            Tensor result(first.getShape());
+            for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
+                result.data[i] = (std::abs(first.data[i] - other) < 1e-12) ? first_val : second_val;
+            }
+            return result;
+        }
+
+
+        Tensor sign(const Tensor& a){
+            Tensor result(a.getShape());
+            for (size_t i = 0; i < a.sizeOfTensor(); ++i) {
+                result.data[i] = (std::abs(a.data[i] - 0.0) < 1e-12) ? 0.0 : ((a.data[i] < 0.0) ? -1.0 : 1.0);
             }
             return result;
         }
