@@ -3,7 +3,7 @@
 #include "autograd/autogradient.h"
 #include "activation_functions/modules.h"
 #include "model_construct/model_construct.h"
-
+#include "loss_functions/loss.h"
 
 #include <iostream>
 #include <vector>
@@ -270,9 +270,22 @@ int main() {
     tester2.linspace(1,2);
 
     // so PyTorch uses its custom random number generator for initialization and so our initialization does not match and so for testing this what can be done is we basically get pytorch weights and see if the numbers match
-    cout << testmodel.forward({tester2})->val << endl;
+    auto pred = testmodel.forward({tester2});
+    cout << pred->val << endl;
+    cout << "Pred grad: " << pred->grad << endl;
 
 
+    simplenet::Tensor actual({1,5});
+    actual.linspace(1,5);
+
+    auto ac = simplenet::Node<simplenet::Tensor>::make_node(actual);
+
+    auto loss = simplenet::neural_network::loss_functions::l1_loss(ac, pred);
+    simplenet::autogradient::backward(loss);
+
+    cout << "Loss value: " << loss->val << endl;
+    cout << "Pred grad: " << pred->grad << endl;
+    cout << "Layer2 weight grad: " << testmodel.layer2.get_weights() << endl; // check if parameters have gradients
 
 
 }

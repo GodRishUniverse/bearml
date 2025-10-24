@@ -14,6 +14,9 @@
 #include "tensor/Tensor.h"
 #include "matrix/Matrix.h"
 
+
+using ll = long long; // can also use int_fast64_t
+
 #ifndef AUTO_NODE_H
 #define AUTO_NODE_H
 // Will use reverse mode -  https://en.wikipedia.org/wiki/Automatic_differentiation
@@ -405,13 +408,22 @@ namespace simplenet{
                 node->inputs = {a};
                 a->outputs.push_back(node);
 
+                // c = mean(a)
+                // c = 1/n * sum(a)
+                // dL/da = dL/dc * dc/da (sum has gradient as 1 so only 1/n remains)
+
                 std::weak_ptr<Node<T>> weak_a = a;
                 std::weak_ptr<Node<T>> weak_node = node;
 
                 node->backward_fn = [weak_a , weak_node]() {
                     auto a_locked = weak_a.lock();
                     auto node_locked = weak_node.lock();
-                    // TBD - need to think this
+                    ll n = a_locked->val.sizeOfTensor();
+                    simplenet::Tensor grad_broadcast(a_locked->val.getShape());
+                    double scalar_grad = node_locked->grad.get({0});
+                    grad_broadcast.fill(scalar_grad / static_cast<double>(n));
+
+                    a_locked->grad+= grad_broadcast;
                 };
 
                 return node;
@@ -422,27 +434,22 @@ namespace simplenet{
 
 
         // DIVISION is confusing - should only be done for numbers
-        // specialized for constants
-        // TODO: change for Tensors
         friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
-                std::shared_ptr<Node<T>> node  = make_node(a->val/divisor); // TODO: implement Matrix and Tensor division for constant values
-                // node->grad = (a->grad*divisor)/ (divisor * divisor); //  c = a / b     =>    dc = (da *b  - a*db)/b^2
-
+                std::shared_ptr<Node<T>> node  = make_node(a->val/divisor);
+                // node = a / b
                 node->inputs = {a};
                 a->outputs.push_back(node);
 
-                // TODO - change this function as not correct with Tensors - shape changes and broadcasting has a role to play here
-                node->backward_fn = [a, divisor, node]() {
-                    // TODO FIX
-                    a->grad += node->grad * (1.0 / divisor);  // dc/da = 1/divisor
-                };
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
 
+                node->backward_fn = [weak_a, weak_node,  divisor]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+                    a_locked->grad += node_locked->grad / divisor; // dL/da = dL/dc × dc/da
+                };
                 return node;
         }
-
-
-
-
     };
 
     namespace autogradient {

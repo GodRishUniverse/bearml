@@ -220,8 +220,7 @@ namespace simplenet{
              * @throw std::invalid_argument if the index size does not match the shape of the tensor.
              * @return The value at the given index
              */
-            double get(std::vector<int>& index) const {
-
+            double get(std::vector<int> index) const {
                 if (index.size() != shape.size()){
                     throw std::invalid_argument("Invalid index size: \nPassed:" + utils::debugShapes(index)+"\nExpected:" +utils::debugShapes(this->shape)+"\n");
                 }
