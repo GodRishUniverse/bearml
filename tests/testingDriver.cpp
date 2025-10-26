@@ -4,6 +4,7 @@
 #include "activation_functions/modules.h"
 #include "model_construct/model_construct.h"
 #include "loss_functions/loss.h"
+#include "optimizers/optimizers.h"
 
 #include <iostream>
 #include <vector>
@@ -277,15 +278,26 @@ int main() {
 
     simplenet::Tensor actual({1,5});
     actual.linspace(1,5);
+    simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.01);
 
-    auto ac = simplenet::Node<simplenet::Tensor>::make_node(actual);
+    // Sample - works gets closer to the ideal values
+    for (int i =0;i <1000; i++){
+        optim.zero_grad();
+        auto ac = simplenet::Node<simplenet::Tensor>::make_node(actual);
 
-    auto loss = simplenet::neural_network::loss_functions::l1_loss(ac, pred);
-    simplenet::autogradient::backward(loss);
+        auto loss = simplenet::neural_network::loss_functions::l1_loss(ac, pred);
+        simplenet::autogradient::backward(loss);
 
-    cout << "Loss value: " << loss->val << endl;
-    cout << "Pred grad: " << pred->grad << endl;
-    cout << "Layer2 weight grad: " << testmodel.layer2.get_weights() << endl; // check if parameters have gradients
+        optim.step();
+
+        cout << "Loss value: " << loss->val << endl;
+        // cout << "Pred grad: " << pred->grad << endl;
+        // cout << "Layer2 weight grad: " << testmodel.layer2.get_weights() << endl; // check if parameters have gradients
+
+        pred = testmodel.forward({tester2});
+        cout << pred->val << endl;
+    }
+    // cout << "Pred grad: " << pred->grad << endl;
 
 
 }
