@@ -10,33 +10,13 @@ C++ is very fast as compared to Python 3.
 
 Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and the [PyTorch](https://github.com/pytorch/pytorch) repository
 
-## Quick Start
-
-### Prerequisites
-- C++20 or higher
-- CMake 3.17+
-- CUDA Toolkit (optional, for GPU support)
-
-### Building
-
-**Only tested on Fedora Linux at the moment**
-
-```bash
-git clone https://github.com/GodRishUniverse/SimpleNet.git
-cd SimpleNet
-mkdir build && cd build
-cmake ..
-make
-```
-
-Please edit the CMake files according to your liking.
-
-
 ## Implementation
 
 The implementation is currently trying to implement broadcasting tensors, GEMM, tensor inversion.
 
 A simple reverse-mode autodifferentiation pipeline is set up. Need to work on applying that for the activation functions and verify on the Tensor operations.
+
+The Autodiff works on the
 
 ## What has been done
 
@@ -55,51 +35,40 @@ A simple reverse-mode autodifferentiation pipeline is set up. Need to work on ap
 * added a sign function
 * added double and Tensor comparison masks
 * element wise divide is done
-* SGD is done
-* Can train a basic neural network on the CPU
+
 
 
 ## What do we need to complete
 
-* A model saving and loading pipelines - I wanna work on this first
+* Integrate Caffe2 IF NEEDED: [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
+
+* ~~Implement broadcasting properly as it is required for tensor multiplication - there is another bug in the print code because the tensor shape changes but not the data so it accesses beyond what is allocated - **PROBLEM**~~
+  * ~~Potential solution is to basically set a boolean to see if it is a broadcasted tensor or nott - PLAN IS TO MAKE BORADCAST A PRIVATE FUNCTION SO THE BROADCASTED TENSOR VANISHES AFTER COMPUTATION is APPLIED~~
+
+* Just use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) ~~Implement Tensor multiplication (GEMM and not Tensor Product - both are infact different)~~
+  * ~~[Multi dim Transpose](https://www.iaeng.org/publication/WCE2010/WCE2010_pp1838-1841.pdf)~~
+  * ~~Use Kahman Summation~~
+  * Check what device has been set - using a string to call a CUDA kernel or normal matmul for GEMM
+    * **TODO**: Use CUDA for GEMM and Matmul - use
+  * ~~The problem is not matmul or vector-mat mul or vector-vector mul - rather batched mat mul - what I now understand is how batched matmul works and I give an example here~~
+    ~~`When we multiply [2,3,4] with [2,4,5] -> [2,3,5] because the first is a 2-batch of [3,4] matrices and the next one is the 2-batch of [4,5] matrices`~~
+    ~~This is one reason why when doing batched mul only the last 2 indices can differ but the rest HAVE TO BE THE SAME.~~
 
 * Implement Autodiff for activation functions -> will involve using unary and binary ops so is a matter of implementing Autodiff for operations
 
 * Make Sequential Class to stack Classes in Neural Network
 
 * Implement loss functions
+  * L1 loss (MAE) - **In-Progress**
   * L2 loss (MSE)
   * log loss
 
-* Implement SGD and Adam (AdamW) **(After loss functions are made)**
-  * SGD is done but is slow
+* Implement SGD and Adam **(After loss functions are made)**
   * Eps and Betas
   * Regularization
 
 * Rectify Transpose for vector operations as well -> column transpose or row transpose
   * Same needs to modified in multiplication in `autogradient.h`
-
-* A dataloading pipeline (with shuffle and batching) -> needs to modular for different data types like (images, csv, etc.)
-
-* removing Eigen operations (im lazy so I dont wanna remove it sadly :( )
-
-* adding padding
-
-* Optimizations (finally! cause we can now train a very basic neural network) -> we will come back to other loss functions in a bit as that is a mechanical process of adding operations to the autodifferentiation engine and the Tensor class
-  * Momentum in SGD
-  * Some CPU Optimizations
-    * Vectorization and using AVX/AVX2 intrinsics for element-wise ops
-      * Like an operation like `axpy` to speed `SGD` operation
-    * Tiling the matrix multiplication (block/cache blocking)
-    * OpenMP parallelization -> Not sure how we will do so right now -> only matmul makes sense
-  * Lazy evaluation of the computational graph
-  * Cache friendly tiling
-  * Operator Fusing (Like ReLU and Linear)
-  * Strassen's algorithm for large matrix mul.
-  * CUDA kernels **Important**
-  * Dropout
-  * Mixed precision training (This is very important!!!)
-  * He initialization as well -> right now Xavier is the default
 
 ## Roadblocks I faced
 
@@ -128,8 +97,7 @@ also need to think about subgradients and cases of discontinuities (I think PyTo
 
 
 ### Current Hurdle
-
-How to make the SGD faster -> using momentum? Cause it is slow for lower learning rates
+...
 
 
 ### Open to Contributions
@@ -139,25 +107,8 @@ This repository is open to contribute to. Please make an issue before submitting
 
 ### Citations [will formalize]
 
-> [1] [Thank you Reddit!](https://www.reddit.com/r/algorithms/comments/1naehk1/comment/ndpkcqr/)
+> [1] [Thank you u/brandonpelfrey](https://www.reddit.com/r/algorithms/comments/1naehk1/comment/ndpkcqr/)
 >
 > [2] [max() derivative formula](https://math.stackexchange.com/questions/368432/derivative-of-max-function)
 >
 >
-
-
-### OLD
-
-* Integrate Caffe2 IF NEEDED: [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
-
-* ~~Implement broadcasting properly as it is required for tensor multiplication - there is another bug in the print code because the tensor shape changes but not the data so it accesses beyond what is allocated - **PROBLEM**~~
-  * ~~Potential solution is to basically set a boolean to see if it is a broadcasted tensor or nott - PLAN IS TO MAKE BORADCAST A PRIVATE FUNCTION SO THE BROADCASTED TENSOR VANISHES AFTER COMPUTATION is APPLIED~~
-
-* Just use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) ~~Implement Tensor multiplication (GEMM and not Tensor Product - both are infact different)~~
-  * ~~[Multi dim Transpose](https://www.iaeng.org/publication/WCE2010/WCE2010_pp1838-1841.pdf)~~
-  * ~~Use Kahman Summation~~
-  * Check what device has been set - using a string to call a CUDA kernel or normal matmul for GEMM
-    * **TODO**: Use CUDA for GEMM and Matmul - use
-  * ~~The problem is not matmul or vector-mat mul or vector-vector mul - rather batched mat mul - what I now understand is how batched matmul works and I give an example here~~
-    ~~`When we multiply [2,3,4] with [2,4,5] -> [2,3,5] because the first is a 2-batch of [3,4] matrices and the next one is the 2-batch of [4,5] matrices`~~
-    ~~This is one reason why when doing batched mul only the last 2 indices can differ but the rest HAVE TO BE THE SAME.~~
