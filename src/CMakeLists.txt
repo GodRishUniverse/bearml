@@ -1,5 +1,5 @@
 # src/CMakeLists.txt
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.20)
 
 # Create a library target from all source files in subdirectories
 file(GLOB_RECURSE SRC_FILES
