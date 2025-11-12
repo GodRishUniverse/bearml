@@ -43,7 +43,7 @@ The Autodiff works on the
 ## What has been done
 
 * Simple (double) based automatic differentiation for: addition, subtraction, multiplication and division
-@@ -55,52 +35,41 @@ A simple reverse-mode autodifferentiation pipeline is set up. Need to work on ap
+* A simple reverse-mode autodifferentiation pipeline is set up. Need to work on ap
 * added a sign function
 * added double and Tensor comparison masks
 * element wise divide is done
@@ -112,7 +112,7 @@ The Autodiff works on the
 ## Roadblocks I faced
 
 So one of the first roadblocks that I faced is that (I have spent months on this - not completely but relatively speaking) implementing GEMM on the CPU without a prebaked library is hard.
-@@ -128,8 +97,7 @@ also need to think about subgradients and cases of discontinuities (I think PyTo
+- also need to think about subgradients and cases of discontinuities (I think PyTo
 
 
 ### Current Hurdle
@@ -122,7 +122,7 @@ How to make the SGD faster -> using momentum? Cause it is slow for lower learnin
 
 
 ### Open to Contributions
-@@ -139,25 +107,8 @@ This repository is open to contribute to. Please make an issue before submitting
+This repository is open to contribute to. Please make an issue before submitting
 
 ### Citations [will formalize]
 
