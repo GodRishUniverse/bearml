@@ -7,7 +7,9 @@
 #include <string>
 #include <algorithm>
 
-#include <cuda_runtime.h>
+// TODO: refactor Tensor class
+#include "devices/device_type.h"
+#include "devices/device_allocator.h"
 
 
 #include "Eigen/Dense" // IMPORTING eigen for BLAS functions
@@ -22,8 +24,6 @@
 
 using ll = long long; // can also use int_fast64_t
 using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
-
-
 
 
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
@@ -65,7 +65,6 @@ namespace simplenet{
        Tensor mask_of_equal_to(const Tensor& first, double other,  double first_val, double second_val);
 
        Tensor sign(const Tensor& a);
-
     }
 
     class Tensor {
@@ -75,20 +74,17 @@ namespace simplenet{
             static constexpr double MIN_DIFF = 1e-12;
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
-
             double * data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
-
             bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
-            std:: string device;
+            Device device;
+            std::unique_ptr<DeviceAllocator> allocator_; // the device allocator we will be using for moving -> we only want a unique allocator
 
-            double * gpu_data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
-            bool gpu_allocated;
 
-            // default constructor - added for edge cases - private ONLY
-            Tensor() : data(nullptr), owns_data(false), device("cpu") {};
+            // default constructor - added for edge cases - private ONLY -> cpu only allocation
+            Tensor() : data(nullptr), owns_data(false), device(Device(DeviceType::CPU, -1)) , allocator_(nullptr){};
 
+            // TODO - refactor
             static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
-                //TODO: NEED TO RECORD WHICH DIMS WERE BROADCASTED so that we can do reduce on them
                 Tensor v;            // default-constructed
                 v.data    = t.data;
                 v.shape   = newShape;
@@ -97,6 +93,7 @@ namespace simplenet{
                 return v;
             }
 
+            // TODO - refactor
             static bool isScalar(const Tensor& t) {
                 if (t.shape.empty()) return true;
                 for (int dim : t.shape) {
@@ -105,10 +102,12 @@ namespace simplenet{
                 return true;
             }
 
+            // TODO - refactor
             static double getScalarValue(const Tensor& t){
                 return t.data[0];
             }
 
+            // TODO - refactor
             std::vector<int> flatten_(int start_dim =0, int end_dim = -1, bool keepdims=false)
                 // has a Tensor return type specialization in the cpp file
             {
@@ -151,26 +150,40 @@ namespace simplenet{
         public:
 
             // constructor when size and data are provided
-            Tensor(std::vector<int> sizePassed, std::string device = "cpu") : data(nullptr), gpu_data(nullptr), owns_data(true), device(device){ // we own the data here
-                if (utils::negOrZeroInSizeCheck(sizePassed)){
+            Tensor(std::vector<int> sizePassed, const Device& device = Device::cpu()) :shape(sizePassed),  owns_data(true), device(device){ // we own the data here
+                // shape cannot have 0 or negatives in it
+                if (utils::negOrZeroInSizeCheck(this->shape)){
                     throw std::invalid_argument("Size cannot have a negative or zero");
                 }
-                shape = sizePassed;
-                computeStrides(); // compute strides
-                ll sizeTensor = sizeOfTensor();
 
-                if (this->device == "cpu") {
-                    data = new double[sizeTensor];
-                    for (ll start = 0; start<sizeTensor; start++){
-                        data[start] = 0.0;
+                // check if we even have a cuda capable device
+                if (device.type== DeviceType::GPU){
+                    int cuda_device_count = 0;
+                    CUDA_CHECK(cudaGetDeviceCount(&cuda_device_count));
+                    if (cuda_device_count == 0) {
+                        throw std::invalid_argument("No CUDA-capable devices available");
                     }
-                } else if (device == "cuda") {
-                    cudaMalloc(&gpu_data, sizeTensor * sizeof(double));
-                    gpu_allocated = true;
+                }
+                computeStrides(); // compute strides
+
+                this->allocator_.reset(get_allocator(this->device));
+
+                ll sizeTensor = sizeOfTensor();
+                size_t bytes = sizeTensor*sizeof(double);
+                this->data = static_cast<double*>(allocator_->allocate(bytes));
+
+                // initialize to zero
+                if (this->device.is_cpu()) {
+                    std::fill_n(this->data, sizeTensor, 0.0);
+                } else {
+                    // Zero initialize on GPU
+                    CUDA_CHECK(cudaMemset(this->data, 0.0, bytes));
                 }
 
             };
 
+
+            // TODO: refactor
             // copy constructor
             Tensor(const Tensor& other) : owns_data(true) { // we own the data when we copy;
                 this->shape = other.shape;
@@ -181,6 +194,7 @@ namespace simplenet{
                 std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
             }
 
+            // TODO: refactor
             // copy assignment operator
             Tensor& operator=(const Tensor& other) {
                 if (this != &other) {
@@ -195,6 +209,7 @@ namespace simplenet{
                 return *this;
             }
 
+            // TODO: refactor
             // move constructor
             Tensor(Tensor&& other): owns_data(other.owns_data) {
                 this->shape = other.shape;
@@ -204,6 +219,7 @@ namespace simplenet{
                 other.data = nullptr;
             }
 
+            // TODO: refactor
             // move assignment operator
             Tensor& operator=(Tensor&& other) {
                 if (this != &other) {
@@ -219,6 +235,7 @@ namespace simplenet{
                 return *this;
             }
 
+            // TODO: refactor
             // destructor
             ~Tensor(){
                 if (owns_data && data != nullptr){
@@ -233,52 +250,11 @@ namespace simplenet{
                 }
             }
 
-            void to(std::string new_device){
-                if (new_device != device){
-                    if (new_device == "cpu"){
-                        this->device = "cpu";
-                        size_t arraySize = sizeOfTensor()* sizeof(double);
-
-
-                        // Copy the data from the device (gpu) to the host (cpu)
-                        cudaStatus = cudaMemcpy(data, gpu_data, arraySize, cudaMemcpyDeviceToHost);
-                        if (cudaStatus != cudaSuccess) {
-                            std::cerr << "cudaMalloc failed!" << std::endl;
-                            return;
-                        }
-                        // clear the data from the GPU (we will resend it if we want it from the gpu)
-                        cudaError_t cudaStatus = cudaFree(gpu_data);
-                        if (cudaStatus != cudaSuccess) {
-                            std::cerr << "cudaFree failed!" << std::endl;
-                            return;
-                        }
-                    } else {
-                        // Move to the GPU
-                        this->device = "cuda";
-                        size_t arraySize = sizeOfTensor()* sizeof(double);
-                        cudaError_t cudaStatus = cudaMalloc((void**) &gpu_data, arraySize);
-                        if (cudaStatus != cudaSuccess) {
-                            std::cerr << "cudaMalloc failed!" << std::endl;
-                            return;
-                        }
-
-                        // Copy the data from the host to the device
-                        cudaStatus = cudaMemcpy(gpu_data, data, arraySize, cudaMemcpyHostToDevice);
-                        if (cudaStatus != cudaSuccess) {
-                            std::cerr << "cudaMalloc failed!" << std::endl;
-                            return;
-                        }
-                    }
-                }
+            void to(const Device dev){
+               // todo
             }
 
-
-            /**
-             * @brief Get the value at the given index
-             * @param index The index to get the value at. Must be of size equal to the shape of the tensor.
-             * @throw std::invalid_argument if the index size does not match the shape of the tensor.
-             * @return The value at the given index
-             */
+            // TODO: refactor
             double get(std::vector<int> index) const {
                 if (index.size() != shape.size()){
                     throw std::invalid_argument("Invalid index size: \nPassed:" + utils::debugShapes(index)+"\nExpected:" +utils::debugShapes(this->shape)+"\n");
@@ -295,7 +271,7 @@ namespace simplenet{
             }
 
 
-
+            // TODO: refactor
             void set(double val, std::vector<int> index) const {
                 if (index.size() != shape.size()){
                     std::string err = "Expected size = ";
@@ -373,12 +349,14 @@ namespace simplenet{
                 data[off] = val;
             }
 
+            // TODO: refactor
             // TODO: add test to check offset values
             void set_with_offset(ll offset, int row, int col, double val){
                 // assumes offset is passed correctly at the moment
                 data[offset+row*(this->shape[this->shape.size()-1])+col] = val;
             }
 
+            // TODO: refactor
             // helper function
             void printShape() const {
                 std::cout << "Shape: [";
@@ -400,7 +378,6 @@ namespace simplenet{
                 return total;
             }
 
-
             // helper functions
             std::vector<int> getShape() const {
                 return this->shape;
@@ -411,7 +388,17 @@ namespace simplenet{
                 return this->strides;
             }
 
+            void computeStrides() {
+                strides.resize(shape.size());
+                size_t s = 1;
+                for (int d = shape.size()-1; d >= 0; --d) {
+                    strides[d] = s;
+                    s *= shape[d];
+                }
+            }
 
+
+            // TODO: refactor
             // TODO:CHANGE to not print extra stuff after the boradcast is applied as stride is set to 0 after broadcast is done
             friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
                 int total_elements = 1;
@@ -437,7 +424,7 @@ namespace simplenet{
                 return os;
             }
 
-
+            // TODO: REFACTOR ALL OPERATIONS for CUDA support as well
             // ================================ OPERATIONS ========================================================================
 
             // --------------------------------ADDITION----------------------------------------------------------------------------
@@ -932,7 +919,7 @@ namespace simplenet{
             }
 
 
-
+            // TODO: refactor
             // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
             void fill(double v){
                 for (ll i =0;i<sizeOfTensor(); i++){
@@ -940,6 +927,7 @@ namespace simplenet{
                 }
             }
 
+            // TODO: refactor
             static bool has_nonzero_gradient(Tensor& t){
                 // we only have to check if there is at least one of the numbers that is non-zero
                 for (ll i =0;i<t.sizeOfTensor(); i++){
@@ -950,15 +938,17 @@ namespace simplenet{
                 return false;
             }
 
-
+            // TODO: refactor
             Tensor flatten(int start_dim =0, int end_dim = -1, bool keepdims=false);
 
+            // TODO: refactor
             // flatten - inplace
             void flatten_inplace(int start_dim =0, int end_dim = -1, bool keepdims=false){
                 this->shape = Tensor::flatten_(start_dim, end_dim, keepdims);
                 computeStrides();
             }
 
+            // TODO: refactor
             // in place summation across a dimension - works like torch.sum()
             Tensor sum(int dim, bool keepdims = false){
                 if (dim<0 || dim>=shape.size()){
@@ -1006,39 +996,7 @@ namespace simplenet{
             }
 
 
-            // TODO
-            // static Tensor identity_matrix(std::vector<int>& sizePassed, int n) {
-            //     Tensor t (sizePassed);
-            //     // fill the diagonals with one
-            //     if (sizePassed.size() ==1){
-            //         // vector basically - does also work for scalars
-            //         if (sizePassed[0] != n){
-            //             std::invalid_argument("Identity vector is just 1s and size should match what is entered");
-            //         }
-            //         for (int r =0; r < sizePassed[0]; r++){
-            //             t.set(1.0, {r});
-            //         }
-            //     } else if (sizePassed.size() ==2){
-            //         if (sizePassed[sizePassed.size()-1] != n || sizePassed[sizePassed.size()-2]!=n){
-            //             std::invalid_argument("Identity matrices are only defined for square matrices");
-            //         }
-            //         for (int r =0; r < sizePassed[0]; r++){
-            //             t.set(1.0, {r,r}); // diagonals only
-            //         }
-            //     } else{
-            //         // batched matrix - set individually to identity matrix
-            //         //TODO:
-            //     }
-
-            //     return t;
-            // }
-
-            // // acts as an alias for the identity matrix
-            // static Tensor eye(std::vector<int>& sizePassed, int n){
-            //     return identity_matrix(sizePassed, n);
-            // }
-
-
+            // TODO: refactor
             // linspace function  to edit the current tensor
             Tensor& linspace(double start, double end){
                 ll long_size = this->sizeOfTensor();
@@ -1053,16 +1011,8 @@ namespace simplenet{
 
 
 
-            void computeStrides() {
-                strides.resize(shape.size());
-                size_t s = 1;
-                for (int d = shape.size()-1; d >= 0; --d) {
-                    strides[d] = s;
-                    s *= shape[d];
-                }
-            }
 
-
+            // TODO: refactor
             Tensor transpose(){
                 // 3 cases:
                 // Case 1: 1 as the shape return the same thing - scalar - If transposing the same dimension or a single element tensor, return a copy
@@ -1199,6 +1149,39 @@ namespace simplenet{
                 }
                 this->data = temp;
             }
+
+            // TODO
+            // static Tensor identity_matrix(std::vector<int>& sizePassed, int n) {
+            //     Tensor t (sizePassed);
+            //     // fill the diagonals with one
+            //     if (sizePassed.size() ==1){
+            //         // vector basically - does also work for scalars
+            //         if (sizePassed[0] != n){
+            //             std::invalid_argument("Identity vector is just 1s and size should match what is entered");
+            //         }
+            //         for (int r =0; r < sizePassed[0]; r++){
+            //             t.set(1.0, {r});
+            //         }
+            //     } else if (sizePassed.size() ==2){
+            //         if (sizePassed[sizePassed.size()-1] != n || sizePassed[sizePassed.size()-2]!=n){
+            //             std::invalid_argument("Identity matrices are only defined for square matrices");
+            //         }
+            //         for (int r =0; r < sizePassed[0]; r++){
+            //             t.set(1.0, {r,r}); // diagonals only
+            //         }
+            //     } else{
+            //         // batched matrix - set individually to identity matrix
+            //         //TODO:
+            //     }
+
+            //     return t;
+            // }
+
+            // // acts as an alias for the identity matrix
+            // static Tensor eye(std::vector<int>& sizePassed, int n){
+            //     return identity_matrix(sizePassed, n);
+            // }
+
 
         };
 }
