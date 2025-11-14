@@ -118,6 +118,7 @@ So one of the first roadblocks that I faced is that (I have spent months on this
 ### Current Hurdle
 
 How to make the SGD faster -> using momentum? Cause it is slow for lower learning rates
+Refactoring the entire code base (cause Tensor class will change) -> cuda kernel and movement of data need to be considered
 ...
 
 

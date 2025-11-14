@@ -7,6 +7,9 @@
 #include <string>
 #include <algorithm>
 
+#include <cuda_runtime.h>
+
+
 #include "Eigen/Dense" // IMPORTING eigen for BLAS functions
 #include "Eigen/src/Core/Matrix.h"
 
@@ -73,9 +76,13 @@ namespace simplenet{
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
 
-            double * data;
+            double * data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
+
             bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
             std:: string device;
+
+            double * gpu_data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
+            bool gpu_allocated;
 
             // default constructor - added for edge cases - private ONLY
             Tensor() : data(nullptr), owns_data(false), device("cpu") {};
@@ -144,24 +151,24 @@ namespace simplenet{
         public:
 
             // constructor when size and data are provided
-            Tensor(std::vector<int> sizePassed, std::string device = "cpu") : owns_data(true), device(device){ // we own the data here
+            Tensor(std::vector<int> sizePassed, std::string device = "cpu") : data(nullptr), gpu_data(nullptr), owns_data(true), device(device){ // we own the data here
                 if (utils::negOrZeroInSizeCheck(sizePassed)){
                     throw std::invalid_argument("Size cannot have a negative or zero");
                 }
                 shape = sizePassed;
                 computeStrides(); // compute strides
+                ll sizeTensor = sizeOfTensor();
 
-                ll total = 1; // cause size may be huge
-                for (const int & i : shape){
-                    total*= i;
+                if (this->device == "cpu") {
+                    data = new double[sizeTensor];
+                    for (ll start = 0; start<sizeTensor; start++){
+                        data[start] = 0.0;
+                    }
+                } else if (device == "cuda") {
+                    cudaMalloc(&gpu_data, sizeTensor * sizeof(double));
+                    gpu_allocated = true;
                 }
 
-                // std::cout << "Total Size: " << total<< std::endl;
-
-                data = new double[total];
-                for (ll start = 0; start<total; start++){
-                    data[start] = 0.0;
-                }
             };
 
             // copy constructor
@@ -170,6 +177,7 @@ namespace simplenet{
                 this->device = other.device;
                 this->strides = other.strides;
                 this->data = new double[other.sizeOfTensor()];
+                this->gpu_data = nullptr;
                 std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
             }
 
@@ -215,16 +223,51 @@ namespace simplenet{
             ~Tensor(){
                 if (owns_data && data != nullptr){
                     delete[] data; // we now only delete if the owner is deleted
+                    // freeing gpu data
+                    if (gpu_data != nullptr){
+                        cudaStatus = cudaFree(gpu_data);
+                        if (cudaStatus != cudaSuccess) {
+                            std::cerr << "cudaMalloc failed!" << std::endl;
+                        }
+                    }
                 }
             }
 
             void to(std::string new_device){
-                // only do op here
                 if (new_device != device){
                     if (new_device == "cpu"){
-                        // do here
+                        this->device = "cpu";
+                        size_t arraySize = sizeOfTensor()* sizeof(double);
+
+
+                        // Copy the data from the device (gpu) to the host (cpu)
+                        cudaStatus = cudaMemcpy(data, gpu_data, arraySize, cudaMemcpyDeviceToHost);
+                        if (cudaStatus != cudaSuccess) {
+                            std::cerr << "cudaMalloc failed!" << std::endl;
+                            return;
+                        }
+                        // clear the data from the GPU (we will resend it if we want it from the gpu)
+                        cudaError_t cudaStatus = cudaFree(gpu_data);
+                        if (cudaStatus != cudaSuccess) {
+                            std::cerr << "cudaFree failed!" << std::endl;
+                            return;
+                        }
                     } else {
-                        // cuda movement
+                        // Move to the GPU
+                        this->device = "cuda";
+                        size_t arraySize = sizeOfTensor()* sizeof(double);
+                        cudaError_t cudaStatus = cudaMalloc((void**) &gpu_data, arraySize);
+                        if (cudaStatus != cudaSuccess) {
+                            std::cerr << "cudaMalloc failed!" << std::endl;
+                            return;
+                        }
+
+                        // Copy the data from the host to the device
+                        cudaStatus = cudaMemcpy(gpu_data, data, arraySize, cudaMemcpyHostToDevice);
+                        if (cudaStatus != cudaSuccess) {
+                            std::cerr << "cudaMalloc failed!" << std::endl;
+                            return;
+                        }
                     }
                 }
             }
