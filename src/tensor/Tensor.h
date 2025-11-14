@@ -75,9 +75,10 @@ namespace simplenet{
 
             double * data;
             bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
+            std:: string device;
 
             // default constructor - added for edge cases - private ONLY
-            Tensor() : data(nullptr), owns_data(false) {};
+            Tensor() : data(nullptr), owns_data(false), device("cpu") {};
 
             static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
                 //TODO: NEED TO RECORD WHICH DIMS WERE BROADCASTED so that we can do reduce on them
@@ -143,7 +144,7 @@ namespace simplenet{
         public:
 
             // constructor when size and data are provided
-            Tensor(std::vector<int> sizePassed) : owns_data(true){ // we own the data here
+            Tensor(std::vector<int> sizePassed, std::string device = "cpu") : owns_data(true), device(device){ // we own the data here
                 if (utils::negOrZeroInSizeCheck(sizePassed)){
                     throw std::invalid_argument("Size cannot have a negative or zero");
                 }
@@ -166,6 +167,7 @@ namespace simplenet{
             // copy constructor
             Tensor(const Tensor& other) : owns_data(true) { // we own the data when we copy;
                 this->shape = other.shape;
+                this->device = other.device;
                 this->strides = other.strides;
                 this->data = new double[other.sizeOfTensor()];
                 std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
@@ -176,6 +178,7 @@ namespace simplenet{
                 if (this != &other) {
                     delete[] data;
                     this->shape = other.shape;
+                    this->device = other.device;
                     this->strides = other.strides;
                     this->owns_data = true;  // Copy always owns its data
                     this->data = new double[other.sizeOfTensor()];
@@ -188,6 +191,7 @@ namespace simplenet{
             Tensor(Tensor&& other): owns_data(other.owns_data) {
                 this->shape = other.shape;
                 this->data = other.data;
+                this->device = other.device;
                 this->strides = other.strides;
                 other.data = nullptr;
             }
@@ -198,6 +202,7 @@ namespace simplenet{
                     delete[] data;
                     this->shape = other.shape;
                     this->data = other.data;
+                    this->device = other.device;
                     this->strides = other.strides;
                     this->owns_data = other.owns_data;
                     other.data = nullptr;
@@ -210,6 +215,17 @@ namespace simplenet{
             ~Tensor(){
                 if (owns_data && data != nullptr){
                     delete[] data; // we now only delete if the owner is deleted
+                }
+            }
+
+            void to(std::string new_device){
+                // only do op here
+                if (new_device != device){
+                    if (new_device == "cpu"){
+                        // do here
+                    } else {
+                        // cuda movement
+                    }
                 }
             }
 
