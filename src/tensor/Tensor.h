@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 #include <iostream>
 #include <string>
@@ -168,7 +169,7 @@ namespace simplenet{
 
                 this->allocator_.reset(get_allocator(this->device));
 
-                ll sizeTensor = sizeOfTensor();
+                size_t sizeTensor = sizeOfTensor();
                 size_t bytes = sizeTensor*sizeof(double);
                 this->data = static_cast<double*>(allocator_->allocate(bytes));
 
@@ -183,51 +184,79 @@ namespace simplenet{
             };
 
 
-            // TODO: refactor
             // copy constructor
-            Tensor(const Tensor& other) : owns_data(true) { // we own the data when we copy;
-                this->shape = other.shape;
-                this->device = other.device;
-                this->strides = other.strides;
-                this->data = new double[other.sizeOfTensor()];
-                this->gpu_data = nullptr;
-                std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
+            Tensor(const Tensor& other) : owns_data(true), shape(other.shape), device(other.device), strides(other.strides){ // we own the data when we copy;
+                this->allocator_.reset(get_allocator(device));
+                size_t bytes = sizeOfTensor() * sizeof(double);
+                this->data =static_cast<double*>(allocator_->allocate(bytes));
+                if (this->device == other.device) {
+                    // cpu to cpu or gpu to gpu
+                    allocator_->copy_device_to_device(this->data, other.data, bytes);
+                } else {
+                    if (this->device.is_cpu()) {
+                        // from device to cpu
+                        other.allocator_->copy_to_host(this->data, other.data, bytes);
+                    } else {
+                        // from cpu to device
+                        this->allocator_->copy_to_device(this->data, other.data, bytes);
+                    }
+                }
+                // std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
             }
 
-            // TODO: refactor
             // copy assignment operator
             Tensor& operator=(const Tensor& other) {
                 if (this != &other) {
-                    delete[] data;
+                    if (this->owns_data && this->data && this->allocator_) {
+                        allocator_->deallocate(this->data);
+                    }
                     this->shape = other.shape;
                     this->device = other.device;
                     this->strides = other.strides;
                     this->owns_data = true;  // Copy always owns its data
-                    this->data = new double[other.sizeOfTensor()];
-                    std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
+
+                    this->allocator_.reset(get_allocator(device));
+                    size_t bytes = sizeOfTensor() * sizeof(double);
+                    this->data =static_cast<double*>(allocator_->allocate(bytes));
+                    if (this->device == other.device) {
+                        // cpu to cpu or gpu to gpu
+                        allocator_->copy_device_to_device(this->data, other.data, bytes);
+                    } else {
+                        if (this->device.is_cpu()) {
+                            // from device to cpu
+                            other.allocator_->copy_to_host(this->data, other.data, bytes);
+                        } else {
+                            // from cpu to device
+                            this->allocator_->copy_to_device(this->data, other.data, bytes);
+                        }
+                    }
                 }
                 return *this;
             }
 
-            // TODO: refactor
             // move constructor
-            Tensor(Tensor&& other): owns_data(other.owns_data) {
-                this->shape = other.shape;
-                this->data = other.data;
-                this->device = other.device;
-                this->strides = other.strides;
+            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), device(other.device), data(other.data), allocator_(std::move(other.allocator_)){
+                // this->shape = other.shape;
+                // this->data = other.data;
+                // this->device = other.device;
+                // this->strides = other.strides;
                 other.data = nullptr;
+                other.owns_data = false;
             }
 
-            // TODO: refactor
             // move assignment operator
-            Tensor& operator=(Tensor&& other) {
+            Tensor& operator=(Tensor&& other) noexcept {
                 if (this != &other) {
-                    delete[] data;
-                    this->shape = other.shape;
+
+                    if (this->owns_data && this->data && this->allocator_) {
+                        allocator_->deallocate(this->data);
+                    }
+
+                    this->shape = std::move(other.shape);
                     this->data = other.data;
                     this->device = other.device;
-                    this->strides = other.strides;
+                    this->strides = std::move(other.strides);
+                    this->allocator_ = std::move(other.allocator_);
                     this->owns_data = other.owns_data;
                     other.data = nullptr;
                     other.owns_data = false;
@@ -235,18 +264,11 @@ namespace simplenet{
                 return *this;
             }
 
-            // TODO: refactor
             // destructor
             ~Tensor(){
-                if (owns_data && data != nullptr){
-                    delete[] data; // we now only delete if the owner is deleted
-                    // freeing gpu data
-                    if (gpu_data != nullptr){
-                        cudaStatus = cudaFree(gpu_data);
-                        if (cudaStatus != cudaSuccess) {
-                            std::cerr << "cudaMalloc failed!" << std::endl;
-                        }
-                    }
+                // standard cleanup
+                if (this->owns_data && this->data && this->allocator_) {
+                    allocator_->deallocate(this->data);
                 }
             }
 
@@ -370,8 +392,8 @@ namespace simplenet{
             }
 
             // helper function
-            ll sizeOfTensor() const {
-                ll total = 1; // cause size may be huge
+            size_t sizeOfTensor() const {
+                size_t total = 1; // cause size may be huge
                 for (const int & i : shape){
                     total*= i;
                 }
@@ -432,7 +454,7 @@ namespace simplenet{
             friend Tensor operator+(const Tensor &A, const Tensor &B) {
                 if (A.shape == B.shape) {
                     Tensor C(A.shape);
-                    for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                    for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                         C.data[i] = A.data[i] + B.data[i];
                     return C;
                 }
@@ -446,7 +468,7 @@ namespace simplenet{
                 Tensor bView = makeBroadcastView(B, outShape);
 
                 // now do a single flat loop
-                ll N = C.sizeOfTensor();
+                size_t N = C.sizeOfTensor();
                 for (ll idx = 0; idx < N; ++idx) {
                     // decode idx → coordinates and accumulate offsets
                     ll tmp = idx, offA = 0, offB = 0;
@@ -479,8 +501,8 @@ namespace simplenet{
                     Tensor oView = makeBroadcastView(other, outShape);
 
 
-                    ll N = sizeOfTensor();
-                    for (ll idx = 0; idx < N; ++idx) {
+                    size_t N = sizeOfTensor();
+                    for (size_t idx = 0; idx < N; ++idx) {
                         // same flat-to-multi decode as above
 
                         std::vector<int> coords(outShape.size(), 0);
@@ -499,7 +521,7 @@ namespace simplenet{
                         data[idx] += oView.data[offO];
                     }
                 } else {
-                    for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
+                    for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
                         data[i] += other.data[i];
                 }
                 return *this;
@@ -507,7 +529,7 @@ namespace simplenet{
 
             // element wise add
             Tensor& operator+=(const double& b) {
-                for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
+                for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
                     data[i] += b;
                 return *this;
             }
@@ -515,7 +537,7 @@ namespace simplenet{
             // element wise add
             friend Tensor operator+(const Tensor &A, const double& b) {
                 Tensor C(A.shape);
-                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i] + b;
                 return C;
             }
@@ -533,7 +555,7 @@ namespace simplenet{
             friend Tensor operator-(const Tensor &A, const Tensor &B) {
                 if (A.shape == B.shape) {
                     Tensor C(A.shape);
-                    for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                    for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                         C.data[i] = A.data[i] - B.data[i];
                     return C;
                 }
@@ -547,7 +569,7 @@ namespace simplenet{
                 Tensor bView = makeBroadcastView(B, outShape);
 
                 // now do a single flat loop
-                ll N = C.sizeOfTensor();
+                size_t N = C.sizeOfTensor();
                 for (ll idx = 0; idx < N; ++idx) {
                     // decode idx → coordinates and accumulate offsets
                     ll tmp = idx, offA = 0, offB = 0;
@@ -578,8 +600,8 @@ namespace simplenet{
                         throw std::invalid_argument("LHS must match broadcasted shape");
                     Tensor oView = makeBroadcastView(other, outShape);
 
-                    ll N = sizeOfTensor();
-                    for (ll idx = 0; idx < N; ++idx) {
+                    size_t N = sizeOfTensor();
+                    for (size_t idx = 0; idx < N; ++idx) {
                         // same flat-to-multi decode as above
 
                         std::vector<int> coords(outShape.size(), 0);
@@ -598,7 +620,7 @@ namespace simplenet{
                         data[idx] -= oView.data[offO];
                     }
                 } else {
-                    for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
+                    for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
                         data[i] -= other.data[i];
                 }
                 return *this;
@@ -606,7 +628,7 @@ namespace simplenet{
 
              // element wise subtract
             Tensor& operator-=(const double& b) {
-                for (ll i = 0, N = sizeOfTensor(); i < N; ++i)
+                for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
                     data[i] -= b;
                 return *this;
             }
@@ -614,7 +636,7 @@ namespace simplenet{
               // element wise subtract
             friend Tensor operator-(const Tensor &A, const double& b) {
                 Tensor C(A.shape);
-                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i] - b;
                 return C;
             }
@@ -622,7 +644,7 @@ namespace simplenet{
             // element wise subtract
             friend Tensor operator-(const double& b, const Tensor &A) {
                 Tensor C(A.shape);
-                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = b- A.data[i]; // operation is switched as above
                 return C;
             }
@@ -643,7 +665,7 @@ namespace simplenet{
             // element wise multiply
             friend Tensor operator*(const Tensor &A, const double& b) {
                 Tensor C(A.shape);
-                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i]*b;
                 return C;
             }
@@ -750,7 +772,7 @@ namespace simplenet{
             // element wise divide
             friend Tensor operator/(const Tensor &A, const double& b) {
                 Tensor C(A.shape);
-                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i]/b;
                 return C;
             }
@@ -758,7 +780,7 @@ namespace simplenet{
             // element wise divide
             friend Tensor operator/(const double& b, const Tensor &A) {
                 Tensor C(A.shape);
-                for (ll i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = b/A.data[i];
                 return C;
             }
@@ -775,7 +797,7 @@ namespace simplenet{
 
                 // shapes match
                 Tensor C(a.shape);
-                for (ll i = 0, N = a.sizeOfTensor(); i < N; ++i)
+                for (size_t i = 0, N = a.sizeOfTensor(); i < N; ++i)
                     C.data[i] = a.data[i]/b.data[i];
                 return C;
 
@@ -838,7 +860,7 @@ namespace simplenet{
             static Tensor exp(Tensor& t){
                 // std::cout <<"EXPONENTIATED" <<std::endl;
                 Tensor  a = t; // copied
-                for (ll i =0; i<t.sizeOfTensor(); i++){
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::exp(t.data[i]);
                 }
                 return a;
@@ -849,7 +871,7 @@ namespace simplenet{
             static Tensor max(Tensor& t, double val){
                 // std::cout <<"MAX" <<std::endl;
                 Tensor  a = t; // copied
-                for (ll i =0; i<t.sizeOfTensor(); i++){
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::max({t.data[i], val});
                 }
                 return a;
@@ -865,7 +887,7 @@ namespace simplenet{
                     throw std::invalid_argument("Shapes dont match for max operation");
                 }
                 Tensor  a = t; // copied
-                for (ll i =0; i<t.sizeOfTensor(); i++){
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::max({t.data[i], s.data[i]});
                 }
                 return a;
@@ -874,7 +896,7 @@ namespace simplenet{
             static Tensor min(Tensor& t, double val){
                 // std::cout <<"MIN" <<std::endl;
                 Tensor  a = t; // copied
-                for (ll i =0; i<t.sizeOfTensor(); i++){
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::min({t.data[i], val});
                 }
                 return a;
@@ -890,7 +912,7 @@ namespace simplenet{
                     throw std::invalid_argument("Shapes dont match for min operation");
                 }
                 Tensor  a = t; // copied
-                for (ll i =0; i<t.sizeOfTensor(); i++){
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::min({t.data[i], s.data[i]});
                 }
                 return a;
@@ -899,7 +921,7 @@ namespace simplenet{
             //----------------------------------------Absolute value------------------------------------------------------
             static Tensor abs(Tensor &t ){
                 Tensor  a = t; // copied
-                for (ll i =0; i<t.sizeOfTensor(); i++){
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::abs(t.data[i]);
                 }
                 return a;
@@ -910,8 +932,8 @@ namespace simplenet{
             // To be changed
             static Tensor mean(Tensor &t ){
                 Tensor returnMean({1});
-                ll sizeTensor = t.sizeOfTensor();
-                for (ll i =0; i<sizeTensor; i++){
+                size_t sizeTensor = t.sizeOfTensor();
+                for (size_t i =0; i<sizeTensor; i++){
                     returnMean.data[0] += t.data[i];
                 }
                 returnMean.data[0]/= static_cast<double>(sizeTensor);
@@ -922,7 +944,7 @@ namespace simplenet{
             // TODO: refactor
             // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
             void fill(double v){
-                for (ll i =0;i<sizeOfTensor(); i++){
+                for (size_t i =0;i<sizeOfTensor(); i++){
                     this->data[i] = v;
                 }
             }
@@ -930,7 +952,7 @@ namespace simplenet{
             // TODO: refactor
             static bool has_nonzero_gradient(Tensor& t){
                 // we only have to check if there is at least one of the numbers that is non-zero
-                for (ll i =0;i<t.sizeOfTensor(); i++){
+                for (size_t i =0;i<t.sizeOfTensor(); i++){
                     if (std::abs(t.data[i]) > 1e-12) {
                         return true;
                     }
@@ -959,7 +981,7 @@ namespace simplenet{
                 if (shape.size()==1 && dim ==0){
                     // no need to check keep dims as if keepdims is false then it will be a scalar anyways
                     Tensor new_t({1});
-                    for (ll i =0; i < sizeOfTensor(); i++){
+                    for (size_t i =0; i < sizeOfTensor(); i++){
                         new_t.data[0]+=data[i];
                     }
                     return new_t;
@@ -980,8 +1002,8 @@ namespace simplenet{
                 double* flat_data = new_t.data;
 
                 ll dest_idx = 0;
-                for (ll v =0; v<sizeOfTensor(); v+=offset_old){
-                    for (ll s = 0; s<offset_new_shape;s++){
+                for (size_t v =0; v<sizeOfTensor(); v+=offset_old){
+                    for (size_t s = 0; s<offset_new_shape;s++){
                         double val {};
                         for (int idx = 0; idx<oldDim; idx++){
                             val+= data[v+idx*offset_new_shape+s];
@@ -999,7 +1021,7 @@ namespace simplenet{
             // TODO: refactor
             // linspace function  to edit the current tensor
             Tensor& linspace(double start, double end){
-                ll long_size = this->sizeOfTensor();
+                size_t long_size = this->sizeOfTensor();
                 double size = static_cast<double>(long_size);
                 double step = (end-start)/(size);
                 for (size_t i =0; i < long_size ; i++){
@@ -1029,7 +1051,7 @@ namespace simplenet{
                 std::reverse(new_shape.begin()+(new_shape.size()-2), new_shape.end()); // reverse the shape
                 Tensor n (new_shape); // new matrix with reversed shape (transposed)
                 ll offset = new_shape[new_shape.size()-1]*new_shape[new_shape.size()-2];
-                for (ll s = 0; s<n.sizeOfTensor(); s+=offset){
+                for (size_t s = 0; s<n.sizeOfTensor(); s+=offset){
                     for (int r = 0 ; r<new_shape[this->shape.size()-2]; r++){
                         for (int c = 0; c < new_shape[this->shape.size()-1]; c++){
                             n.data[s+r*new_shape[new_shape.size()-1]+c] = this->data[s+c*this->shape[this->shape.size()-1]+r]; // transpose last two dims
@@ -1054,7 +1076,7 @@ namespace simplenet{
                 }
                 Tensor result(temp);
                 // the numbers position will be the same - only the way they are represented will be different
-                for (ll i = 0; i < this->sizeOfTensor(); i++){
+                for (size_t i = 0; i < this->sizeOfTensor(); i++){
                         result.data[i] = this->data[i];
                 }
                 return result;
@@ -1126,9 +1148,9 @@ namespace simplenet{
                     }
                 }
 
-                ll total = (tensors.size()+1) * this->sizeOfTensor();
+                size_t total = (tensors.size()+1) * this->sizeOfTensor();
                 double * temp = new double[total];
-                ll stride = this->sizeOfTensor();
+                size_t stride = this->sizeOfTensor();
 
                 this->shape.insert(this->shape.begin(), tensors.size()+1);
                 computeStrides();
