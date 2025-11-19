@@ -78,7 +78,7 @@ namespace simplenet {
             }
 
             void copy_device_to_device(void* destination, const void* source, size_t bytes) override {
-                CUDA_CHECK(cudaSetDevice(device_id_));
+                CUDA_CHECK(cudaSetDevice(this->device_id));
                 CUDA_CHECK(cudaMemcpy(destination, source, bytes, cudaMemcpyDeviceToDevice));
             }
 
