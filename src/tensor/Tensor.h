@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string>
 #include <algorithm>
+#include <memory>
 
 // TODO: refactor Tensor class
 #include "devices/device_type.h"
@@ -272,12 +273,54 @@ namespace simplenet{
                 }
             }
 
-            void to(const Device dev){
-               // todo
+            // copy to
+            Tensor to(const Device& targetDevice){
+                if (device == targetDevice) {
+                    return *this; // Return copy on same device
+                }
+                Tensor result(shape, targetDevice);
+                size_t bytes = sizeOfTensor() * sizeof(double);
+                if (targetDevice.is_cpu()) {
+                    // GPU -> CPU
+                    allocator_->copy_to_host(result.data, data, bytes);
+                } else {
+                    // CPU -> GPU
+                    result.allocator_->copy_to_device(result.data, data, bytes);
+                }
+                return result;
             }
 
-            // TODO: refactor
+
+            // inplace to
+            void to_(const Device& targetDevice) {
+                if (device == targetDevice) return;
+
+                size_t bytes = sizeOfTensor() * sizeof(double);
+                auto new_allocator = std::unique_ptr<DeviceAllocator>(get_allocator(targetDevice));
+                double* new_data = static_cast<double*>(new_allocator->allocate(bytes));
+
+                // transfer data
+                if (targetDevice.is_cpu()) {
+                    allocator_->copy_to_host(new_data, data, bytes);
+                } else {
+                    new_allocator->copy_to_device(new_data, data, bytes);
+                }
+
+                if (owns_data) {
+                    allocator_->deallocate(data);
+                }
+
+                data = new_data;
+                device = targetDevice;
+                allocator_ = std::move(new_allocator); // new unique pointer setting
+                owns_data = true;
+            }
+
+            // TODO: use CUDA direct memory access for get
             double get(std::vector<int> index) const {
+                if (!this->device.is_cpu()) {
+                    throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use get()");
+                }
                 if (index.size() != shape.size()){
                     throw std::invalid_argument("Invalid index size: \nPassed:" + utils::debugShapes(index)+"\nExpected:" +utils::debugShapes(this->shape)+"\n");
                 }
