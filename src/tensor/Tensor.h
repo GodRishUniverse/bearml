@@ -159,7 +159,7 @@ namespace simplenet{
                 }
 
                 // check if we even have a cuda capable device
-                if (device.type== DeviceType::GPU){
+                if (device.type== DeviceType::CUDA){
                     int cuda_device_count = 0;
                     CUDA_CHECK(cudaGetDeviceCount(&cuda_device_count));
                     if (cuda_device_count == 0) {

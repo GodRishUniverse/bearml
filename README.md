@@ -50,6 +50,26 @@ The Autodiff works on the
 * Can train a basic neural network on the CPU
 
 
+### NOTE and manual patch-work
+
+CUDA compilation (manual patch applied)
+`/usr/local/cuda-13/targets/x86_64-linux/include/crt`
+as suggested by "https://www.linuxquestions.org/questions/slackware-14/help-compiling-ffmpeg-8-with-cuda-12-9-using-an-alternative-glibc-4175754496-print/"
+changed math libraries to
+```c
+#if defined(__GLIBC__) && (__GLIBC__ > 2) || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 42)
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ double rsqrt(double x) noexcept (true);
+#else
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ double rsqrt(double x);
+#endif
+
+#if defined(__GLIBC__) && (__GLIBC__ > 2) || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 42)
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x) noexcept (true);
+#else
+extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
+#endif
+```
+
 
 ## What do we need to complete
 
@@ -123,7 +143,8 @@ So one of the first roadblocks that I faced is that (I have spent months on this
 
 How to make the SGD faster -> using momentum? Cause it is slow for lower learning rates
 Refactoring the entire code base (cause Tensor class will change) -> cuda kernel and movement of data need to be consideredz`
-...
+
+
 
 
 ### Open to Contributions

@@ -1,7 +1,22 @@
 cmake_minimum_required(VERSION 3.20)
-project(SimpleNet CXX)
+
+set(CMAKE_CUDA_HOST_COMPILER /usr/bin/gcc-14)
+set(CMAKE_C_COMPILER /usr/bin/gcc-14)
+set(CMAKE_CXX_COMPILER /usr/bin/g++-14)
+
+project(SimpleNet CUDA CXX)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CUDA_STANDARD 17)
+
+include(CheckLanguage)
+check_language(CUDA)
+if(CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+else()
+    message(STATUS "No CUDA compiler found")
+endif()
 
 # Add subdirectories
 add_subdirectory(src)
