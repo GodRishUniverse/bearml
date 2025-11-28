@@ -63,6 +63,7 @@ namespace simplenet {
             void deallocate(void* ptr) override {
                 if (ptr) {
                     CUDA_CHECK(cudaSetDevice(this->device_id));
+                    CUDA_CHECK(cudaDeviceSynchronize()); // sync before deletion
                     CUDA_CHECK(cudaFree(ptr));
                 }
             }
@@ -75,6 +76,7 @@ namespace simplenet {
             void copy_to_host(void* destination, const void* source, size_t bytes) override {
                 CUDA_CHECK(cudaSetDevice(this->device_id));
                 CUDA_CHECK(cudaMemcpy(destination, source, bytes, cudaMemcpyDeviceToHost));
+                CUDA_CHECK(cudaDeviceSynchronize()); // sync
             }
 
             void copy_device_to_device(void* destination, const void* source, size_t bytes) override {

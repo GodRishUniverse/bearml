@@ -316,7 +316,6 @@ namespace simplenet{
                 owns_data = true;
             }
 
-            // TODO: use CUDA direct memory access for get
             double get(std::vector<int> index) const {
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use get()");
@@ -336,8 +335,12 @@ namespace simplenet{
             }
 
 
-            // TODO: refactor
             void set(double val, std::vector<int> index) const {
+
+                if (!this->device.is_cpu()) {
+                    throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
+                }
+
                 if (index.size() != shape.size()){
                     std::string err = "Expected size = ";
                     std::string expected_size {"("};
@@ -349,11 +352,8 @@ namespace simplenet{
                         }
                     }
                     expected_size+=")";
-
                     err+=expected_size;
-
                     err+= " Actual passed in = ";
-
                     for (size_t s = 0; s<index.size(); s++){
                         size_passed+= std::to_string(index[s]);
                         if (s-1 != index.size()-1){
@@ -361,12 +361,8 @@ namespace simplenet{
                         }
                     }
                     size_passed+=")";
-
                     err+=size_passed;
-
-
                     err = "Invalid index size: " + err;
-
                     throw std::invalid_argument(err);
                 }
 
@@ -418,10 +414,13 @@ namespace simplenet{
             // TODO: add test to check offset values
             void set_with_offset(ll offset, int row, int col, double val){
                 // assumes offset is passed correctly at the moment
+                if (!this->device.is_cpu()) {
+                    throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
+                }
+
                 data[offset+row*(this->shape[this->shape.size()-1])+col] = val;
             }
 
-            // TODO: refactor
             // helper function
             void printShape() const {
                 std::cout << "Shape: [";
@@ -463,10 +462,17 @@ namespace simplenet{
             }
 
 
-            // TODO: refactor
             // TODO:CHANGE to not print extra stuff after the boradcast is applied as stride is set to 0 after broadcast is done
             friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
-                int total_elements = 1;
+
+                const Tensor* printingTensor = &tensor;
+                Tensor cpu_copy;
+                if (!tensor.device.is_cpu()){
+                    cpu_copy = tensor.to(Device::cpu());
+                    printingTensor = &cpu_copy;
+                }
+
+                size_t total_elements = 1;
                 for (int dim : tensor.shape) {
                     total_elements *= dim;
                 }
@@ -478,9 +484,12 @@ namespace simplenet{
                 }
                 os << "]\n";
 
+                os << "Tensor on device: ";
+                os << tensor.device.to_string() << "\n";
+
                 os << "Tensor data: \n";
-                for (int i = 0; i < total_elements; ++i) {
-                    os << std::setprecision(14) << tensor.data[i] << " ";
+                for (size_t i = 0; i < total_elements; ++i) {
+                    os << std::setprecision(14) << printingTensor->data[i] << " ";
                 }
                 os << "\n";
 
