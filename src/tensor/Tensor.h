@@ -275,7 +275,7 @@ namespace simplenet{
             }
 
             // copy to
-            Tensor to(const Device& targetDevice){
+            Tensor to(const Device& targetDevice) const{
                 if (device == targetDevice) {
                     return *this; // Return copy on same device
                 }
@@ -286,7 +286,7 @@ namespace simplenet{
                     allocator_->copy_to_host(result.data, data, bytes);
                 } else {
                     // CPU -> GPU
-                    result.allocator_->copy_to_device(result.data, data, bytes);
+                    allocator_->copy_to_device(result.data, data, bytes);
                 }
                 return result;
             }
@@ -317,7 +317,7 @@ namespace simplenet{
                 owns_data = true;
             }
 
-            Device getDevice(){
+            Device getDevice() const {
                 return this->device;
             }
 
@@ -471,12 +471,15 @@ namespace simplenet{
             // TODO:CHANGE to not print extra stuff after the boradcast is applied as stride is set to 0 after broadcast is done
             friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
 
-                const Tensor* printingTensor = &tensor;
-                Tensor cpu_copy;
-                if (!tensor.device.is_cpu()){
-                    cpu_copy = tensor.to(Device::cpu());
-                    printingTensor = &cpu_copy;
-                }
+                // const Tensor* printingTensor = &tensor;
+                // Tensor cpu_copy;
+                // if (!tensor.device.is_cpu()){
+                //     cpu_copy = tensor.to(Device::cpu());
+                //     printingTensor = &cpu_copy;
+                // }
+                //
+                Tensor cpu_tensor_view = tensor.to(Device::cpu()); // TODO: problem here
+
 
                 size_t total_elements = 1;
                 for (int dim : tensor.shape) {
@@ -495,7 +498,7 @@ namespace simplenet{
 
                 os << "Tensor data: \n";
                 for (size_t i = 0; i < total_elements; ++i) {
-                    os << std::setprecision(14) << printingTensor->data[i] << " ";
+                    os << std::setprecision(14) << cpu_tensor_view.data[i] << " ";
                 }
                 os << "\n";
 
