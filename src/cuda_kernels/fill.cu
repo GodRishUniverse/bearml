@@ -1,6 +1,11 @@
 #include "cuda_kernels.h"
 #include <cuda_runtime.h>
 
+//TODO: write broadcasting done on the gpu matmul code
+
+//TODO: write host code here
+
+
 namespace simplenet {
     namespace cuda {
         // helper
@@ -16,11 +21,11 @@ namespace simplenet {
             }
         }
 
-        void fill(double* data, double value, size_t n, int threads) {
-            dim3 blocks = get_blocks(n, threads);
-            fill_kernel<<<blocks, threads>>>(data, value, n);
-            CUDA_CHECK(cudaGetLastError());
-        }
+        // void fill(double* data, double value, size_t n, int threads) {
+        //     dim3 blocks = get_blocks(n, threads);
+        //     fill_kernel<<<blocks, threads>>>(data, value, n);
+        //     CUDA_CHECK(cudaGetLastError());
+        // }
 
         __global__ void fill_kernel(float* data, float value, size_t n) {
             size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -29,11 +34,11 @@ namespace simplenet {
             }
         }
 
-        void fill(float* data, float value, size_t n, int threads) {
-            dim3 blocks = get_blocks(n, threads);
-            fill_kernel<<<blocks, threads>>>(data, value, n);
-            CUDA_CHECK(cudaGetLastError());
-        }
+        // void fill(float* data, float value, size_t n, int threads) {
+        //     dim3 blocks = get_blocks(n, threads);
+        //     fill_kernel<<<blocks, threads>>>(data, value, n);
+        //     CUDA_CHECK(cudaGetLastError());
+        // }
 
     }
 }

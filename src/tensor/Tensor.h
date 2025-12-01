@@ -20,6 +20,7 @@
 #include "utils/shape_utils.h"
 #include "utils/debug_utils.h"
 #include "utils/linalg_utils.h"
+#include "utils/device_utils.h"
 
 // #include <cmath>
 #include <iomanip>
@@ -85,13 +86,14 @@ namespace simplenet{
             // default constructor - added for edge cases - private ONLY -> cpu only allocation
             Tensor() : data(nullptr), owns_data(false), device(Device(DeviceType::CPU, -1)) , allocator_(nullptr){};
 
-            // TODO - refactor
             static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
                 Tensor v;            // default-constructed
+                v.device = t.device; // same device (broadcasting)
                 v.data    = t.data;
                 v.shape   = newShape;
-                v.strides = utils::computeBroadcastStrides(t.shape, t.strides, newShape);
+                v.strides = utils::computeBroadcastStrides(t.shape, t.strides, newShape); // no need to change this
                 v.owns_data = false; // we do not want the broadcasted tensors to own the data that it points - so we do not double delete
+                v.allocator_ = nullptr; // we do not have an allocator for the views
                 return v;
             }
 
@@ -109,7 +111,6 @@ namespace simplenet{
                 return t.data[0];
             }
 
-            // TODO - refactor
             std::vector<int> flatten_(int start_dim =0, int end_dim = -1, bool keepdims=false)
                 // has a Tensor return type specialization in the cpp file
             {
@@ -316,6 +317,11 @@ namespace simplenet{
                 owns_data = true;
             }
 
+            Device getDevice(){
+                return this->device;
+            }
+
+
             double get(std::vector<int> index) const {
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use get()");
@@ -504,6 +510,8 @@ namespace simplenet{
             // --------------------------------ADDITION----------------------------------------------------------------------------
             // friend function - add tensors
             friend Tensor operator+(const Tensor &A, const Tensor &B) {
+                utils::errorCheckSameDevice(A, B); // will throw an error if devices don't match
+
                 if (A.shape == B.shape) {
                     Tensor C(A.shape);
                     for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
@@ -542,6 +550,8 @@ namespace simplenet{
             }
 
             Tensor& operator+=(const Tensor &other) {
+                utils::errorCheckSameDevice(*this, other); // will throw an error if devices don't match
+
                 // broadcast or exact-shape
                 if (shape != other.shape) {
 

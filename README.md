@@ -70,10 +70,14 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 #endif
 ```
 
+`__restrict__` keyword usage: https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/
+
 
 ## What do we need to complete
 
 * Refactoring for cuda support - overhaul (2nd big refactor) -> - I am working on this first! **Important**
+  * Write host code and kernels **kernels in progress** 
+    * -> then call in the Tensor class when devices are the same and are both cuda
   * Lazy copy operation 
   * cpu and gpu memory both used -> need to think if we want to only use one (cause copy operation is expensive) -> we could use syncing though - **idk about this need to chek**
 
