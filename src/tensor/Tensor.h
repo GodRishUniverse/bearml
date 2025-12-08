@@ -471,14 +471,7 @@ namespace simplenet{
             // TODO:CHANGE to not print extra stuff after the boradcast is applied as stride is set to 0 after broadcast is done
             friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
 
-                // const Tensor* printingTensor = &tensor;
-                // Tensor cpu_copy;
-                // if (!tensor.device.is_cpu()){
-                //     cpu_copy = tensor.to(Device::cpu());
-                //     printingTensor = &cpu_copy;
-                // }
-                //
-                Tensor cpu_tensor_view = tensor.to(Device::cpu()); // TODO: problem here
+                Tensor cpu_tensor_view = tensor.to(Device::cpu());
 
 
                 size_t total_elements = 1;
