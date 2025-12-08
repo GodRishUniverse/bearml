@@ -20,9 +20,10 @@ endif()
 
 # Add subdirectories
 add_subdirectory(src)
-add_subdirectory(tests)
-
-
+add_subdirectory(runchecks)
+add_subdirectory(unit_tests)
+add_subdirectory(third_party/googletest)
+enable_testing()
 
 
 #NOT USED AT THE MOMENT

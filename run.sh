@@ -1,6 +1,4 @@
-rm -rf build;
-mkdir build;
 cd build;
 cmake ..;
 make;
-./tests/test_runner;
+./runchecks/test_runner;

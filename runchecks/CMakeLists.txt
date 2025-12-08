@@ -8,4 +8,7 @@ file(GLOB TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 add_executable(test_runner ${TEST_FILES})
 
 # Link against the src library
-target_link_libraries(test_runner PRIVATE simplenet)
+target_link_libraries(test_runner
+    PRIVATE
+        simplenet
+)

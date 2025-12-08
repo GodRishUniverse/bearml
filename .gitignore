@@ -3,3 +3,4 @@
 /CMakeFolder/*
 *.out
 /build/
+/build_unit_tests/

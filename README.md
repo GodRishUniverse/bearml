@@ -154,6 +154,11 @@ Refactoring the entire code base (cause Tensor class will change) -> cuda kernel
 ### Open to Contributions
 This repository is open to contribute to. Please make an issue before submitting
 
+To clone please do the following: (for submodules)
+```bash
+git clone --recursive https://github.com/GodRishUniverse/SimpleNet.git
+```
+
 ### Citations [will formalize]
 
 > [1] [Thank you Reddit!](https://www.reddit.com/r/algorithms/comments/1naehk1/comment/ndpkcqr/)
