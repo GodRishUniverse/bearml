@@ -1,10 +1,8 @@
 #pragma once
-#include <cstddef>
 #include "devices/device_type.h"
 
-//TODO: write broadcasting done on the gpu matmul code
 
-//TODO: write host code here
+//TODO: write host code here with the defines
 
 
 namespace simplenet {

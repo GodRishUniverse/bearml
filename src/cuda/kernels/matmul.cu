@@ -1,15 +1,9 @@
 // https://siboehm.com/articles/22/CUDA-MMM <- link to go over
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include "cuda_kernels.h"
-
-//TODO: write broadcasting done on the gpu matmul code
-
-//TODO: write host code here
-
+#include "../../../includes/helper.h"
 
 namespace simplenet {
     namespace cuda {
+        //TODO: write broadcasting done on the gpu matmul code
         // naive kernel right now
         template <typename T>
         __global__
@@ -34,6 +28,9 @@ namespace simplenet {
                 c[batchId*i*k + row*k + column] = sum;
             }
         }
+
+
+        //TODO: write host code here
 
         // void gemm(int batchsize, int i, int j, int k, double* a, double* b, double* c, size_t n, int threads) {
         //     dim3 blocks = simplenet::cuda::get_blocks(n, threads);

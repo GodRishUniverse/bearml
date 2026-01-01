@@ -29,11 +29,9 @@ using ll = long long; // can also use int_fast64_t
 using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
 
-// TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten, GEMM
+// TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten
 // TODO: element-wise divide
 // TODO: allow float values as well (32-bit precision) - template specialize equal to
-// TODO: do max and min operations -> comparing doubles and same size Tensors
-
 
 
 #ifndef TENSOR_H
@@ -97,18 +95,33 @@ namespace simplenet{
                 return v;
             }
 
-            // TODO - refactor
             static bool isScalar(const Tensor& t) {
                 if (t.shape.empty()) return true;
-                for (int dim : t.shape) {
-                    if (dim != 1) return false;
-                }
-                return true;
+
+                // for (int dim : t.shape) {
+                //     if (dim != 1) return false;
+                // }
+                // return true;
+
+                // the below code is the same as above but now uses stl
+                return std::all_of(t.shape.begin(), t.shape.end(), [](int dim) { return dim == 1; });
             }
 
-            // TODO - refactor
             static double getScalarValue(const Tensor& t){
-                return t.data[0];
+                if (!isScalar(t)) {
+                    throw std::runtime_error("Cannot get scalar value from non-scalar tensor");
+                }
+
+                double result;
+                if (t.device.is_cpu()) {
+                    result = t.data[0];
+                } else {
+                    // we copy to the host (cpu) to get the scalar value
+                    t.allocator_->copy_to_host(&result, t.data, sizeof(double));
+                }
+                return result;
+
+                // return t.data[0];
             }
 
             std::vector<int> flatten_(int start_dim =0, int end_dim = -1, bool keepdims=false)
@@ -152,7 +165,7 @@ namespace simplenet{
 
         public:
 
-            // constructor when size and data are provided
+            // constructor when size and data are provided -> copies on same device as I want to ensure the programmer has explicit knowledge of where the tensor is and should use .to before doing "cross-devices" copies
             Tensor(std::vector<int> sizePassed, const Device& device = Device::cpu()) :shape(sizePassed),  owns_data(true), device(device){ // we own the data here
                 // shape cannot have 0 or negatives in it
                 if (utils::negOrZeroInSizeCheck(this->shape)){
@@ -165,6 +178,11 @@ namespace simplenet{
                     CUDA_CHECK(cudaGetDeviceCount(&cuda_device_count));
                     if (cuda_device_count == 0) {
                         throw std::invalid_argument("No CUDA-capable devices available");
+                    }
+                    // check if assigning to wrong CUDA device
+                    if (device.device_id >= cuda_device_count) {
+                           throw std::invalid_argument("Invalid CUDA device ID: " +
+                                                      std::to_string(device.device_id));
                     }
                 }
                 computeStrides(); // compute strides
@@ -180,7 +198,7 @@ namespace simplenet{
                     std::fill_n(this->data, sizeTensor, 0.0);
                 } else {
                     // Zero initialize on GPU
-                    CUDA_CHECK(cudaMemset(this->data, 0.0, bytes));
+                    CUDA_CHECK(cudaMemset(this->data, 0, bytes));
                 }
 
             };

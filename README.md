@@ -1,4 +1,4 @@
-# SimpleNet: a `mini-pytorch` in pure C++/CUDA
+ero # SimpleNet: a `mini-pytorch` in pure C++/CUDA
 
 Deep Learning Framework: Implementing Neural Networks in C++
 
