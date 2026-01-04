@@ -19,7 +19,7 @@ else()
 endif()
 
 # Add subdirectories
-add_subdirectory(src)
+add_subdirectory(simplenet)
 add_subdirectory(runchecks)
 add_subdirectory(unit_tests)
 add_subdirectory(third_party/googletest)
