@@ -1,5 +1,5 @@
-#include "../../../includes/helper.h"
-#include "../../../includes/ops.h"
+#include "../includes/helper.h"
+#include "../includes/ops.h"
 
 
 // __restrict__ keyword usage: https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/
@@ -101,6 +101,111 @@ namespace simplenet {
                 }
                 res[thread_idx] = result;
             }
+        }
+
+
+        // CUDA streams ensure that the operations occur sequentially -> we want [Allocation -> CopyToDevice]->[Kernel]->[Free]
+        // Launch code -> d_a, d_b and d_out already on device as the variable name implies
+        template <typename T>
+        void launch_elementwise_broadcast(
+            const T* d_a,
+            const T* d_b,
+            T* d_out,
+            const std::vector<int>& strides_a,
+            const std::vector<int>& strides_b,
+            const std::vector<int>& res_shape,
+            uint16_t op_code,
+            cudaStream_t stream = nullptr
+        ) {
+
+            bool own_stream = (stream == nullptr);
+            // if we do need to create a stream then we create it here
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamCreate(&stream));
+            }
+
+            // Computing the flat shape of the result tensor
+            size_t res_flat_shape = 1;
+            for (size_t d = 0; d < res_shape.size(); ++d) {
+                res_flat_shape *= res_shape[d];
+            }
+
+            // allocating the device memory for shape/stride
+            size_t* d_strides_a = nullptr;
+            size_t* d_strides_b = nullptr;
+            size_t* d_res_shape = nullptr;
+
+            // Using async allocation
+            CUDA_CHECK(cudaMallocAsync(&d_strides_a, strides_a.size() * sizeof(size_t), stream));
+            CUDA_CHECK(cudaMallocAsync(&d_strides_b, strides_b.size() * sizeof(size_t), stream));
+            CUDA_CHECK(cudaMallocAsync(&d_res_shape, res_shape.size() * sizeof(size_t), stream));
+
+
+            // copying the data from host → device
+            // Using Async copies
+            CUDA_CHECK(
+                cudaMemcpyAsync(
+                    d_strides_a,
+                    strides_a.data(),
+                    strides_a.size() * sizeof(size_t),
+                    cudaMemcpyHostToDevice,
+                    stream
+                )
+            );
+
+            CUDA_CHECK(
+                cudaMemcpyAsync(
+                    d_strides_b,
+                    strides_b.data(),
+                    strides_b.size() * sizeof(size_t),
+                    cudaMemcpyHostToDevice,
+                    stream
+                )
+            );
+
+            CUDA_CHECK(
+                cudaMemcpyAsync(
+                    d_res_shape,
+                    res_shape.data(),
+                    res_shape.size() * sizeof(size_t),
+                    cudaMemcpyHostToDevice,
+                    stream
+                )
+            );
+
+            const size_t resShapeSize = res_shape.size();
+
+
+            // Configuring kernel launch
+            dim3 block(THREAD_COUNT);
+            dim3 grid((res_flat_shape + THREAD_COUNT - 1) / THREAD_COUNT);
+
+            // launching the kernel
+            element_wise_broadcast<T>
+                <<<grid, block, 0, stream>>>(
+                    d_strides_a,
+                    d_strides_b,
+                    d_res_shape,
+                    res_flat_shape,
+                    resShapeSize,
+                    d_a,
+                    d_b,
+                    d_out,
+                    op_code
+            );
+
+            CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
+
+            // cleanup after kernel finishes
+            CUDA_CHECK(cudaFreeAsync(d_strides_a, stream));
+            CUDA_CHECK(cudaFreeAsync(d_strides_b, stream));
+            CUDA_CHECK(cudaFreeAsync(d_res_shape, stream));
+
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamSynchronize(stream));
+                CUDA_CHECK(cudaStreamDestroy(stream));
+            }
+
         }
     }
 }

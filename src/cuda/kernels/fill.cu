@@ -1,4 +1,4 @@
-#include "../../../includes/helper.h"
+#include "../includes/helper.h"
 
 namespace simplenet {
     namespace cuda {

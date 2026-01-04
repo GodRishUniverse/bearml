@@ -1,5 +1,5 @@
 // https://siboehm.com/articles/22/CUDA-MMM <- link to go over
-#include "../../../includes/helper.h"
+#include "../includes/helper.h"
 
 namespace simplenet {
     namespace cuda {

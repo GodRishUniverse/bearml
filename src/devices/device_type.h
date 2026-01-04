@@ -4,52 +4,52 @@
 
 namespace simplenet {
 
-// Our enum for the devices that we will have
-enum class DeviceType {
-    CPU,
-    CUDA
-};
+    // Our enum for the devices that we will have
+    enum class DeviceType {
+        CPU,
+        CUDA
+    };
 
-class Device {
-    public:
-        DeviceType type;
-        int device_id;  // if we have multiple gpus
+    class Device {
+        public:
+            DeviceType type;
+            int device_id;  // if we have multiple gpus
 
-        Device() : type(DeviceType::CPU), device_id(-1) {}
-        Device(DeviceType t, int id = 0) : type(t), device_id(id) {}
+            Device() : type(DeviceType::CPU), device_id(-1) {}
+            Device(DeviceType t, int id = 0) : type(t), device_id(id) {}
 
-        static Device cpu() { return Device(DeviceType::CPU, -1); }
-        static Device cuda(int id = 0) { return Device(DeviceType::CUDA, id); }
+            static Device cpu() { return Device(DeviceType::CPU, -1); }
+            static Device cuda(int id = 0) { return Device(DeviceType::CUDA, id); }
 
-        bool is_cpu() const { return type == DeviceType::CPU; }
-        bool is_cuda() const { return type == DeviceType::CUDA; }
+            bool is_cpu() const { return type == DeviceType::CPU; }
+            bool is_cuda() const { return type == DeviceType::CUDA; }
 
-        std::string to_string() const {
-            if (is_cpu()) return "cpu";
-            return "cuda:" + std::to_string(device_id);
-        }
+            std::string to_string() const {
+                if (is_cpu()) return "cpu";
+                return "cuda:" + std::to_string(device_id);
+            }
 
-        bool operator==(const Device& other) const {
-            return type == other.type && device_id == other.device_id;
-        }
+            bool operator==(const Device& other) const {
+                return type == other.type && device_id == other.device_id;
+            }
 
-        bool operator!=(const Device& other) const {
-            return !(*this == other);
-        }
-};
+            bool operator!=(const Device& other) const {
+                return !(*this == other);
+            }
+    };
 
-
-// Macro functions -> https://stackoverflow.com/questions/163365/how-do-i-make-a-c-macro-behave-like-a-function
-// error checking macro
-#define CUDA_CHECK(call) \
-    do { \
-        cudaError_t error = call; \
-        if (error != cudaSuccess) { \
-            throw std::runtime_error( \
-                std::string("CUDA error at ") + __FILE__ + ":" + \
-                std::to_string(__LINE__) + " - " + \
-                cudaGetErrorString(error)); \
-        } \
-    } while(0)
-
+    // Macro functions -> https://stackoverflow.com/questions/163365/how-do-i-make-a-c-macro-behave-like-a-function
+    // error checking macro
+    #ifndef CUDA_CHECK_MACRO
+    #define CUDA_CHECK(call) \
+        do { \
+            cudaError_t error = call; \
+            if (error != cudaSuccess) { \
+                throw std::runtime_error( \
+                    std::string("CUDA error at ") + __FILE__ + ":" + \
+                    std::to_string(__LINE__) + " - " + \
+                    cudaGetErrorString(error)); \
+            } \
+        } while(0)
+    #endif
 }
