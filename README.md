@@ -37,7 +37,7 @@ The implementation is currently trying to implement broadcasting tensors, GEMM, 
 
 A simple reverse-mode autodifferentiation pipeline is set up. Need to work on applying that for the activation functions and verify on the Tensor operations.
 
-The Autodiff works on the
+The Autodiff works on  `double` and `Tensor` - cuda support needs to be added and checked
 
 ## What has been done
 
@@ -81,6 +81,13 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
     * Implement **Lazy Copy** operation.
     * **Memory Management:** Address CPU/GPU memory usage. (Decision needed: Single memory space vs. syncing to avoid expensive copy operations).
 * **Dependency Management:** Fix `#includes` for the repo to remove cyclical dependencies and repeated includes. — **Priority After Kernels**
+* **Templatify**
+  * **Templatify Tensor:** Implement template specialization for `Tensor` class to support different data types. **IMPORTANT (Priority)**
+  * **Templatify Autodiff:** Implement template specialization for `Autodiff` class to support different data types.
+  * **Templatify Kernel:** Implement template specialization for `Kernel` class to support different data types.
+    * Provide template specification for types
+* Change data types in Tensor class to use `int8, int16, int32, int64, float16, float32, float64, bfloat8, bfloat16, bfloat32, bfloat64` (Need to check types)
+  * Allow Mixed Precision
 * **Hardware Support:** Potential support for AMD HIP/ROCm. — **Maybe**
 
 ## Math Engine & Tensor Operations
@@ -122,6 +129,10 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
     * Modular design for different types (Images, CSV, etc.).
 * **Model Persistence:** Saving and loading pipelines.
 * **Integration:** Integrate Caffe2 if needed. [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
+
+## Testing
+* [ ] Unit Tests using `gtest`
+
 
 ## Optimizations
 * **CPU Optimizations:**
@@ -229,7 +240,7 @@ git clone --recursive https://github.com/GodRishUniverse/SimpleNet.git
 
 ### Citations [will formalize]
 
-> [1] [Thank you Reddit!](https://www.reddit.com/r/algorithms/comments/1naehk1/comment/ndpkcqr/)
+>
 > [1] [Thank you u/brandonpelfrey](https://www.reddit.com/r/algorithms/comments/1naehk1/comment/ndpkcqr/)
 >
 > [2] [max() derivative formula](https://math.stackexchange.com/questions/368432/derivative-of-max-function)
