@@ -1,4 +1,4 @@
-ero # SimpleNet: a `mini-pytorch` in pure C++/CUDA
+# SimpleNet: a `mini-pytorch` in pure C++/CUDA
 
 Deep Learning Framework: Implementing Neural Networks in C++
 
@@ -72,7 +72,73 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 
 `__restrict__` keyword usage: https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/
 
+# What we need to do
 
+## CUDA Support & Core Infrastructure
+* **Refactoring for CUDA Support (Major Overhaul)** — **IN PROGRESS (Priority)**
+    * Write host code and kernels — **Status: Kernels in progress**
+    * Call kernels in the `Tensor` class when devices match (CUDA).
+    * Implement **Lazy Copy** operation.
+    * **Memory Management:** Address CPU/GPU memory usage. (Decision needed: Single memory space vs. syncing to avoid expensive copy operations).
+* **Dependency Management:** Fix `#includes` for the repo to remove cyclical dependencies and repeated includes. — **Priority After Kernels**
+* **Hardware Support:** Potential support for AMD HIP/ROCm. — **Maybe**
+
+## Math Engine & Tensor Operations
+* **Matrix Multiplication (GEMM):** Use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) integration.
+    * Device-aware execution: Check device string to call CUDA kernel or standard Matmul.
+    * **TODO:** Use CUDA for GEMM and Matmul.
+* **Vector Operations:** Rectify `Transpose` for vector operations (column vs. row).
+    * Apply corresponding modifications to multiplication in `autogradient.h`.
+* **Padding:** Implement tensor padding support.
+* **Caching:** Implement tensor caching to reduce memory usage.
+* **Convolution:** Implement tensor convolution support.
+* **Legacy/Completed Items:**
+    * ~~Implement broadcasting (Required for tensor multiplication).~~
+    * ~~**Problem:** Print code bug due to shape changes/data access.~~
+    * ~~**Plan:** Make `broadcast` a private function so the broadcasted tensor vanishes after computation.~~
+    * ~~Implement Tensor multiplication (GEMM and not Tensor Product).~~
+    * ~~[Multi-dim Transpose](https://www.iaeng.org/publication/WCE2010/WCE2010_pp1838-1841.pdf)~~
+    * ~~Use Kahman Summation.~~
+    * ~~Address Batched Matmul (e.g., `[2,3,4] * [2,4,5] -> [2,3,5]`).~~
+
+## Autogradient/Autodiff & Neural Network Module
+* **Autodiff Engine:** Implement for activation functions (Unary and Binary ops).
+* **Sequential Class:** Create a wrapper to stack layers.
+* **Loss Functions:**
+    * L1 Loss (MAE) — **Done**
+    * L2 Loss (MSE)
+    * Log Loss
+    * Cross Entropy Loss
+    * Softmax Loss
+    * Binary Cross Entropy Loss
+    * Cross Entropy Loss with Softmax
+    * Binary Cross Entropy Loss with Sigmoid
+* **Optimizers (Post-Loss Implementation):**
+    * **SGD:** Currently implemented but slow. Add Momentum.
+    * **Adam / AdamW:** Implement Eps, Betas, and Regularization.
+
+## Data & Pipeline
+* [ ] **Dataloading Pipeline:** * Support for shuffling and batching. **Will make a `Rust` based project for this to also learn**
+    * Modular design for different types (Images, CSV, etc.).
+* **Model Persistence:** Saving and loading pipelines.
+* **Integration:** Integrate Caffe2 if needed. [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
+
+## Optimizations
+* **CPU Optimizations:**
+    * Vectorization using AVX/AVX2 intrinsics (e.g., `axpy` for SGD).
+    * Matrix Multiplication Tiling (Cache blocking).
+    * OpenMP parallelization (specifically for Matmul).
+* **Graph & Performance:**
+    * Lazy evaluation of the computational graph.
+    * Operator Fusing (e.g., ReLU + Linear).
+    * Strassen's algorithm for large matrices.
+* **Advanced Features:**
+    * Mixed precision training — **High Importance**
+    * Dropout.
+    * He initialization (to supplement current Xavier default).
+* **Cleanup:** Removing Eigen operations **(Long-term)**.
+
+<!-- commented because this is the old todo - above is formatted 
 ## What do we need to complete
 
 * Refactoring for cuda support - overhaul (2nd big refactor) -> - I am working on this first! **Important**
@@ -137,6 +203,7 @@ Afterwards:
     * Dropout
     * Mixed precision training (This is very important!!!)
     * He initialization as well -> right now Xavier is the default
+-->
 
 ## Roadblocks I faced
 
