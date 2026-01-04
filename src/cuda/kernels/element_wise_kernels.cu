@@ -180,7 +180,7 @@ namespace simplenet {
             dim3 block(THREAD_COUNT);
             dim3 grid((res_flat_shape + THREAD_COUNT - 1) / THREAD_COUNT);
 
-            // launching the kernel
+            // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
             element_wise_broadcast<T>
                 <<<grid, block, 0, stream>>>(
                     d_strides_a,

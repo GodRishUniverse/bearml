@@ -6,6 +6,8 @@
 #include <string>
 #include <stdexcept>
 
+#include "cuda_structs.h" // we include our structs.h here cause we now include the helper directly
+
 
 #ifndef CUDA_HELPER
 #define CUDA_HELPER

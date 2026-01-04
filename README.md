@@ -4,7 +4,7 @@ Deep Learning Framework: Implementing Neural Networks in C++
 
 ## Why?
 
-I want to implement a project in C++ and CUDA properly and this would enable me to do that.
+I want to implement a project in C++ and CUDA (AMD HIP/ROCm may also be implemented - **optional right now**) properly and this would enable me to do that.
 
 C++ is very fast as compared to Python 3.
 
@@ -82,7 +82,8 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
   * cpu and gpu memory both used -> need to think if we want to only use one (cause copy operation is expensive) -> we could use syncing though - **idk about this need to chek**
 
 Afterwards:
-  
+  * fix the `#includes` for the repo so that cyclical dependencies and repeated includes are removed **Important**
+  * Support for AMD HIP/ROCm **maybe**
   * A model saving and loading pipelines 
   * Integrate Caffe2 IF NEEDED: [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
   

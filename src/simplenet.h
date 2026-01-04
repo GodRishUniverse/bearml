@@ -1,0 +1,14 @@
+#pragma once
+
+// This is the library for the SimpleNet framework. - all files are included in this header file.
+// Only include this header file to use the SimpleNet framework.
+// SimpleNet is a neural network framework written in C++ with CUDA support.
+
+#include "tensor/Tensor.h"
+#include "autograd/autogradient.h"
+#include "activation_functions/modules.h"
+#include "model_construct/model_construct.h"
+#include "loss_functions/loss.h"
+#include "optimizers/optimizers.h"
+#include "devices/device_type.h"
+// #include "cuda/includes/"

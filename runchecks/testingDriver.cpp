@@ -1,10 +1,11 @@
-#include "tensor/Tensor.h"
-#include "autograd/autogradient.h"
-#include "activation_functions/modules.h"
-#include "model_construct/model_construct.h"
-#include "loss_functions/loss.h"
-#include "optimizers/optimizers.h"
-#include "devices/device_type.h"
+// #include "tensor/Tensor.h"
+// #include "autograd/autogradient.h"
+// #include "activation_functions/modules.h"
+// #include "model_construct/model_construct.h"
+// #include "loss_functions/loss.h"
+// #include "optimizers/optimizers.h"
+// #include "devices/device_type.h"
+#include "simplenet.h"
 #include <iostream>
 #include <vector>
 
