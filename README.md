@@ -14,7 +14,7 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 
 ### Prerequisites
 **Only tested on Fedora Linux at the moment**
-- C++20 or higher
+- C++20 or higher [Check NVCC compatibility]
 - CMake 3.20+
 - CUDA Toolkit 13.0 [will have to make optional]
 
