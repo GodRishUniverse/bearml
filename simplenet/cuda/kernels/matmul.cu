@@ -4,10 +4,20 @@
 namespace simplenet {
     namespace cuda {
         //TODO: write broadcasting done on the gpu matmul code
+
+        template <typename T>
+        __global__
+        void gemm_kernel_broadcast(
+
+        ){
+            //
+        }
+
+
         // naive kernel right now
         template <typename T>
         __global__
-        void gemm_kernel(
+        void gemm_kernel_contiguous(
             int batchsize,
             int i,
             int j,
@@ -29,14 +39,8 @@ namespace simplenet {
             }
         }
 
-
         //TODO: write host code here
 
-        // void gemm(int batchsize, int i, int j, int k, double* a, double* b, double* c, size_t n, int threads) {
-        //     dim3 blocks = simplenet::cuda::get_blocks(n, threads);
-        //     gemm_kernel<<<blocks, threads>>>(batchsize, i, j, k, a, b, c);
-        //     CUDA_CHECK(cudaGetLastError());
-        // }
 
 
     }

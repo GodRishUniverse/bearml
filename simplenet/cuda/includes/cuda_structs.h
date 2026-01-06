@@ -3,7 +3,14 @@
 
 #ifndef CUDA_STRUCTS_H
 #define CUDA_STRUCTS_H
+
+// All broadcast parameters - leave (some-irrelevant) data empty for the different kernel launches if that data is not needed
+template<typename T>
 struct BroadcastParams {
+    const T* a;
+    const T* b;
+    const T* res;
+
     int* strides_a;
     int* strides_b;
     int* res_shape;

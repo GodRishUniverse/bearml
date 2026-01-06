@@ -1,5 +1,8 @@
 #include "../includes/helper.h"
 #include "../includes/ops.h"
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 
 
 // __restrict__ keyword usage: https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/
@@ -21,7 +24,7 @@ namespace simplenet {
             const T* __restrict__ a,
             const T* __restrict__ b,
             T* res,
-            uint16_t op_code
+            OP_Code op_code
         ){
             size_t thread_idx = blockIdx.x*blockDim.x + threadIdx.x;
 
@@ -39,19 +42,19 @@ namespace simplenet {
 
                 T result;
                 switch (op_code) {
-                    case OP_ADD: {
+                    case OP_Code::OP_ADD: {
                         result = a[offA]+b[offB];
                         break;
                     }
-                    case OP_SUB:{
+                    case OP_Code::OP_SUB:{
                         result = a[offA]-b[offB];
                         break;
                     }
-                    case OP_MUL:{
+                    case OP_Code::OP_MUL: {
                         result = a[offA]*b[offB];
                         break;
                     }
-                    case OP_DIV:{
+                    case OP_Code::OP_DIV: {
                         result = a[offA]/b[offB];
                         break;
                     }
@@ -64,6 +67,32 @@ namespace simplenet {
             }
         }
 
+
+
+        // ---------------------------------- Template specification for floats ----------------------------------
+        // bfloat16
+        template __global__ void simplenet::cuda::element_wise_broadcast<__nv_bfloat16 >(const size_t*, const size_t*,  const size_t*, size_t, size_t, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, OP_Code);
+
+        // float16
+        template __global__ void simplenet::cuda::element_wise_broadcast<__half>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const __half*, const __half*, __half*, OP_Code);
+
+        // float32
+        template __global__ void simplenet::cuda::element_wise_broadcast<float>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const float*, const float*, float*, OP_Code);
+
+        // float64
+        template __global__ void simplenet::cuda::element_wise_broadcast<double>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const double*, const double*,  double*, OP_Code);
+
+        // ---------------------------------- Template specification for ints ----------------------------------
+        // int8
+        template __global__ void simplenet::cuda::element_wise_broadcast<int8_t>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const int8_t*, const int8_t*, int8_t*, OP_Code);
+        // int16
+        template __global__ void simplenet::cuda::element_wise_broadcast<int16_t>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const int16_t*, const int16_t*, int16_t*, OP_Code);
+        // int32
+        template __global__ void simplenet::cuda::element_wise_broadcast<int32_t>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const int32_t*, const int32_t*, int32_t*, OP_Code);
+        // int64
+        template __global__ void simplenet::cuda::element_wise_broadcast<int64_t>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const int64_t*, const int64_t*, int64_t*, OP_Code);
+
+
         // CASE: NO BROADCASTING NEEDED
         template <typename T>
         __global__
@@ -72,25 +101,25 @@ namespace simplenet {
             const T* __restrict__ b,
             T* res,
             size_t n,
-            uint16_t op_code
+            OP_Code op_code
         ){
             size_t thread_idx = blockIdx.x * blockDim.x + threadIdx.x;
             if (thread_idx < n) {
                 T result;
                 switch (op_code) {
-                    case OP_ADD: {
+                    case OP_Code::OP_ADD: {
                         result = a[thread_idx]+b[thread_idx];
                         break;
                     }
-                    case OP_SUB:{
+                    case OP_Code::OP_SUB:{
                         result = a[thread_idx]-b[thread_idx];
                         break;
                     }
-                    case OP_MUL:{
+                    case OP_Code::OP_MUL:{
                         result = a[thread_idx]*b[thread_idx];
                         break;
                     }
-                    case OP_DIV:{
+                    case OP_Code::OP_DIV:{
                         result = a[thread_idx]/b[thread_idx];
                         break;
                     }
@@ -104,8 +133,41 @@ namespace simplenet {
         }
 
 
+        // ---------------------------------- Template specification for floats ----------------------------------
+        // bfloat16
+        template __global__ void simplenet::cuda::element_wise_contiguous<__nv_bfloat16 >(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, size_t, OP_Code);
+
+        // float16
+        template __global__ void simplenet::cuda::element_wise_contiguous<__half >(const __half*, const __half*, __half*, size_t, OP_Code);
+
+        // float32
+        template __global__ void simplenet::cuda::element_wise_contiguous<float>(const float*, const float*, float*, size_t, OP_Code);
+
+        // float64
+        template __global__ void simplenet::cuda::element_wise_contiguous<double >(const double*, const double*, double*, size_t, OP_Code);
+
+        // ---------------------------------- Template specification for ints ----------------------------------
+        // int8
+        template __global__ void simplenet::cuda::element_wise_contiguous<int8_t >(const int8_t*, const int8_t*, int8_t*, size_t, OP_Code);
+        // int16
+        template __global__ void simplenet::cuda::element_wise_contiguous<int16_t >(const int16_t*, const int16_t*, int16_t*, size_t, OP_Code);
+        // int32
+        template __global__ void simplenet::cuda::element_wise_contiguous<int32_t>(const int32_t*, const int32_t*, int32_t*, size_t, OP_Code);
+        // int64
+        template __global__ void simplenet::cuda::element_wise_contiguous<int64_t >(const int64_t*, const int64_t*, int64_t*, size_t, OP_Code);
+
+
+
+        // ---------------------------------------------- LAUNCHING CODE ----------------------------------------------
+
         // CUDA streams ensure that the operations occur sequentially -> we want [Allocation -> CopyToDevice]->[Kernel]->[Free]
-        // Launch code -> d_a, d_b and d_out already on device as the variable name implies
+
+
+
+        // TODO: fix launch code so that all cuda alloc/free/copy are done in a single allocation and memcpy -> define a struct to hold all the parameters
+        // TODO: change so that launch only takes a struct from the host and does all alloc/free/memcpy for CUDA so that calling code can directly call the launch
+        //  - right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
+        // TODO: reduce cudamalloc/cudafree/cudamemcpy by using a single allocation and memcpy
         template <typename T>
         void launch_elementwise_broadcast(
             const T* d_a,
@@ -114,7 +176,7 @@ namespace simplenet {
             const std::vector<int>& strides_a,
             const std::vector<int>& strides_b,
             const std::vector<int>& res_shape,
-            uint16_t op_code,
+            OP_Code op_code,
             cudaStream_t stream = nullptr
         ) {
 
@@ -205,6 +267,54 @@ namespace simplenet {
                 CUDA_CHECK(cudaStreamSynchronize(stream));
                 CUDA_CHECK(cudaStreamDestroy(stream));
             }
+
+        }
+
+        // TODO: fix launch code so that all cuda alloc/free/copy are done in a single allocation and memcpy -> define a struct to hold all the parameters
+        // TODO: change so that launch only takes a struct from the host and does all alloc/free/memcpy for CUDA so that calling code can directly call the launch
+        //  - right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
+        template <typename T>
+        void launch_elementwise_contiguous(
+            const T* d_a,
+            const T* d_b,
+            T* d_out,
+            const std::vector<int>& res_shape, // same as d_a and d_b shape
+            OP_Code op_code,
+            cudaStream_t stream = nullptr
+        ) {
+
+            bool own_stream = (stream == nullptr);
+            // if we do need to create a stream then we create it here
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamCreate(&stream));
+            }
+
+            // Computing the flat shape of the result/a/b tensor
+            size_t n = 1;
+            for (size_t d = 0; d < res_shape.size(); ++d) {
+                n *= res_shape[d];
+            }
+
+            // Configuring kernel launch
+            dim3 block(THREAD_COUNT);
+            dim3 grid((n + THREAD_COUNT - 1) / THREAD_COUNT);
+
+            // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
+            element_wise_contiguous<T>
+                <<<grid, block, 0, stream>>>(
+                    d_a,
+                    d_b,
+                    d_out,
+                    n,
+                    op_code
+            );
+
+            CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
+
+                if (own_stream) {
+                    CUDA_CHECK(cudaStreamSynchronize(stream));
+                    CUDA_CHECK(cudaStreamDestroy(stream));
+                }
 
         }
     }

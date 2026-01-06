@@ -1,12 +1,10 @@
 #pragma once
 #include <cstddef>
-#include <cuda.h>
-#include <cuda_runtime.h>
 #include <vector>
 #include <string>
 #include <stdexcept>
 
-#include "cuda_structs.h" // we include our structs.h here cause we now include the helper directly
+#include "cuda_imports.h" // all cuda imports
 
 
 #ifndef CUDA_HELPER

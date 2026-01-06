@@ -2,9 +2,6 @@
 #include "devices/device_type.h"
 
 
-//TODO: write host code here with the defines
-
-
 namespace simplenet {
     namespace cuda {
 
