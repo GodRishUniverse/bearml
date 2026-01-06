@@ -163,7 +163,7 @@ namespace simplenet {
         // CUDA streams ensure that the operations occur sequentially -> we want [Allocation -> CopyToDevice]->[Kernel]->[Free]
 
 
-
+        // TODO: calling code must have the device check for the data
         // TODO: fix launch code so that all cuda alloc/free/copy are done in a single allocation and memcpy -> define a struct to hold all the parameters
         // TODO: change so that launch only takes a struct from the host and does all alloc/free/memcpy for CUDA so that calling code can directly call the launch
         //  - right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
@@ -270,6 +270,7 @@ namespace simplenet {
 
         }
 
+        // TODO: calling code must have the device check for the data
         // TODO: fix launch code so that all cuda alloc/free/copy are done in a single allocation and memcpy -> define a struct to hold all the parameters
         // TODO: change so that launch only takes a struct from the host and does all alloc/free/memcpy for CUDA so that calling code can directly call the launch
         //  - right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
