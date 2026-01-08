@@ -164,10 +164,7 @@ namespace simplenet {
 
 
         // TODO: calling code must have the device check for the data
-        // TODO: fix launch code so that all cuda alloc/free/copy are done in a single allocation and memcpy -> define a struct to hold all the parameters
-        // TODO: change so that launch only takes a struct from the host and does all alloc/free/memcpy for CUDA so that calling code can directly call the launch
         //  - right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
-        // TODO: reduce cudamalloc/cudafree/cudamemcpy by using a single allocation and memcpy
         template <typename T>
         void launch_elementwise_broadcast(
             const T* d_a,
@@ -193,43 +190,31 @@ namespace simplenet {
             }
 
             // allocating the device memory for shape/stride
-            size_t* d_strides_a = nullptr;
-            size_t* d_strides_b = nullptr;
-            size_t* d_res_shape = nullptr;
+            void* d_buffer = nullptr;
 
             // Using async allocation
-            CUDA_CHECK(cudaMallocAsync(&d_strides_a, strides_a.size() * sizeof(size_t), stream));
-            CUDA_CHECK(cudaMallocAsync(&d_strides_b, strides_b.size() * sizeof(size_t), stream));
-            CUDA_CHECK(cudaMallocAsync(&d_res_shape, res_shape.size() * sizeof(size_t), stream));
+            size_t total_size = (strides_a.size() + strides_b.size() + res_shape.size()) * sizeof(size_t);
+            CUDA_CHECK(cudaMallocAsync(&d_buffer, total_size, stream));
 
+            // pointer arithmetic to get the buffers on the device
+            size_t* d_strides_a = static_cast<size_t*>(d_buffer);
+            size_t* d_strides_b = d_strides_a + strides_a.size();
+            size_t* d_res_shape = d_strides_b + strides_b.size();
+
+            // packing the data on host side for one memcpy
+            std::vector<size_t> host_buffer;
+            host_buffer.reserve(strides_a.size() + strides_b.size() + res_shape.size());
+            host_buffer.insert(host_buffer.end(), strides_a.begin(), strides_a.end());
+            host_buffer.insert(host_buffer.end(), strides_b.begin(), strides_b.end());
+            host_buffer.insert(host_buffer.end(), res_shape.begin(), res_shape.end());
 
             // copying the data from host → device
             // Using Async copies
             CUDA_CHECK(
                 cudaMemcpyAsync(
-                    d_strides_a,
-                    strides_a.data(),
-                    strides_a.size() * sizeof(size_t),
-                    cudaMemcpyHostToDevice,
-                    stream
-                )
-            );
-
-            CUDA_CHECK(
-                cudaMemcpyAsync(
-                    d_strides_b,
-                    strides_b.data(),
-                    strides_b.size() * sizeof(size_t),
-                    cudaMemcpyHostToDevice,
-                    stream
-                )
-            );
-
-            CUDA_CHECK(
-                cudaMemcpyAsync(
-                    d_res_shape,
-                    res_shape.data(),
-                    res_shape.size() * sizeof(size_t),
+                    d_buffer,
+                    host_buffer.data(),
+                    total_size,
                     cudaMemcpyHostToDevice,
                     stream
                 )
@@ -259,9 +244,7 @@ namespace simplenet {
             CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
 
             // cleanup after kernel finishes
-            CUDA_CHECK(cudaFreeAsync(d_strides_a, stream));
-            CUDA_CHECK(cudaFreeAsync(d_strides_b, stream));
-            CUDA_CHECK(cudaFreeAsync(d_res_shape, stream));
+            CUDA_CHECK(cudaFreeAsync(d_buffer, stream));
 
             if (own_stream) {
                 CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -271,15 +254,13 @@ namespace simplenet {
         }
 
         // TODO: calling code must have the device check for the data
-        // TODO: fix launch code so that all cuda alloc/free/copy are done in a single allocation and memcpy -> define a struct to hold all the parameters
-        // TODO: change so that launch only takes a struct from the host and does all alloc/free/memcpy for CUDA so that calling code can directly call the launch
-        //  - right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
+        // right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
         template <typename T>
         void launch_elementwise_contiguous(
             const T* d_a,
             const T* d_b,
             T* d_out,
-            const std::vector<int>& res_shape, // same as d_a and d_b shape
+            const std::vector<int>& res_shape, // same as d_a and d_b shape cause contiguous
             OP_Code op_code,
             cudaStream_t stream = nullptr
         ) {
@@ -312,10 +293,10 @@ namespace simplenet {
 
             CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
 
-                if (own_stream) {
-                    CUDA_CHECK(cudaStreamSynchronize(stream));
-                    CUDA_CHECK(cudaStreamDestroy(stream));
-                }
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamSynchronize(stream));
+                CUDA_CHECK(cudaStreamDestroy(stream));
+            }
 
         }
     }

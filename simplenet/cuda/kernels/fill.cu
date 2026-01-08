@@ -1,5 +1,9 @@
 #include "../includes/helper.h"
-#include <cstdint>
+
+// We only need cudaMalloc/cudaMemcpy for:
+//   - Arrays/vectors (like your strides_a, strides_b)
+//   - Large structs that you want to pass by pointer
+//   - Data that the kernel will modify and you need back on host
 
 namespace simplenet {
     namespace cuda {
@@ -41,11 +45,9 @@ namespace simplenet {
         // int64
         template __global__ void simplenet::cuda::fill_kernel<int64_t>(int64_t *data, int64_t value, size_t);
 
-
+        //  - right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
         template <typename T>
-        void launch_fill(T* data, T value,  std::vector<int>& res_shape, cudaStream_t stream = nullptr) {
-
-
+        void launch_fill(T* d_data, T value,  std::vector<int>& res_shape, cudaStream_t stream = nullptr) {
             bool own_stream = (stream == nullptr);
             // if we do need to create a stream then we create it here
             if (own_stream) {
@@ -61,7 +63,7 @@ namespace simplenet {
             dim3 block(THREAD_COUNT);
             dim3 grid((n+THREAD_COUNT - 1) / THREAD_COUNT);
 
-            fill_kernel<T><<<grid, block,0, stream>>>(data, value, n);
+            fill_kernel<T><<<grid, block,0, stream>>>(d_data, value, n);
             CUDA_CHECK(cudaGetLastError());
 
             if (own_stream) {
