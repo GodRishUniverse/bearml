@@ -77,6 +77,7 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 ## CUDA Support & Core Infrastructure
 * **Refactoring for CUDA Support (Major Overhaul)** — **IN PROGRESS (Priority)**
     * Write host code and kernels — **Status: Kernels in progress**
+      * kernels need to be fixed for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
     * Call kernels in the `Tensor` class when devices match (CUDA).
     * Implement **Lazy Copy** operation.
     * **Memory Management:** Address CPU/GPU memory usage. (Decision needed: Single memory space vs. syncing to avoid expensive copy operations).
