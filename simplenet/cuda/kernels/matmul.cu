@@ -4,7 +4,7 @@
 namespace simplenet {
     namespace cuda {
         //TODO: write broadcasting done on the gpu matmul code
-
+        //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it)
         template <typename T>
         __global__
         void gemm_kernel_broadcast(
@@ -63,6 +63,9 @@ namespace simplenet {
 
 
         // naive kernel right now
+        // optimize - look over ->  https://siboehm.com/articles/22/CUDA-MMM
+        //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it)
+
         template <typename T>
         __global__
         void gemm_kernel_contiguous(

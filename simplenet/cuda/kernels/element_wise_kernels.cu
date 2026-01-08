@@ -10,7 +10,7 @@ namespace simplenet {
     namespace cuda {
         // restrict is an optimization measure that basically tells the compiler that these are separate data
 
-
+        //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
         // TODO: Cache frequently accessed data in shared memory
         // CASE: BROADCASTED VERSION
         template <typename T>
@@ -92,7 +92,7 @@ namespace simplenet {
         // int64
         template __global__ void simplenet::cuda::element_wise_broadcast<int64_t>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const int64_t*, const int64_t*, int64_t*, OP_Code);
 
-
+        //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
         // CASE: NO BROADCASTING NEEDED
         template <typename T>
         __global__
