@@ -1,8 +1,11 @@
 // https://siboehm.com/articles/22/CUDA-MMM <- link to go over
 #include "../includes/helper.h"
-
+// gemm and why we need -> alpha*a*b + beta*c
+// https://math.stackexchange.com/questions/1826305/significance-of-alpha-and-beta-with-regards-to-matrix-multiplication
+//
 namespace simplenet {
     namespace cuda {
+        // TODO: Optimize - using memory coalescing, warp level parallelism, and shared memory, and tiling - check blog above and also look more into this
         //TODO: write broadcasting done on the gpu matmul code
         //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it)
         template <typename T>
@@ -12,9 +15,10 @@ namespace simplenet {
             int batch_shape_size,
             const int64_t* __restrict__ strides_a,
             const int64_t* __restrict__ strides_b,
-            const int a_rows,
-            const int a_cols,
-            const int b_cols,
+            const int M,
+            const int K,
+            const int N,
+            T alpha, T beta,
             int64_t total_batch_size,
             const T* __restrict__ a,
             const T* __restrict__ b,
@@ -22,7 +26,7 @@ namespace simplenet {
         ){
             // each thread computes one element of the output
             int64_t global_idx = blockIdx.x * blockDim.x + threadIdx.x;
-            int64_t total_elements = total_batch_size * a_rows * b_cols;
+            int64_t total_elements = total_batch_size * M * N;
 
             if (global_idx >= total_elements) return; // stop computation after the total elements
 
@@ -33,11 +37,11 @@ namespace simplenet {
             // To get the row and column indices
             //  -> divide the column obtained above by b_cols to get the row index
             //  -> modulo the column obtained above by b_cols to get the column index
-            int c_mat_size = a_rows*b_cols;  // a_rows * b_cols is c matrix size
+            int c_mat_size = M*N;  // a_rows * b_cols is c matrix size
             int64_t batch_index = global_idx / c_mat_size;
             // division gives us the row value and the column is given by modulus
-            int64_t row = (global_idx % c_mat_size) / b_cols;
-            int64_t col = (global_idx % c_mat_size) % b_cols;
+            int64_t row = (global_idx % c_mat_size) / N;
+            int64_t col = (global_idx % c_mat_size) % N;
             // now we get [batch_index][row_index][col_index] as indices values
 
             int64_t tmp = batch_index;
@@ -54,11 +58,11 @@ namespace simplenet {
             // computing the dot product -> instead of using Eigen
             T sum = 0;
 
-            for (int k =0; k < a_cols; k++) {
-                sum += a[offset_a+ row*a_cols+ k] * b[offset_b + k * b_cols + col];
+            for (int k =0; k < K; k++) {
+                sum += a[offset_a+ row*K+ k] * b[offset_b + k * N + col];
                 // offsets basically skip to the correct batch for the computation for the broadcasted dot product
             }
-            c[global_idx] = sum;
+            c[global_idx] = alpha*sum+beta*c[global_idx]; // gemm
         }
 
 
@@ -70,9 +74,10 @@ namespace simplenet {
         __global__
         void gemm_kernel_contiguous(
             int batchsize,
-            int i,
-            int j,
-            int k,
+            const int M, // row_count
+            const int K, // common_dim
+            const int N, // column_count
+            T alpha, T beta,
             T* __restrict__ a,
             T* __restrict__ b,
             T* c
@@ -81,12 +86,12 @@ namespace simplenet {
             int row = blockIdx.y*blockDim.y +threadIdx.y;
             int batchId = blockIdx.z *blockDim.z + threadIdx.z;
 
-            if (batchId < batchsize &&  row<i && column<k){
+            if (batchId < batchsize &&  row<M && column<N){
                 T sum {}; // brace initialization
-                for (int mid = 0; mid<j; mid++){
-                    sum+= a[batchId*i*j+row*j+mid]*b[batchId*j*k+mid*k+column];
+                for (int mid = 0; mid<K; ++mid){
+                    sum+= a[batchId*M*K +row*K+mid]*b[batchId*K*N+mid*N+column];
                 }
-                c[batchId*i*k + row*k + column] = sum;
+                c[batchId*M*N +row*N+column] = alpha*sum + beta*c[batchId*M*N +row*N+column];
             }
         }
 
