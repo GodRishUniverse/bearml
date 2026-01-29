@@ -1,8 +1,4 @@
-#include "../includes/helper.h"
-#include "../includes/ops.h"
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
+#include "element_wise_kernels.cuh"
 
 
 // __restrict__ keyword usage: https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/
@@ -66,8 +62,6 @@ namespace simplenet {
                 res[thread_idx] = result;
             }
         }
-
-
 
         // ---------------------------------- Template specification for floats ----------------------------------
         // bfloat16
@@ -174,7 +168,7 @@ namespace simplenet {
             const std::vector<int>& strides_b,
             const std::vector<int>& res_shape,
             OP_Code op_code,
-            cudaStream_t stream = nullptr
+            cudaStream_t stream
         ) {
 
             bool own_stream = (stream == nullptr);
@@ -225,7 +219,8 @@ namespace simplenet {
 
             // Configuring kernel launch
             dim3 block(THREAD_COUNT);
-            dim3 grid((res_flat_shape + THREAD_COUNT - 1) / THREAD_COUNT);
+            dim3 grid = get_blocks(res_flat_shape, THREAD_COUNT);
+            // ((res_flat_shape + THREAD_COUNT - 1) / THREAD_COUNT);
 
             // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
             element_wise_broadcast<T>
@@ -253,6 +248,7 @@ namespace simplenet {
 
         }
 
+
         // TODO: calling code must have the device check for the data
         // right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
         template <typename T>
@@ -262,7 +258,7 @@ namespace simplenet {
             T* d_out,
             const std::vector<int>& res_shape, // same as d_a and d_b shape cause contiguous
             OP_Code op_code,
-            cudaStream_t stream = nullptr
+            cudaStream_t stream
         ) {
 
             bool own_stream = (stream == nullptr);
@@ -277,9 +273,9 @@ namespace simplenet {
                 n *= res_shape[d];
             }
 
-            // Configuring kernel launch
-            dim3 block(THREAD_COUNT);
-            dim3 grid((n + THREAD_COUNT - 1) / THREAD_COUNT);
+            // Configuring kernel launch - this is from the  cuda convetions - although I prefer a different naming scheme
+            dim3 block(THREAD_COUNT); // Threads per block
+            dim3 grid = get_blocks(n, THREAD_COUNT); // Number of blocks
 
             // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
             element_wise_contiguous<T>
@@ -299,5 +295,37 @@ namespace simplenet {
             }
 
         }
+
+
+        // Template specification
+        // Float types
+        template void launch_elementwise_broadcast<float>(const float*, const float*, float*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_broadcast<double>(const double*, const double*, double*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_broadcast<__half>(const __half*, const __half*, __half*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_broadcast<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t);
+
+        // Int types
+        template void launch_elementwise_broadcast<int8_t>(const int8_t*, const int8_t*, int8_t*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_broadcast<int16_t>(const int16_t*, const int16_t*, int16_t*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_broadcast<int32_t>(const int32_t*, const int32_t*, int32_t*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_broadcast<int64_t>(const int64_t*, const int64_t*, int64_t*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t);
+
+        // Float types
+
+        template void launch_elementwise_contiguous<float>(const float*, const float*, float*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_contiguous<double>(const double*, const double*, double*, const std::vector<int>&,OP_Code, cudaStream_t);
+        template void launch_elementwise_contiguous<__half>(const __half*, const __half*, __half*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_contiguous<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const std::vector<int>&,OP_Code, cudaStream_t);
+
+
+
+        // Int Types
+        template void launch_elementwise_contiguous<int8_t>(const int8_t*, const int8_t*, int8_t*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_contiguous<int16_t>(const int16_t*, const int16_t*, int16_t*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_contiguous<int32_t>(const int32_t*, const int32_t*, int32_t*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_contiguous<int64_t>(const int64_t*, const int64_t*, int64_t*, const std::vector<int>&, OP_Code, cudaStream_t);
+
+
+
     }
 }

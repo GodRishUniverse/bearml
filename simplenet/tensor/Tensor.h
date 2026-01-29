@@ -25,6 +25,11 @@
 // #include <cmath>
 #include <iomanip>
 
+
+// cuda imports
+#include "cuda/includes/cuda_helper.h"
+#include "cuda/includes/kernel_links.h"
+
 using ll = long long; // can also use int_fast64_t
 using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
@@ -527,6 +532,18 @@ namespace simplenet{
                 utils::errorCheckSameDevice(A, B); // will throw an error if devices don't match
 
                 if (A.shape == B.shape) {
+                    // CUDA
+                    if (A.device == DeviceType::CUDA) {
+                        Tensor C(A.shape);
+                        cuda::launch_elementwise_contiguous<double>(
+                            A.data,
+                            B.data,
+                            C.data,
+                            C.getShape(),
+                            OP_Code::OP_ADD
+                        );
+                        return C;
+                    }
                     Tensor C(A.shape);
                     for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                         C.data[i] = A.data[i] + B.data[i];
@@ -535,14 +552,23 @@ namespace simplenet{
 
                 // broadcast path
                 auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
-                Tensor  C(outShape);
 
                 // make “broadcasted views” - we copy as we do not want the original shapes and strides of A and B to change
                 Tensor aView = makeBroadcastView(A, outShape);
                 Tensor bView = makeBroadcastView(B, outShape);
 
+                // CUDA
+                if (A.device == DeviceType::CUDA) {
+                    Tensor C(outShape);
+
+                    cuda::launch_elementwise_broadcast<double>(A.data, B.data, C.data, A.getStrides(), B.getStrides(), C.getShape(),OP_Code::OP_ADD );
+                    return C;
+                }
+
+                Tensor  C(outShape);
                 // now do a single flat loop
                 size_t N = C.sizeOfTensor();
+
                 for (ll idx = 0; idx < N; ++idx) {
                     // decode idx → coordinates and accumulate offsets
                     ll tmp = idx, offA = 0, offB = 0;

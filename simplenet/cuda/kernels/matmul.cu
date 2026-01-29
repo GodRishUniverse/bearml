@@ -1,10 +1,11 @@
 // https://siboehm.com/articles/22/CUDA-MMM <- link to go over
-#include "../includes/helper.h"
+#include "matmul.cuh"
 // gemm and why we need -> alpha*a*b + beta*c
 // https://math.stackexchange.com/questions/1826305/significance-of-alpha-and-beta-with-regards-to-matrix-multiplication
 //
 namespace simplenet {
     namespace cuda {
+        // TODO: this needs to fixed a lot more and tested
         // TODO: Optimize - using memory coalescing, warp level parallelism, and shared memory, and tiling - check blog above and also look more into this
         //TODO: write broadcasting done on the gpu matmul code
         //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it)
@@ -66,7 +67,7 @@ namespace simplenet {
         }
 
 
-        // naive kernel right now
+        // coelsced kernel - need to change optimize further
         // optimize - look over ->  https://siboehm.com/articles/22/CUDA-MMM
         //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it)
 
@@ -82,16 +83,18 @@ namespace simplenet {
             T* __restrict__ b,
             T* c
         ){
-            int column = blockIdx.x*blockDim.x + threadIdx.x;
-            int row = blockIdx.y*blockDim.y +threadIdx.y;
-            int batchId = blockIdx.z *blockDim.z + threadIdx.z;
+            int thread_id = threadIdx.x;
+
+            int column = blockIdx.x* BLOCK_SIZE + (thread_id / BLOCK_SIZE); // rows access
+            int row = blockIdx.y* BLOCK_SIZE + (thread_id % BLOCK_SIZE); // column access
+            int batchId = blockIdx.z;
 
             if (batchId < batchsize &&  row<M && column<N){
                 T sum {}; // brace initialization
                 for (int mid = 0; mid<K; ++mid){
-                    sum+= a[batchId*M*K +row*K+mid]*b[batchId*K*N+mid*N+column];
+                    sum+= a[batchId*M*K + row*K + mid]*b[batchId*K*N + mid*N + column];
                 }
-                c[batchId*M*N +row*N+column] = alpha*sum + beta*c[batchId*M*N +row*N+column];
+                c[batchId*M*N + row*N + column] = alpha*sum + beta*c[batchId*M*N + row*N + column];
             }
         }
 

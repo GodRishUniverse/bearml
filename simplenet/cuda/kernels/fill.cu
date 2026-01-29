@@ -1,4 +1,4 @@
-#include "../includes/helper.h"
+#include "fill.cuh"
 
 // We only need cudaMalloc/cudaMemcpy for:
 //   - Arrays/vectors (like your strides_a, strides_b)
@@ -47,7 +47,7 @@ namespace simplenet {
 
         //  - right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
         template <typename T>
-        void launch_fill(T* d_data, T value,  std::vector<int>& res_shape, cudaStream_t stream = nullptr) {
+        void launch_fill(T* d_data, T value,  std::vector<int>& res_shape, cudaStream_t stream) {
             bool own_stream = (stream == nullptr);
             // if we do need to create a stream then we create it here
             if (own_stream) {
@@ -71,5 +71,18 @@ namespace simplenet {
                 CUDA_CHECK(cudaStreamDestroy(stream));
             }
         }
+
+        // template specification
+        // Ints
+        template void launch_fill<int8_t>(int8_t*, int8_t, std::vector<int>&, cudaStream_t);
+        template void launch_fill<int16_t>(int16_t*, int16_t, std::vector<int>&, cudaStream_t);
+        template void launch_fill<int32_t>(int32_t*, int32_t, std::vector<int>&, cudaStream_t);
+        template void launch_fill<int64_t>(int64_t*, int64_t, std::vector<int>&, cudaStream_t);
+
+        // floats
+        template void launch_fill<float>(float*, float, std::vector<int>&, cudaStream_t);
+        template void launch_fill<double>(double*, double, std::vector<int>&, cudaStream_t);
+        template void launch_fill<__half>(__half*, __half, std::vector<int>&, cudaStream_t);
+        template void launch_fill<__nv_bfloat16>(__nv_bfloat16*, __nv_bfloat16, std::vector<int>&, cudaStream_t);
     }
 }

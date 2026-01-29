@@ -150,6 +150,11 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
     * He initialization (to supplement current Xavier default).
 * **Cleanup:** Removing Eigen operations **(Long-term)**.
 
+## Compatibility and Containerization
+
+* Provide a Dockerfile for building the project.[Although it should work across different platforms using `g++` and `cmake`]
+* Add compatibility for `clang` and `msvc` compilers.
+
 <!-- commented because this is the old todo - above is formatted 
 ## What do we need to complete
 
