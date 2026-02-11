@@ -98,7 +98,44 @@ namespace simplenet {
             }
         }
 
-        //TODO: write host code here
+        //TODO: write broadcast host code here
+
+
+        // test this out
+        template<typename T>
+        void launch_gemm_contiguous(
+            T* d_a,
+            T* d_b,
+            T* d_c,
+            int batchsize,
+            int m,
+            int n,
+            int k,
+            T alpha,
+            T beta,
+            cudaStream_t stream
+        ) {
+            bool own_stream = (stream == nullptr);
+            // if we do need to create a stream then we create it here
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamCreate(&stream));
+            }
+
+            // Configuring kernel launch - this is from the  cuda convetions - although I prefer a different naming scheme
+            dim3 block(THREAD_COUNT); // Threads per block
+            dim3 grid = get_blocks(n, THREAD_COUNT); // Number of blocks
+
+            // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
+            gemm_kernel_contiguous<T><<<grid, block, 0, stream>>>(batchsize, m, n, k, alpha, beta, d_a, d_b, d_c);
+
+            CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
+
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamSynchronize(stream));
+                CUDA_CHECK(cudaStreamDestroy(stream));
+            }
+
+        }
 
 
 
