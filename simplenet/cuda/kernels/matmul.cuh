@@ -18,7 +18,7 @@ namespace simplenet {
             std::vector<int64_t>* strides_a,
             std::vector<int64_t>* strides_b,
             int64_t total_batch_size,
-            cudaStream_t stream,
+            cudaStream_t stream
         );
 
         template<typename T>

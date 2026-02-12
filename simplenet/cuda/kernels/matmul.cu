@@ -83,10 +83,10 @@ namespace simplenet {
             T* __restrict__ b,
             T* c
         ){
-            int thread_id = threadIdx.x;
+            // int thread_id = threadIdx.x;
 
-            int column = blockIdx.x* BLOCK_SIZE + (thread_id / BLOCK_SIZE); // rows access
-            int row = blockIdx.y* BLOCK_SIZE + (thread_id % BLOCK_SIZE); // column access
+            int column = blockIdx.x* BLOCK_SIZE + threadIdx.x; // rows access
+            int row = blockIdx.y* BLOCK_SIZE + threadIdx.y; // column access
             int batchId = blockIdx.z;
 
             if (batchId < batchsize &&  row<M && column<N){
@@ -98,7 +98,46 @@ namespace simplenet {
             }
         }
 
-        //TODO: write broadcast host code here
+        // test this out:
+        template<typename T>
+        void launch_gemm_broadcasted(
+            T* d_a,
+            T* d_b,
+            T* d_c,
+            int m,
+            int k,
+            int n,
+            T alpha,
+            T beta,
+            std::vector<int>* batch_shape,
+            int batch_shape_size,
+            std::vector<int64_t>* strides_a,
+            std::vector<int64_t>* strides_b,
+            int64_t total_batch_size,
+            cudaStream_t stream
+        ){
+            bool own_stream = (stream == nullptr);
+            // if we do need to create a stream then we create it here
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamCreate(&stream));
+            }
+
+            // Configuring kernel launch - this is from the  cuda convetions - although I prefer a different naming scheme
+            dim3 block(THREAD_COUNT); // Threads per block
+            dim3 grid = get_blocks( total_batch_size * m * n, THREAD_COUNT); // Number of blocks
+
+            // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
+            gemm_kernel_broadcast<T><<<grid, block, 0, stream>>>(batch_shape->data(), batch_shape_size, strides_a->data(), strides_b->data(),m , k, n, alpha, beta, total_batch_size, d_a, d_b, d_c);
+
+            CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
+
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamSynchronize(stream));
+                CUDA_CHECK(cudaStreamDestroy(stream));
+            }
+
+        }
+
 
 
         // test this out
@@ -109,8 +148,8 @@ namespace simplenet {
             T* d_c,
             int batchsize,
             int m,
-            int n,
             int k,
+            int n,
             T alpha,
             T beta,
             cudaStream_t stream
@@ -122,11 +161,13 @@ namespace simplenet {
             }
 
             // Configuring kernel launch - this is from the  cuda convetions - although I prefer a different naming scheme
-            dim3 block(THREAD_COUNT); // Threads per block
-            dim3 grid = get_blocks(n, THREAD_COUNT); // Number of blocks
+            dim3 block(BLOCK_SIZE, BLOCK_SIZE); // Threads per block
+            dim3 grid((n + BLOCK_SIZE - 1) / BLOCK_SIZE,
+                      (m + BLOCK_SIZE - 1) / BLOCK_SIZE,
+                      batchsize);
 
             // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
-            gemm_kernel_contiguous<T><<<grid, block, 0, stream>>>(batchsize, m, n, k, alpha, beta, d_a, d_b, d_c);
+            gemm_kernel_contiguous<T><<<grid, block, 0, stream>>>(batchsize, m,  k, n,  alpha, beta, d_a, d_b, d_c);
 
             CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
 
