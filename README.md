@@ -21,11 +21,12 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 ### Building
 
 ```bash
-git clone https://github.com/GodRishUniverse/SimpleNet.git
-cd SimpleNet
-mkdir build && cd build
-cmake ..
-make
+git clone https://github.com/GodRishUniverse/SimpleNet.git;
+cd SimpleNet;
+mkdir build && cd build;
+cmake ..;
+make;
+<edit your cmake for building the files>
 ```
 
 Please edit the CMake files according to your liking.
