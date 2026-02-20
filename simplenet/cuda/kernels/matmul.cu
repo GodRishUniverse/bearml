@@ -1,5 +1,6 @@
 // https://siboehm.com/articles/22/CUDA-MMM <- link to go over
 #include "matmul.cuh"
+#include <cstdint>
 // gemm and why we need -> alpha*a*b + beta*c
 // https://math.stackexchange.com/questions/1826305/significance-of-alpha-and-beta-with-regards-to-matrix-multiplication
 //
@@ -101,8 +102,8 @@ namespace simplenet {
         // test this out:
         template<typename T>
         void launch_gemm_broadcasted(
-            T* d_a,
-            T* d_b,
+            const T* d_a,
+            const T* d_b,
             T* d_c,
             int m,
             int k,
@@ -122,22 +123,42 @@ namespace simplenet {
                 CUDA_CHECK(cudaStreamCreate(&stream));
             }
 
+            // Copy data from host to device
+            int64_t* d_strides_a = nullptr;
+            int64_t* d_strides_b = nullptr;
+            int* d_batch_shape = nullptr;
+            CUDA_CHECK(cudaMalloc(&d_batch_shape, batch_shape_size*sizeof(int)));
+            CUDA_CHECK(cudaMalloc(&d_strides_a, strides_a->size() * sizeof(int64_t)));
+            CUDA_CHECK(cudaMalloc(&d_strides_b, strides_b->size() * sizeof(int64_t)));
+            CUDA_CHECK(cudaMemcpyAsync(d_batch_shape, batch_shape->data(), batch_shape_size*sizeof(int), cudaMemcpyHostToDevice, stream));
+            CUDA_CHECK(cudaMemcpyAsync(d_strides_a, strides_a->data(), strides_a->size() * sizeof(int64_t), cudaMemcpyHostToDevice, stream));
+            CUDA_CHECK(cudaMemcpyAsync(d_strides_b, strides_b->data(), strides_b->size() * sizeof(int64_t), cudaMemcpyHostToDevice, stream));
+
+
             // Configuring kernel launch - this is from the  cuda convetions - although I prefer a different naming scheme
             dim3 block(THREAD_COUNT); // Threads per block
             dim3 grid = get_blocks( total_batch_size * m * n, THREAD_COUNT); // Number of blocks
 
             // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
-            gemm_kernel_broadcast<T><<<grid, block, 0, stream>>>(batch_shape->data(), batch_shape_size, strides_a->data(), strides_b->data(),m , k, n, alpha, beta, total_batch_size, d_a, d_b, d_c);
+            gemm_kernel_broadcast<T><<<grid, block, 0, stream>>>(d_batch_shape, batch_shape_size,d_strides_a, d_strides_b,m , k, n, alpha, beta, total_batch_size, d_a, d_b, d_c);
+
 
             CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
 
             if (own_stream) {
                 CUDA_CHECK(cudaStreamSynchronize(stream));
+            }
+
+            CUDA_CHECK(cudaFree(d_strides_a));
+            CUDA_CHECK(cudaFree(d_strides_b));
+            CUDA_CHECK(cudaFree(d_batch_shape));
+
+
+            if (own_stream) {
                 CUDA_CHECK(cudaStreamDestroy(stream));
             }
 
         }
-
 
 
         // test this out
