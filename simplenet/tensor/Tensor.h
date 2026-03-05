@@ -889,10 +889,6 @@ namespace simplenet{
 
 
             friend Tensor operator/(const Tensor &a, const Tensor &b) {
-                if (b.shape.size() ==1 || a.shape.size() ==1){
-                    return a/b;
-                }
-
                 if (b.shape != a.shape){
                     throw std::runtime_error("Shapes should match for element-wise divide");
                 }
@@ -970,7 +966,7 @@ namespace simplenet{
 
 
             //----------------------------------------Max and Min------------------------------------------------------
-            static Tensor max(Tensor& t, double val){
+            static Tensor max(const Tensor& t,const  double val){
                 // std::cout <<"MAX" <<std::endl;
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
@@ -979,11 +975,11 @@ namespace simplenet{
                 return a;
             }
 
-            static Tensor max(double val, Tensor& t){
+            static Tensor max(const double val, const Tensor& t){
                 return Tensor::max(t,val);
             }
 
-            static Tensor max(Tensor& t, Tensor& s){
+            static Tensor max(const Tensor& t, const Tensor& s){
                 // std::cout <<"MAX" <<std::endl;
                 if (t.getShape() != s.getShape()){
                     throw std::invalid_argument("Shapes dont match for max operation");
@@ -995,7 +991,7 @@ namespace simplenet{
                 return a;
             }
 
-            static Tensor min(Tensor& t, double val){
+            static Tensor min(const Tensor& t, double val){
                 // std::cout <<"MIN" <<std::endl;
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
@@ -1004,11 +1000,11 @@ namespace simplenet{
                 return a;
             }
 
-            static Tensor min(double val, Tensor& t){
+            static Tensor min(const double val, const Tensor& t){
                 return Tensor::min(t,val);
             }
 
-            static Tensor min(Tensor& t, Tensor& s){
+            static Tensor min(const Tensor& t, const Tensor& s){
                 // std::cout <<"MIN" <<std::endl;
                 if (t.getShape() != s.getShape()){
                     throw std::invalid_argument("Shapes dont match for min operation");
@@ -1021,13 +1017,28 @@ namespace simplenet{
             }
 
             //----------------------------------------Absolute value------------------------------------------------------
-            static Tensor abs(Tensor &t ){
+            // Note: const accepts both non-const and const tensors
+            static Tensor abs(const Tensor &t ){
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::abs(t.data[i]);
                 }
                 return a;
             }
+
+
+            //----------------------------------------Square root------------------------------------------------------
+            // Note: const accepts both non-const and const tensors
+
+            static Tensor sqrt(const Tensor &t ){
+                Tensor  a = t; // copied
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
+                    a.data[i] = std::sqrt(t.data[i]);
+                }
+                return a;
+            }
+
+
 
             //----------------------------------------Mean ------------------------------------------------------
 

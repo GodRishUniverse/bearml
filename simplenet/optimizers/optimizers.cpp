@@ -23,19 +23,24 @@ namespace simplenet {
 
            // TODO: fix Adam implementation
            // src - https://builtin.com/machine-learning/adam-optimization#:~:text=Momentum%20speeds%20up%20training%20by,need%20to%20take%20fewer%20steps.
-           Adam::Adam(std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params, double learning_rate, double momentum, double rms_prop, double beta1,  double beta2, double eps) : params(params), learning_rate(learning_rate), momentum(momentum), rms_prop(rms_prop), beta1(beta1), beta2(beta2), eps(eps), step_count(1){
-
+           Adam::Adam(std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params, double learning_rate, double beta1,  double beta2, double eps) : params(params), learning_rate(learning_rate), beta1(beta1), beta2(beta2), eps(eps), step_count(1){
+               for (auto& p : params) {
+                      m.push_back(simplenet::Tensor(p->val.getShape())); // zeros, same shape as param
+                      v.push_back(simplenet::Tensor(p->val.getShape()));
+                }
            }
 
            void Adam::step(){
-               for (auto p : this->params){
-                   momentum = beta1*momentum+(1-beta1)*p->grad;
-                   rms_prop = beta2*rms_prop+(1-beta2)*p->grad*p->grad;
+               for (size_t i = 0; i < params.size(); i++) {
+                   auto& p = params[i];
+                   m[i] = beta1 * m[i] + (1 - beta1) * p->grad; // hadamard
+                   v[i] = beta2 * v[i] + (1 - beta2) * p->grad * p->grad; // hadamard
 
-                   // bias correction
-                   double m_hat = momentum/(1-pow(beta1, this->step_count));
-                   double v_hat = rms_prop/(1-pow(beta2, this->step_count));
-                   p->val -= learning_rate*m_hat/(std::sqrt(v_hat)+eps);
+                   // Bias-corrected estimates
+                   Tensor m_hat = m[i] / (1 - std::pow(beta1, step_count)); // element wise division
+                   Tensor v_hat = v[i] / (1 - std::pow(beta2, step_count)); // element wise division
+
+                   p->val -= learning_rate * m_hat / (simplenet::Tensor::sqrt(v_hat) + eps); // TODO: write a function for sqrt for Tensor - element wise
                }
                this->step_count++;
            }
