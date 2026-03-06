@@ -25,18 +25,17 @@ namespace simplenet {
             }
 
             // Mean Squared error
-            // std::shared_ptr<simplenet::Node<simplenet::Tensor>> l2_loss( std::shared_ptr<simplenet::Node<simplenet::Tensor>> actual,  std::shared_ptr<simplenet::Node<simplenet::Tensor>> predictions){
-            //     // if (actual->val.getShape() != predictions->val.getShape()){
-            //     //     throw std::runtime_error("Shapes of actual and predictions do not match!");
-            //     // }
+            std::shared_ptr<simplenet::Node<simplenet::Tensor>> l2_loss( std::shared_ptr<simplenet::Node<simplenet::Tensor>> actual,  std::shared_ptr<simplenet::Node<simplenet::Tensor>> predictions){
+                if (actual->val.getShape() != predictions->val.getShape()){
+                    throw std::runtime_error("Shapes of actual and predictions do not match!");
+                }
 
-            //     // // TODO: Implement backward op for hadamard multiplication
-            //     // auto diff = predictions - actual;   // element-wise difference
-            //     // auto sqr_diff = simplenet::linear_algebra::hadamard(diff,diff); // TODO: <- implement backward op
-            //     // auto loss = mean(sqr_diff);         // mean of all absolute differences
+                auto diff = predictions - actual;   // element-wise difference
+                auto sqr_diff = simplenet::Node<simplenet::Tensor>::hadamard(diff,diff); // should be implemented now
+                auto loss = mean(sqr_diff);         // mean of all absolute differences
 
-            //     // return loss; // now can be done backward here
-            // }
+                return loss; // now can be done backward here
+            }
 
             void log_loss(int actual, int predictions){
                 // Log loss

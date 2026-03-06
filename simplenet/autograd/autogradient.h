@@ -335,7 +335,7 @@ namespace simplenet{
         friend std::shared_ptr<Node<T>> min(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
             // SHAPES HAVE TO BE THE SAME
             if (a->val.getShape() != b->val.getShape()){
-                throw std::invalid_argument("Shapes incompatible for max operation to be backpropagated");
+                throw std::invalid_argument("Shapes incompatible for min operation to be backpropagated");
             }
             if constexpr (std::is_same<T, simplenet::Tensor>::value){
 
@@ -364,6 +364,41 @@ namespace simplenet{
                     // Need to figure out how the multiplication of masks will be done - most probably hadamard
                     a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, a_mask);
                     b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, b_mask);
+
+                };
+
+                return node;
+            }else{
+              // To Implement
+            }
+        }
+
+        // hadamard product differentiation is just product rule -
+        // d(a*b)/dx = a * db/dx + b * da/dx
+        friend std::shared_ptr<Node<T>> hadamard(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            // SHAPES HAVE TO BE THE SAME
+            if (a->val.getShape() != b->val.getShape()){
+                throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
+            }
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::linear_algebra::hadamard(a->val, b->val));
+                node->inputs = {a,b};
+                a->outputs.push_back(node);
+                b->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+                std::weak_ptr<Node<T>> weak_b = b;
+
+                node->backward_fn = [weak_a ,weak_b, weak_node]() {
+
+                    auto a_locked = weak_a.lock();
+                    auto b_locked = weak_b.lock();
+                    auto node_locked = weak_node.lock();
+
+                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, b_locked);
+                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, a_locked);
 
                 };
 
