@@ -375,7 +375,7 @@ namespace simplenet{
 
         // hadamard product differentiation is just product rule -
         // d(a*b)/dx = a * db/dx + b * da/dx
-        friend std::shared_ptr<Node<T>> hadamard(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+        static std::shared_ptr<Node<T>> hadamard(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
             // SHAPES HAVE TO BE THE SAME
             if (a->val.getShape() != b->val.getShape()){
                 throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
@@ -397,8 +397,8 @@ namespace simplenet{
                     auto b_locked = weak_b.lock();
                     auto node_locked = weak_node.lock();
 
-                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, b_locked);
-                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, a_locked);
+                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, b_locked->val);
+                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, a_locked->val);
 
                 };
 

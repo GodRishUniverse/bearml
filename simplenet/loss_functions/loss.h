@@ -24,7 +24,7 @@ namespace simplenet {
                 return loss; // now can be done backward here
             }
 
-            // Mean Squared error
+            // Mean Squared error - TODO: check this if it works now
             std::shared_ptr<simplenet::Node<simplenet::Tensor>> l2_loss( std::shared_ptr<simplenet::Node<simplenet::Tensor>> actual,  std::shared_ptr<simplenet::Node<simplenet::Tensor>> predictions){
                 if (actual->val.getShape() != predictions->val.getShape()){
                     throw std::runtime_error("Shapes of actual and predictions do not match!");
