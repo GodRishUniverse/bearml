@@ -278,6 +278,10 @@ namespace simplenet{
                 return node;
         }
 
+        friend std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> b, double scalar){
+               return scalar * b; // functionality is the same - doesnt matter if the scalar is on the left or right
+        }
+
 
         // unary operator: e^x
         friend std::shared_ptr<Node<T>> exponent(std::shared_ptr<Node<T>> a){

@@ -33,8 +33,8 @@ namespace simplenet {
            void Adam::step(){
                for (size_t i = 0; i < params.size(); i++) {
                    auto& p = params[i];
-                   m[i] = beta1 * m[i] + (1 - beta1) * p->grad; // hadamard
-                   v[i] = beta2 * v[i] + (1 - beta2) * p->grad * p->grad; // hadamard
+                   m[i] = beta1 * m[i] + (1 - beta1) * p->grad; // hadamard here cause scalar multiplication
+                   v[i] = beta2 * v[i] + (1 - beta2) * simplenet::linear_algebra::hadamard(p->grad, p->grad); // hadamard - explicit hadamard product needed for element-wise multiplication
 
                    // Bias-corrected estimates
                    Tensor m_hat = m[i] / (1 - std::pow(beta1, step_count)); // element wise division

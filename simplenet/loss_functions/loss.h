@@ -37,9 +37,6 @@ namespace simplenet {
                 return loss; // now can be done backward here
             }
 
-
-
-
             // --------------------------------------- Non-Convex loss-functions ----------------------------------------
 
             // Log loss
