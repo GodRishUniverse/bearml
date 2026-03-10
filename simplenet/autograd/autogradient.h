@@ -134,6 +134,22 @@ namespace simplenet{
                 return node;
         }
 
+        friend std::shared_ptr<Node<T>> operator+(double scalar, std::shared_ptr<Node<T>> b){
+            simplenet::Tensor scalar_tensor({1});
+            scalar_tensor.fill(scalar);
+
+            auto scalar_node = constant(scalar_tensor);
+            return scalar_node + b;
+        }
+
+        friend std::shared_ptr<Node<T>> operator+( std::shared_ptr<Node<T>> b, double scalar){
+            simplenet::Tensor scalar_tensor({1});
+            scalar_tensor.fill(scalar);
+
+            auto scalar_node = constant(scalar_tensor);
+            return b + scalar_node;
+        }
+
 
         friend std::shared_ptr<Node<T>> operator-(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
                 std::shared_ptr<Node<T>> node  = make_node(a->val-b->val);
@@ -175,6 +191,23 @@ namespace simplenet{
                 return node;
         }
 
+        friend std::shared_ptr<Node<T>> operator-(double scalar, std::shared_ptr<Node<T>> b){
+            simplenet::Tensor scalar_tensor({1});
+            scalar_tensor.fill(scalar);
+
+            auto scalar_node = constant(scalar_tensor);
+            return scalar_node - b;
+        }
+
+        friend std::shared_ptr<Node<T>> operator-( std::shared_ptr<Node<T>> b, double scalar){
+            simplenet::Tensor scalar_tensor({1});
+            scalar_tensor.fill(scalar);
+
+            auto scalar_node = constant(scalar_tensor);
+            return b - scalar_node;
+        }
+
+
         friend std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
 
                 std::shared_ptr<Node<T>> node  = make_node(a->val*b->val);
@@ -209,6 +242,37 @@ namespace simplenet{
                         // case for doubles
                         a_locked->grad += node_locked->grad * b_locked->val; // grad_a = grad * b^T
                         b_locked->grad += a_locked->val * node_locked->grad; // grad_b = a^T * grad
+                    }
+                };
+                return node;
+        }
+
+        friend std::shared_ptr<Node<T>> operator*(double scalar, std::shared_ptr<Node<T>> b){
+
+                std::shared_ptr<Node<T>> node  = make_node(scalar*b->val);
+                // node->grad = b->val*a->grad + b->grad*a->val;  //  dc = a * b     =>    dc = b * da + a * db
+
+                node->inputs = {b};
+
+                b->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_b = b;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [scalar, weak_b, weak_node](){
+
+                    auto b_locked = weak_b.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if (!b_locked || !node_locked) {
+                        return; // One of the nodes was destroyed
+                    }
+
+                    if (std::is_same<T, simplenet::Tensor>::value){
+                        std::vector<int> temp_b = b_locked->grad.getShape();
+                        b_locked->grad += simplenet::linear_algebra::reduce(scalar * node_locked->grad, temp_b); // grad_b = scalar * grad
+                    }else{
+                       // TODO
                     }
                 };
                 return node;

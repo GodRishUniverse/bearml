@@ -77,7 +77,7 @@ namespace simplenet {
                 }
 
                 // He initialization - to check
-                static void he_init(Tensor& tensor, int input_size, int seed){
+                static void he_init(Tensor& t, int input_size, int seed){
                     // std::random_device rd{};
                     std::mt19937 gen(seed);
 
