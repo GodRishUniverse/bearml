@@ -1042,7 +1042,7 @@ namespace simplenet{
 
             //----------------------------------------Mean ------------------------------------------------------
 
-            // To be changed
+            // To be changed - can be accelerated using SIMD instructions - GPU
             static Tensor mean(Tensor &t ){
                 Tensor returnMean({1});
                 size_t sizeTensor = t.sizeOfTensor();
@@ -1051,6 +1051,18 @@ namespace simplenet{
                 }
                 returnMean.data[0]/= static_cast<double>(sizeTensor);
                 return returnMean;
+            }
+
+
+            //---------------------------------------- Log ------------------------------------------------------
+
+            // To be changed
+            static Tensor log(Tensor &t ){
+                Tensor  a = t; // copied
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
+                    a.data[i] = std::log(t.data[i]);
+                }
+                return a;
             }
 
 

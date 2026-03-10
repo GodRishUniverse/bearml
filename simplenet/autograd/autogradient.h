@@ -435,6 +435,28 @@ namespace simplenet{
         }
 
 
+        static std::shared_ptr<Node<T>> log(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::log(a->val));
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a , weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+                    // TODO: implement backward pass for log - Figure out the correct gradient
+                };
+
+                return node;
+            }else{
+              // To Implement
+            }
+        }
+
+
         // unary operator
         friend std::shared_ptr<Node<T>> mean(std::shared_ptr<Node<T>> a){
             if constexpr (std::is_same<T, simplenet::Tensor>::value){

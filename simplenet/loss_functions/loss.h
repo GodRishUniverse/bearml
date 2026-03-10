@@ -37,15 +37,25 @@ namespace simplenet {
                 return loss; // now can be done backward here
             }
 
-            void log_loss(int actual, int predictions){
-                // Log loss
-            }
+
+
 
             // --------------------------------------- Non-Convex loss-functions ----------------------------------------
 
+            // Log loss
+            std::shared_ptr<simplenet::Node<simplenet::Tensor>> log_loss(std::shared_ptr<simplenet::Node<simplenet::Tensor>> actual, std::shared_ptr<simplenet::Node<simplenet::Tensor>> predictions){
+                if (actual->val.getShape() != predictions->val.getShape()){
+                    throw std::runtime_error("Shapes of actual and predictions do not match!");
+                }
+
+                auto logloss = -1.0 * (actual * simplenet::Node<simplenet::Tensor>::log(predictions)) + (1.0 - actual) * simplenet::Node<simplenet::Tensor>::log(1.0 - predictions);
+                auto loss = mean(logloss);
+
+                return loss;
+            }
             // BCE
-            void bce_loss(int actual, int predictions){
-                // Log loss
+            inline std::shared_ptr<simplenet::Node<simplenet::Tensor>> bce_loss(std::shared_ptr<simplenet::Node<simplenet::Tensor>> actual, std::shared_ptr<simplenet::Node<simplenet::Tensor>> predictions, std::string){
+                return log_loss(actual, predictions);
             }
 
 

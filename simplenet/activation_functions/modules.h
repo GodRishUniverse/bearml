@@ -76,8 +76,39 @@ namespace simplenet {
                     }
                 }
 
-                // He initialization -> TODO: will implement
-                static void he_init(Tensor& tensor, int input_size);
+                // He initialization - to check
+                static void he_init(Tensor& tensor, int input_size, int seed){
+                    // std::random_device rd{};
+                    std::mt19937 gen(seed);
+
+                    float stddev = sqrt(2.0 / (input_size)); // He initialization factor
+
+                    std::normal_distribution<double> d{0.0,stddev};
+
+                    // Case 1: vector or scalar
+                    if (t.getShape().size()==1){
+                        for (int i = 0; i < t.getShape()[0]; i++) {
+                            t.set_with_offset(0, 0,i, d(gen));
+                        }
+                    }
+                    // Case 2: matrix
+                    else if (t.getShape().size()>=2){
+                        ll batches = t.sizeOfTensor();
+                        int rows = t.getShape()[t.getShape().size()-2];
+                        int cols = t.getShape()[t.getShape().size()-1];
+                        batches/= ( rows*cols );
+
+                        for (ll b = 0; b <batches; b++){
+                            for (int i = 0; i < rows; i++) {
+                                for (int j = 0; j < cols; j++) {
+                                    t.set_with_offset(b, i,j, d(gen));
+                                }
+                            }
+                        }
+                    }else{
+                        std::invalid_argument("Not a proper Shape -> Should not reach here");
+                    }
+                }
 
         };
 
@@ -139,6 +170,10 @@ namespace simplenet {
                     }
                     else if (this->initialization_method == "Xavier"){
                         this->xavier_init(W->val, input_size, output_size, this->random_seed);
+                    } else if (this->initialization_method == "He"){
+                        this->he_init(W->val, input_size, this->random_seed);
+                    } else {
+                        throw std::invalid_argument("Invalid initialization method");
                     }
                     // we dont initialize the bias Tensor at the moment
                 };
