@@ -59,6 +59,7 @@ namespace simplenet{
 
    template<typename T> class  Node;
    // TODO: fix for MATRIX AND TENSOR Types - probably will need to provide template specializations
+   // TODO: add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads
    template <typename T>
    class Node {
     public:
@@ -82,13 +83,18 @@ namespace simplenet{
             return std::make_shared<Node<T>>(value);
         }
 
+        // a utility function for creating constant nodes
+        static std::shared_ptr<Node<T>> constant(T value) {
+            auto node = make_node(value);
+            return node; // this is a leaf node with no inputs and no backward_fn
+        }
+
         void backward(){
             // if we have this defined then we will call it
             if (backward_fn){
                 backward_fn();
             }
         }
-
 
         friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
                 std::shared_ptr<Node<T>> node  = make_node(a->val+b->val);
@@ -447,7 +453,8 @@ namespace simplenet{
                 node->backward_fn = [weak_a , weak_node]() {
                     auto a_locked = weak_a.lock();
                     auto node_locked = weak_node.lock();
-                    // TODO: implement backward pass for log - Figure out the correct gradient
+                    // d/da log(a) = 1/a
+                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, 1.0/a_locked->val);
                 };
 
                 return node;
