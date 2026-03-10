@@ -118,7 +118,7 @@ namespace simplenet{
                     if (!a_locked || !b_locked || !node_locked) {
                         return; // One of the nodes was destroyed
                     }
-                    if (std::is_same<T, simplenet::Tensor>::value){
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
                         std::vector<int> temp_a =  a_locked->grad.getShape();
                         std::vector<int> temp_b = b_locked->grad.getShape();
                         a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_a);  // dc/da = b
@@ -175,7 +175,7 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
 
-                    if (std::is_same<T, simplenet::Tensor>::value){
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
                         std::vector<int> temp_a =  a_locked->grad.getShape();
                         std::vector<int> temp_b = b_locked->grad.getShape();
 
@@ -233,7 +233,7 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
 
-                    if (std::is_same<T, simplenet::Tensor>::value){
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
                         std::vector<int> temp_a =  a_locked->grad.getShape();
                         std::vector<int> temp_b = b_locked->grad.getShape();
                         a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * b_locked->val.transpose(),temp_a); // grad_a = grad * b^T
@@ -268,7 +268,7 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
 
-                    if (std::is_same<T, simplenet::Tensor>::value){
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
                         std::vector<int> temp_b = b_locked->grad.getShape();
                         b_locked->grad += simplenet::linear_algebra::reduce(scalar * node_locked->grad, temp_b); // grad_b = scalar * grad
                     }else{

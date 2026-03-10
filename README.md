@@ -76,7 +76,7 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 # What we need to do
 
 ## CUDA Support & Core Infrastructure
-* **Refactoring for CUDA Support (Major Overhaul)** — **IN PROGRESS (Priority)**
+* **Refactoring for CUDA Support (Major Overhaul)** — **IN PROGRESS (Priority)** - need to recheck as I have not opened repo in a while
     * Write host code and kernels — **Status: Kernels in progress**
       * kernels need to be fixed for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
     * Call kernels in the `Tensor` class when devices match (CUDA).
@@ -115,11 +115,10 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 * **Sequential Class:** Create a wrapper to stack layers.
 * **Loss Functions:**
     * L1 Loss (MAE) — **Done**
-    * L2 Loss (MSE)
-    * Log Loss
+    * L2 Loss (MSE) - **Done**
+    * Log Loss/BCELossWithLogits - **Done**
     * Cross Entropy Loss
     * Softmax Loss
-    * Binary Cross Entropy Loss
     * Cross Entropy Loss with Softmax
     * Binary Cross Entropy Loss with Sigmoid
 * **Optimizers (Post-Loss Implementation):**
@@ -135,6 +134,8 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 ## Testing
 * [ ] Unit Tests using `gtest`
 
+# Documentation
+* [ ] Use Claude/LLM to make documentation for the repository - there are comments everywhere so should be trivial task for a LLM - although I would have to read it thoroughly
 
 ## Optimizations
 * **CPU Optimizations:**
