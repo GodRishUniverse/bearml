@@ -83,7 +83,7 @@ namespace simplenet {
                     std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1.0*x);
                     std::shared_ptr<simplenet::Node<Tensor>> exp_plus = exp(x);
 
-                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // this will break TODO: fix cause operator/ is not implemented for Node pointers and Tensor
+                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // should work now - hadamard division is supported
                     return tanh;
                 }
 
@@ -93,7 +93,7 @@ namespace simplenet {
                     std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1.0*node_x);
                     std::shared_ptr<simplenet::Node<Tensor>> exp_plus = exp(node_x);
 
-                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // this will break TODO: fix cause operator/ is not implemented for Node pointers and Tensor
+                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // should work now - hadamard division is supported
                     return tanh;
                 }
 

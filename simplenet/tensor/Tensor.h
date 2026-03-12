@@ -893,15 +893,15 @@ namespace simplenet{
                     throw std::runtime_error("Shapes should match for element-wise divide");
                 }
 
-                // shapes match
+                // shapes match -> this is correct
                 Tensor C(a.shape);
                 for (size_t i = 0, N = a.sizeOfTensor(); i < N; ++i)
                     C.data[i] = a.data[i]/b.data[i];
                 return C;
-
-                // TODO: Another case exists but that is when matrix b is invertible and then it just becomes matrix mul
             }
 
+            // TODO: Another case exists but that is when matrix b is invertible and then it just becomes matrix mul
+            // call it inverse
 
 
             // --------------------------------EQUALITY--------------------------------------------------------------------------

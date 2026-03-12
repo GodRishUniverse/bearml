@@ -564,7 +564,7 @@ namespace simplenet{
         }
 
 
-        // DIVISION is confusing - should only be done for numbers
+        // DIVISION uses hadamard product
         friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
                 std::shared_ptr<Node<T>> node  = make_node(a->val/divisor);
                 // node = a / b
@@ -581,14 +581,70 @@ namespace simplenet{
                 };
                 return node;
         }
+
+        friend std::shared_ptr<Node<T>> operator/(double divisor, std::shared_ptr<Node<T>> a){
+                std::shared_ptr<Node<T>> node  = make_node(divisor/a->val);
+                // node = a / b
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node,  divisor]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    // dc/da = grad * (-divisor / (a^2))
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                        a_locked->grad += simplenet::linear_algebra::hadamard(node_locked->grad,
+                            -divisor / simplenet::linear_algebra::hadamard(a_locked->val, a_locked->val));
+                    } else {
+                        a_locked->grad += node_locked->grad * (-divisor / (a_locked->val * a_locked->val));
+                    }
+
+                };
+                return node;
+        }
+
+        friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            // SHAPES HAVE TO BE THE SAME - hadamard operation
+            if (a->val.getShape() != b->val.getShape()){
+                throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
+            }
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+
+                std::shared_ptr<Node<T>> node  = make_node(a->val/ b->val);
+                node->inputs = {a,b};
+                a->outputs.push_back(node);
+                b->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+                std::weak_ptr<Node<T>> weak_b = b;
+
+                node->backward_fn = [weak_a ,weak_b, weak_node]() {
+
+                    auto a_locked = weak_a.lock();
+                    auto b_locked = weak_b.lock();
+                    auto node_locked = weak_node.lock();
+                    // c = a/b
+                    // dc/da = grad * (1/b)
+                    // dc/db = grad * (-a/b^2)
+                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, 1.0/b_locked->val);
+                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, -1.0 * a_locked->val/ simplenet::linear_algebra::hadamard(b_locked->val, b_locked->val));
+
+                };
+
+                return node;
+            }else{
+              // To Implement
+            }
+        };
     };
 
-    // TODO: implement division for two Node pointers and Tensors as well - this breaks tanh right now
-    friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-        // TODO: implement division for Node pointers and Tensors
-        return nullptr;
-    }
-};
+
+
 
     namespace autogradient {
         template <typename T>
