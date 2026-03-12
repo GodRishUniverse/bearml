@@ -29,6 +29,12 @@ namespace simplenet {
                 throw std::invalid_argument("SHAPES are incompatible for batched matmul: "+ std::to_string(a_cols) + " != " + std::to_string(b_rows));
             }
 
+            if (a.device != b.device) {
+                throw std::invalid_argument("Tensors must be on the same device");
+            }
+
+            // TODO: CUDA implementation
+
             // Compute broadcast shape for batch dimensions
             std::vector<int> a_batch_dims(a_size.begin(), a_size.end() - 2);
             std::vector<int> b_batch_dims(b_size.begin(), b_size.end() - 2);
@@ -49,7 +55,7 @@ namespace simplenet {
             output_shape.push_back(a_rows);
             output_shape.push_back(b_cols);
 
-            Tensor result(output_shape); // we have our result here
+            Tensor result(output_shape, a.device); // we have our result here
 
             // Create broadcast views for the full shapes (including matrix dims)
             std::vector<int> full_a_shape = batch_shape;
@@ -137,7 +143,19 @@ namespace simplenet {
                 throw std::invalid_argument("Tensors must have the same shape");
             }
 
-            Tensor result(a.shape);
+            if (a.device != other.device) {
+                throw std::invalid_argument("Tensors must be on the same device");
+            }
+
+            // CUDA
+            if (a.device == DeviceType::CUDA) {
+                Tensor C(a.shape, a.device);
+
+                cuda::launch_elementwise_broadcast<double>(a.data, other.data, C.data, a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
+                return C;
+            }
+
+            Tensor result(a.shape, a.device);
             for (ll i = 0; i < a.sizeOfTensor(); i++){
                 result.data[i] = a.data[i] * other.data[i];
             }
@@ -150,7 +168,13 @@ namespace simplenet {
             if (first.getShape() != other.getShape()){
                 throw std::runtime_error("In >= Mask and shapes don't match");
             }
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
+
+            if (first.device != other.device) {
+                throw std::invalid_argument("Tensors must be on the same device");
+            }
+
+            // TODO: CUDA implementation
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
                 result.data[i] = (first.data[i] >= other.data[i]) ? first_val : second_val;
@@ -162,7 +186,15 @@ namespace simplenet {
             if (first.getShape() != other.getShape()){
                 throw std::runtime_error("In > Mask and shapes don't match");
             }
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
+
+            if (first.device != other.device) {
+                throw std::invalid_argument("Tensors must be on the same device");
+            }
+
+            // TODO: CUDA implementation
+
+
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
                 result.data[i] = (first.data[i] > other.data[i]) ? first_val: second_val;
             }
@@ -173,7 +205,13 @@ namespace simplenet {
             if (first.getShape() != other.getShape()){
                 throw std::runtime_error("In <= Mask and shapes don't match");
             }
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
+
+            if (first.device != other.device) {
+                throw std::invalid_argument("Tensors must be on the same device");
+            }
+
+            // TODO: CUDA implementation
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
                 result.data[i] = (first.data[i] <= other.data[i]) ? first_val : second_val;
@@ -185,7 +223,11 @@ namespace simplenet {
             if (first.getShape() != other.getShape()){
                 throw std::runtime_error("In < Mask and shapes don't match");
             }
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
+            if (first.device != other.device) {
+                throw std::invalid_argument("Tensors must be on the same device");
+            }
+            // TODO: CUDA implementation
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
                 result.data[i] = (first.data[i] < other.data[i]) ? first_val: second_val;
             }
@@ -196,7 +238,11 @@ namespace simplenet {
             if (first.getShape() != other.getShape()){
                 throw std::runtime_error("In = Mask and shapes don't match");
             }
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
+            if (first.device != other.device) {
+                throw std::invalid_argument("Tensors must be on the same device");
+            }
+            // TODO: CUDA implementation
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
                 result.data[i] = (std::abs(first.data[i] - other.data[i]) < 1e-12) ? first_val : second_val;
             }
@@ -207,7 +253,7 @@ namespace simplenet {
 
         // Double and Tensor
         Tensor mask_of_greater_than_equal_to(double first, const Tensor& other,  double first_val, double second_val) {
-            Tensor result(other.getShape());
+            Tensor result(other.getShape(), other.device);
 
             for (size_t i = 0; i < other.sizeOfTensor(); i++) {
                 result.data[i] = (first >= other.data[i]) ? first_val : second_val;
@@ -216,7 +262,7 @@ namespace simplenet {
         }
 
         Tensor mask_of_greater_than(double first, const Tensor& other,  double first_val, double second_val){
-            Tensor result(other.getShape());
+            Tensor result(other.getShape(), other.device);
 
             for (size_t i = 0; i < other.sizeOfTensor(); i++) {
                 result.data[i] = (first > other.data[i]) ? first_val : second_val;
@@ -225,7 +271,7 @@ namespace simplenet {
         }
 
         Tensor mask_of_less_than_equal_to(double first, const Tensor& other,  double first_val, double second_val){
-            Tensor result(other.getShape());
+            Tensor result(other.getShape(), other.device);
 
             for (size_t i = 0; i <  other.sizeOfTensor(); i++) {
                 result.data[i] = (first <= other.data[i]) ? first_val : second_val;
@@ -234,7 +280,7 @@ namespace simplenet {
         }
 
         Tensor mask_of_less_than(double first, const Tensor& other,  double first_val, double second_val){
-            Tensor result(other.getShape());
+            Tensor result(other.getShape(), other.device);
 
             for (size_t i = 0; i <  other.sizeOfTensor(); i++) {
                 result.data[i] = (first < other.data[i]) ? first_val : second_val;
@@ -243,7 +289,7 @@ namespace simplenet {
         }
 
         Tensor mask_of_equal_to(double first, const Tensor& other,  double first_val, double second_val){
-           Tensor result(other.getShape());
+           Tensor result(other.getShape(), other.device);
             for (size_t i = 0; i < other.sizeOfTensor(); ++i) {
                 result.data[i] = (std::abs(first - other.data[i]) < 1e-12) ? first_val : second_val;
             }
@@ -252,7 +298,7 @@ namespace simplenet {
 
         // Tensor and Double
         Tensor mask_of_greater_than_equal_to(const Tensor& first, double other,  double first_val, double second_val){
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
                 result.data[i] = (first.data[i] >= other) ? first_val : second_val;
@@ -261,7 +307,7 @@ namespace simplenet {
         }
 
         Tensor mask_of_greater_than(const Tensor& first, double other,  double first_val, double second_val) {
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
                 result.data[i] = (first.data[i] > other) ? first_val: second_val;
             }
@@ -269,7 +315,7 @@ namespace simplenet {
         }
 
         Tensor mask_of_less_than_equal_to(const Tensor& first, double other,  double first_val, double second_val){
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
                 result.data[i] = (first.data[i] <= other) ? first_val : second_val;
@@ -278,7 +324,7 @@ namespace simplenet {
         }
 
         Tensor mask_of_less_than(const Tensor& first, double other,  double first_val, double second_val){
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
                 result.data[i] = (first.data[i] < other) ? first_val : second_val;
@@ -287,7 +333,7 @@ namespace simplenet {
         }
 
         Tensor mask_of_equal_to(const Tensor& first, double other,  double first_val, double second_val){
-            Tensor result(first.getShape());
+            Tensor result(first.getShape(), first.device);
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
                 result.data[i] = (std::abs(first.data[i] - other) < 1e-12) ? first_val : second_val;
             }
@@ -296,7 +342,7 @@ namespace simplenet {
 
 
         Tensor sign(const Tensor& a){
-            Tensor result(a.getShape());
+            Tensor result(a.getShape(), a.device);
             for (size_t i = 0; i < a.sizeOfTensor(); ++i) {
                 result.data[i] = (std::abs(a.data[i] - 0.0) < 1e-12) ? 0.0 : ((a.data[i] < 0.0) ? -1.0 : 1.0);
             }
