@@ -284,7 +284,7 @@ namespace simplenet{
 
 
         // unary operator: e^x
-        friend std::shared_ptr<Node<T>> exponent(std::shared_ptr<Node<T>> a){
+        friend std::shared_ptr<Node<T>> exp(std::shared_ptr<Node<T>> a){
             if constexpr (std::is_same<T, simplenet::Tensor>::value){
                 // std::cout <<"EXPONENTIATED TENSOR NODE" <<std::endl;
 

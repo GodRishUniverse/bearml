@@ -389,7 +389,7 @@ TEST(AutogradDoubleTest, DivBackward) {
 
 TEST(AutogradDoubleTest, ExpBackward) {
     auto x = Node<double>::make_node(1.0);
-    auto z = exponent(x); // z = e^x, dz/dx = e^x = e
+    auto z = exp(x); // z = e^x, dz/dx = e^x = e
     autogradient::backward(z);
     EXPECT_NEAR(x->grad, std::exp(1.0), 1e-10);
 }
