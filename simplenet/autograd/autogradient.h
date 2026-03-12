@@ -583,6 +583,13 @@ namespace simplenet{
         }
     };
 
+    // TODO: implement division for two Node pointers and Tensors as well - this breaks tanh right now
+    friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+        // TODO: implement division for Node pointers and Tensors
+        return nullptr;
+    }
+};
+
     namespace autogradient {
         template <typename T>
         T backward(std::shared_ptr<simplenet::Node<T>> end_node, bool accumulate = false);

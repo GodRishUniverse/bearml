@@ -6,7 +6,8 @@
 
 #include "tensor/Tensor.h"
 #include "autograd/autogradient.h"
-#include "activation_functions/modules.h"
+#include "activation_functions/modules.h" // has the abstract Modules class and the Linear and ReLU modules
+#include "activation_functions/activation_functions.h" // major activation functions
 #include "model_construct/model_construct.h"
 #include "loss_functions/loss.h"
 #include "optimizers/optimizers.h"

@@ -34,7 +34,7 @@ namespace simplenet {
 
                 // we override this from Module class
                 std::shared_ptr<simplenet::Node<Tensor>> forward(std::shared_ptr<simplenet::Node<Tensor>> x) override{
-                    std::shared_ptr<simplenet::Node<Tensor>> node_x = exp(-1*x);
+                    std::shared_ptr<simplenet::Node<Tensor>> node_x = exp(-1.0*x);
                     auto sigmoid = 1.0/(1.0 + node_x);
                     return sigmoid;
                 }
@@ -42,8 +42,8 @@ namespace simplenet {
                 std::shared_ptr<simplenet::Node<Tensor>> forward(Tensor& x) override{
 
                     std::shared_ptr<simplenet::Node<Tensor>> node_x = simplenet::Node<simplenet::Tensor>::make_node(x);
-                    auto exp_node = exp(-1*node_x);
-                    auto sigmoid = 1.0/(1.0 + exp_x);
+                    auto exp_node = exp(-1.0*node_x);
+                    auto sigmoid = 1.0/(1.0 + exp_node);
                     return sigmoid;
                 }
 
@@ -80,20 +80,20 @@ namespace simplenet {
 
                 // we override this from Module class
                 std::shared_ptr<simplenet::Node<Tensor>> forward(std::shared_ptr<simplenet::Node<Tensor>> x) override{
-                    std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1*x);
+                    std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1.0*x);
                     std::shared_ptr<simplenet::Node<Tensor>> exp_plus = exp(x);
 
-                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // i think this will break - lets see - TODO
+                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // this will break TODO: fix cause operator/ is not implemented for Node pointers and Tensor
                     return tanh;
                 }
 
                 std::shared_ptr<simplenet::Node<Tensor>> forward(Tensor& x) override{
                     std::shared_ptr<simplenet::Node<Tensor>> node_x = simplenet::Node<simplenet::Tensor>::make_node(x);
 
-                    std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1*node_x);
+                    std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1.0*node_x);
                     std::shared_ptr<simplenet::Node<Tensor>> exp_plus = exp(node_x);
 
-                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // i think this will break - lets see - TODO
+                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // this will break TODO: fix cause operator/ is not implemented for Node pointers and Tensor
                     return tanh;
                 }
 
