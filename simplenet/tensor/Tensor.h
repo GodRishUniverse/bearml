@@ -534,7 +534,7 @@ namespace simplenet{
                 if (A.shape == B.shape) {
                     // CUDA
                     if (A.device == DeviceType::CUDA) {
-                        Tensor C(A.shape);
+                        Tensor C(A.shape, A.device);
                         cuda::launch_elementwise_contiguous<double>(
                             A.data,
                             B.data,
@@ -559,7 +559,7 @@ namespace simplenet{
 
                 // CUDA
                 if (A.device == DeviceType::CUDA) {
-                    Tensor C(outShape);
+                    Tensor C(outShape, A.device);
 
                     cuda::launch_elementwise_broadcast<double>(A.data, B.data, C.data, A.getStrides(), B.getStrides(), C.getShape(),OP_Code::OP_ADD );
                     return C;
@@ -669,6 +669,15 @@ namespace simplenet{
                 // make “broadcasted views”
                 Tensor aView = makeBroadcastView(A, outShape);
                 Tensor bView = makeBroadcastView(B, outShape);
+
+                // CUDA
+                if (A.device == DeviceType::CUDA) {
+                    Tensor C(outShape, A.device);
+
+                    cuda::launch_elementwise_broadcast<double>(A.data, B.data, C.data, A.getStrides(), B.getStrides(), C.getShape(),OP_Code::OP_SUB );
+                    return C;
+                }
+
 
                 // now do a single flat loop
                 size_t N = C.sizeOfTensor();

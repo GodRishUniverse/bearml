@@ -186,6 +186,8 @@ int main() {
 
     veca.to_(dev);
     cout << veca<< endl;
+
+
     // simplenet::Tensor vecb ({3});
     // veca.set(201.0, {1, 0});
     // vecb.set(2.0, {1});
@@ -271,39 +273,43 @@ int main() {
     // cout << vvv->val << endl;
 
 
-    // Model testmodel = Model(2, 5);
+    Model testmodel = Model(2, 5);
 
-    // simplenet::Tensor tester2({1,2});
-    // tester2.linspace(1,2);
+    simplenet::Tensor tester2({1,2});
+    tester2.linspace(1,2);
+    tester2.to_(dev);
 
     // so PyTorch uses its custom random number generator for initialization and so our initialization does not match and so for testing this what can be done is we basically get pytorch weights and see if the numbers match
-    // auto pred = testmodel.forward({tester2});
+    auto pred = testmodel.forward({tester2});
+    pred->val.to_(dev);
+
     // cout << pred->val << endl;
     // cout << "Pred grad: " << pred->grad << endl;
 
 
-    // simplenet::Tensor actual({1,5});
-    // actual.linspace(1,5);
-    // simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.01);
+    simplenet::Tensor actual({1,5});
+    actual.linspace(1,5);
+    actual.to_(dev);
+    simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.01);
 
-    // // Sample - works gets closer to the ideal values
-    // for (int i =0;i <1000; i++){
-    //     optim.zero_grad();
-    //     auto ac = simplenet::Node<simplenet::Tensor>::make_node(actual);
+    // Sample - works gets closer to the ideal values
+    for (int i =0;i <1000; i++){
+        optim.zero_grad();
+        auto ac = simplenet::Node<simplenet::Tensor>::make_node(actual);
 
-    //     auto loss = simplenet::neural_network::loss_functions::l1_loss(ac, pred);
-    //     simplenet::autogradient::backward(loss);
+        auto loss = simplenet::neural_network::loss_functions::l1_loss(ac, pred);
+        simplenet::autogradient::backward(loss);
 
-    //     optim.step();
+        optim.step();
 
-    //     cout << "Loss value: " << loss->val << endl;
-    //     // cout << "Pred grad: " << pred->grad << endl;
-    //     // cout << "Layer2 weight grad: " << testmodel.layer2.get_weights() << endl; // check if parameters have gradients
+        cout << "Loss value: " << loss->val << endl;
+        // cout << "Pred grad: " << pred->grad << endl;
+        // cout << "Layer2 weight grad: " << testmodel.layer2.get_weights() << endl; // check if parameters have gradients
 
-    //     pred = testmodel.forward({tester2});
-    //     cout << pred->val << endl;
-    // }
-    // cout << "Pred grad: " << pred->grad << endl;
+        pred = testmodel.forward({tester2});
+        cout << pred->val << endl;
+    }
+    cout << "Pred grad: " << pred->grad << endl;
 
 
 }
