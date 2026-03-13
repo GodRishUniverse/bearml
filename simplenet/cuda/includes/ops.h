@@ -12,5 +12,7 @@ enum class OP_Code : uint16_t {
     OP_SUB,
     OP_MUL,
     OP_DIV,
+    OP_EXP,
+    OP_LOG,
 };
 #endif

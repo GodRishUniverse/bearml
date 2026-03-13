@@ -1,4 +1,5 @@
 #include "element_wise_kernels.cuh"
+#include <type_traits>
 
 
 // __restrict__ keyword usage: https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/
@@ -54,6 +55,7 @@ namespace simplenet {
                         result = a[offA]/b[offB];
                         break;
                     }
+
                     // default operation -> since we cannot throw an error inside the kernel
                     default:
                         result = static_cast<T>(NAN);
@@ -86,7 +88,7 @@ namespace simplenet {
         // int64
         template __global__ void simplenet::cuda::element_wise_broadcast<int64_t>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const int64_t*, const int64_t*, int64_t*, OP_Code);
 
-        //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
+         //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
         // CASE: NO BROADCASTING NEEDED
         template <typename T>
         __global__
@@ -149,6 +151,68 @@ namespace simplenet {
         template __global__ void simplenet::cuda::element_wise_contiguous<int32_t>(const int32_t*, const int32_t*, int32_t*, size_t, OP_Code);
         // int64
         template __global__ void simplenet::cuda::element_wise_contiguous<int64_t >(const int64_t*, const int64_t*, int64_t*, size_t, OP_Code);
+
+        // No broadcasting needed
+        template <typename T>
+        __global__
+        void element_wise_unary(
+            const T* __restrict__ a,
+            T* res,
+            size_t n,
+            OP_Code op_code
+        ){
+            size_t thread_idx = blockIdx.x * blockDim.x + threadIdx.x;
+            if (thread_idx < n) {
+                T result;
+                switch (op_code) {
+                    case OP_Code::OP_EXP: {
+                        if constexpr (std::is_same_v<T, double>) {
+                            result = ::exp(a[thread_idx]);
+                        } else {
+                            result = static_cast<T>(::expf(static_cast<float>(a[thread_idx])));
+                        }
+                        break;
+                    }
+                    case OP_Code::OP_LOG: {
+                        if constexpr (std::is_same_v<T, double>) {
+                            result = ::log(a[thread_idx]);
+                        } else {
+                            result = static_cast<T>(::logf(static_cast<float>(a[thread_idx])));
+                        }
+                        break;
+                    }
+                    // default operation -> since we cannot throw an error inside the kernel
+                    default:
+                        result = T{};
+                        break;
+                }
+                res[thread_idx] = result;
+            }
+        }
+
+
+        // ---------------------------------- Template specification for floats ----------------------------------
+        // bfloat16
+        template __global__ void simplenet::cuda::element_wise_unary<__nv_bfloat16 >(const __nv_bfloat16*, __nv_bfloat16*, size_t, OP_Code);
+
+        // float16
+        template __global__ void simplenet::cuda::element_wise_unary<__half >(const __half*, __half*, size_t, OP_Code);
+
+        // float32
+        template __global__ void simplenet::cuda::element_wise_unary<float>(const float*, float*, size_t, OP_Code);
+
+        // float64
+        template __global__ void simplenet::cuda::element_wise_unary<double>(const double*, double*, size_t, OP_Code);
+
+        // ---------------------------------- Template specification for ints ----------------------------------
+        // int8
+        template __global__ void simplenet::cuda::element_wise_unary<int8_t >(const int8_t*, int8_t*, size_t, OP_Code);
+        // int16
+        template __global__ void simplenet::cuda::element_wise_unary<int16_t >(const int16_t*, int16_t*, size_t, OP_Code);
+        // int32
+        template __global__ void simplenet::cuda::element_wise_unary<int32_t>(const int32_t*, int32_t*, size_t, OP_Code);
+        // int64
+        template __global__ void simplenet::cuda::element_wise_unary<int64_t>(const int64_t*, int64_t*, size_t, OP_Code);
 
 
 
@@ -297,6 +361,50 @@ namespace simplenet {
         }
 
 
+        template <typename T>
+        void launch_elementwise_unary(
+            const T* d_a,
+            T* d_out,
+            const std::vector<int>& res_shape, // same as d_a and d_b shape cause contiguous
+            OP_Code op_code,
+            cudaStream_t stream
+        ) {
+
+            bool own_stream = (stream == nullptr);
+            // if we do need to create a stream then we create it here
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamCreate(&stream));
+            }
+
+            // Computing the flat shape of the result/a/b tensor
+            size_t n = 1;
+            for (size_t d = 0; d < res_shape.size(); ++d) {
+                n *= res_shape[d];
+            }
+
+            // Configuring kernel launch - this is from the  cuda convetions - although I prefer a different naming scheme
+            dim3 block(THREAD_COUNT); // Threads per block
+            dim3 grid = get_blocks(n, THREAD_COUNT); // Number of blocks
+
+            // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
+            element_wise_unary<T>
+                <<<grid, block, 0, stream>>>(
+                    d_a,
+                    d_out,
+                    n,
+                    op_code
+            );
+
+            CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
+
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamSynchronize(stream));
+                CUDA_CHECK(cudaStreamDestroy(stream));
+            }
+
+        }
+
+
         // Template specification
         // Float types
         template void launch_elementwise_broadcast<float>(const float*, const float*, float*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t);
@@ -324,6 +432,22 @@ namespace simplenet {
         template void launch_elementwise_contiguous<int16_t>(const int16_t*, const int16_t*, int16_t*, const std::vector<int>&, OP_Code, cudaStream_t);
         template void launch_elementwise_contiguous<int32_t>(const int32_t*, const int32_t*, int32_t*, const std::vector<int>&, OP_Code, cudaStream_t);
         template void launch_elementwise_contiguous<int64_t>(const int64_t*, const int64_t*, int64_t*, const std::vector<int>&, OP_Code, cudaStream_t);
+
+
+        // Float types
+
+        template void launch_elementwise_unary<float>(const float*, float*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_unary<double>(const double*, double*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_unary<__half>(const __half*, __half*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_unary<__nv_bfloat16>(const __nv_bfloat16*, __nv_bfloat16*, const std::vector<int>&, OP_Code, cudaStream_t);
+
+
+
+        // Int Types
+        template void launch_elementwise_unary<int8_t>(const int8_t*, int8_t*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_unary<int16_t>(const int16_t*, int16_t*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_unary<int32_t>(const int32_t*, int32_t*, const std::vector<int>&, OP_Code, cudaStream_t);
+        template void launch_elementwise_unary<int64_t>(const int64_t*, int64_t*, const std::vector<int>&, OP_Code, cudaStream_t);
 
 
 

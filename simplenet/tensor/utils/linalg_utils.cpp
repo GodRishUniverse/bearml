@@ -8,8 +8,6 @@ namespace simplenet {
 
         // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
         Tensor batchedMatMul(const Tensor& a, const Tensor& b){
-            // TODO: figure out how batched mat mul will be implemented and use Eigen for mul as it does not have an inbuilt batch mat mul
-            //
             // can do normal mat mul for elements
             std::vector<int> a_size = a.getShape();
             std::vector<int> b_size = b.getShape();

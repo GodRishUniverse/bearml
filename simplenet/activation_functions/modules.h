@@ -21,7 +21,8 @@ namespace simplenet {
             protected:
                 // Protected members can be called by derived classes
                 int random_seed = 42;
-                Module(int seed) : random_seed(seed) {}
+                simplenet::Device device;
+                Module(int seed, simplenet::Device dev) : random_seed(seed), device(dev) {}
             public:
                 virtual ~Module()  = default; // it is a pure virtual class
 
@@ -121,11 +122,11 @@ namespace simplenet {
                 int output_size;
                 std::string initialization_method;
             public:
-                Linear(int in_shape, int out_shape, std::string initialization = "Xavier", int random_seed =42) : Module(random_seed), input_size(in_shape), output_size(out_shape), initialization_method(initialization){
-                    Tensor weight_tensor({input_size, output_size});
+                Linear(int in_shape, int out_shape, std::string initialization = "Xavier", Device dev = Device(DeviceType::CPU, 0), int random_seed =42) : Module(random_seed, dev), input_size(in_shape), output_size(out_shape), initialization_method(initialization){
+                    Tensor weight_tensor({input_size, output_size}, dev);
                     W = simplenet::Node<Tensor>::make_node(weight_tensor);
 
-                    Tensor bias_tensor({ output_size});
+                    Tensor bias_tensor({ output_size}, dev);
                     B = simplenet::Node<Tensor>::make_node(bias_tensor);
                     initialize_parameters();
                 }
@@ -194,7 +195,7 @@ namespace simplenet {
         // inherits from module -> need to test it
         class ReLU : public Module{
             public:
-                ReLU(int random_seed =42) : Module(random_seed){
+                ReLU(int random_seed =42, Device dev =  Device(DeviceType::CPU, 0)) : Module(random_seed, dev){
 
                 }
 
@@ -209,14 +210,14 @@ namespace simplenet {
                 // we override this from Module class
                 std::shared_ptr<simplenet::Node<Tensor>> forward(std::shared_ptr<simplenet::Node<Tensor>> x) override{
                     std::vector<int> temp_shape = x->val.getShape();
-                    Tensor temp_zero(temp_shape);
+                    Tensor temp_zero(temp_shape, this->device);
                     std::shared_ptr<simplenet::Node<Tensor>> mask_node = simplenet::Node<simplenet::Tensor>::make_node(temp_zero);
                     return max(x, mask_node);
                 }
 
                 std::shared_ptr<simplenet::Node<Tensor>> forward(Tensor& x) override{
                     std::vector<int> temp_shape = x.getShape();
-                    Tensor temp_zero(temp_shape);
+                    Tensor temp_zero(temp_shape,this->device);
                     std::shared_ptr<simplenet::Node<Tensor>> mask_node = simplenet::Node<simplenet::Tensor>::make_node(temp_zero);
                     std::shared_ptr<simplenet::Node<Tensor>> node_x = simplenet::Node<simplenet::Tensor>::make_node(x);
                     return max(node_x, mask_node);
@@ -224,7 +225,7 @@ namespace simplenet {
 
                 Tensor get_detached_value(Tensor& t)override {
                     std::vector<int> temp_shape = t.getShape();
-                    Tensor temp_zero(temp_shape);
+                    Tensor temp_zero(temp_shape, this->device);
                     std::shared_ptr<simplenet::Node<Tensor>> mask_node = simplenet::Node<simplenet::Tensor>::make_node(temp_zero);
                     std::shared_ptr<simplenet::Node<Tensor>> node_t = simplenet::Node<simplenet::Tensor>::make_node(t);
                     return (max(node_t, mask_node))->val;
@@ -232,7 +233,7 @@ namespace simplenet {
 
                 Tensor get_detached_value(std::shared_ptr<simplenet::Node<Tensor>> t)override {
                     std::vector<int> temp_shape = t->val.getShape();
-                    Tensor temp_zero(temp_shape);
+                    Tensor temp_zero(temp_shape, this->device);
                     std::shared_ptr<simplenet::Node<Tensor>> mask_node = simplenet::Node<simplenet::Tensor>::make_node(temp_zero);
                     return (max(t, mask_node))->val;
                 }

@@ -29,5 +29,14 @@ namespace simplenet {
             OP_Code op_code,
             cudaStream_t stream = nullptr
         );
+
+        template <typename T>
+        void launch_elementwise_unary(
+            const T* d_a,
+            T* d_out,
+            const std::vector<int>& res_shape,
+            OP_Code op_code,
+            cudaStream_t stream = nullptr
+        );
     }
 }

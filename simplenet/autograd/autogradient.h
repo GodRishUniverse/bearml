@@ -363,11 +363,12 @@ namespace simplenet{
 
         // TODO: test and also add ops for when the max is double values
         friend std::shared_ptr<Node<T>> max(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-            // SHAPES HAVE TO BE THE SAME
-            if (a->val.getShape() != b->val.getShape()){
-                throw std::invalid_argument("Shapes incompatible for max operation to be backpropagated");
-            }
             if constexpr (std::is_same<T, simplenet::Tensor>::value){
+
+                // SHAPES HAVE TO BE THE SAME
+                if (a->val.getShape() != b->val.getShape()){
+                    throw std::invalid_argument("Shapes incompatible for max operation to be backpropagated");
+                }
 
                 std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::max(a->val, b->val));
                 node->inputs = {a,b};
@@ -407,11 +408,12 @@ namespace simplenet{
 
         // TODO: test and also add ops for when the min is double values
         friend std::shared_ptr<Node<T>> min(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-            // SHAPES HAVE TO BE THE SAME
-            if (a->val.getShape() != b->val.getShape()){
-                throw std::invalid_argument("Shapes incompatible for min operation to be backpropagated");
-            }
             if constexpr (std::is_same<T, simplenet::Tensor>::value){
+
+                // SHAPES HAVE TO BE THE SAME
+                if (a->val.getShape() != b->val.getShape()){
+                    throw std::invalid_argument("Shapes incompatible for min operation to be backpropagated");
+                }
 
                 std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::min(a->val, b->val));
                 node->inputs = {a,b};
@@ -450,11 +452,13 @@ namespace simplenet{
         // hadamard product differentiation is just product rule -
         // d(a*b)/dx = a * db/dx + b * da/dx
         static std::shared_ptr<Node<T>> hadamard(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-            // SHAPES HAVE TO BE THE SAME
-            if (a->val.getShape() != b->val.getShape()){
-                throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
-            }
+
             if constexpr (std::is_same<T, simplenet::Tensor>::value){
+
+                // SHAPES HAVE TO BE THE SAME
+                if (a->val.getShape() != b->val.getShape()){
+                    throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
+                }
 
                 std::shared_ptr<Node<T>> node  = make_node(simplenet::linear_algebra::hadamard(a->val, b->val));
                 node->inputs = {a,b};
@@ -608,11 +612,13 @@ namespace simplenet{
         }
 
         friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-            // SHAPES HAVE TO BE THE SAME - hadamard operation
-            if (a->val.getShape() != b->val.getShape()){
-                throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
-            }
+
             if constexpr (std::is_same<T, simplenet::Tensor>::value){
+
+                // SHAPES HAVE TO BE THE SAME - hadamard operation
+                if (a->val.getShape() != b->val.getShape()){
+                    throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
+                }
 
                 std::shared_ptr<Node<T>> node  = make_node(a->val/ b->val);
                 node->inputs = {a,b};

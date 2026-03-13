@@ -544,7 +544,7 @@ namespace simplenet{
                         );
                         return C;
                     }
-                    Tensor C(A.shape);
+                    Tensor C(A.shape, A.device);
                     for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                         C.data[i] = A.data[i] + B.data[i];
                     return C;
@@ -638,7 +638,7 @@ namespace simplenet{
 
             // element wise add
             friend Tensor operator+(const Tensor &A, const double& b) {
-                Tensor C(A.shape);
+                Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i] + b;
                 return C;
@@ -655,8 +655,17 @@ namespace simplenet{
 
             // friend function - subtract tensors
             friend Tensor operator-(const Tensor &A, const Tensor &B) {
+                utils::errorCheckSameDevice(A, B); // will throw an error if devices don't match
+
                 if (A.shape == B.shape) {
-                    Tensor C(A.shape);
+                    // Cuda contiguous kernel call
+                    if (A.device == DeviceType::CUDA) {
+                         Tensor C(A.shape, A.device);
+                         cuda::launch_elementwise_contiguous<double>(A.data, B.data, C.data, C.getShape(), OP_Code::OP_SUB);
+                         return C;
+                     }
+
+                    Tensor C(A.shape, A.device);
                     for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                         C.data[i] = A.data[i] - B.data[i];
                     return C;
@@ -664,7 +673,7 @@ namespace simplenet{
 
                 // broadcast path
                 auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
-                Tensor  C(outShape);
+                Tensor  C(outShape, A.device);
 
                 // make “broadcasted views”
                 Tensor aView = makeBroadcastView(A, outShape);
@@ -702,6 +711,7 @@ namespace simplenet{
             }
 
             Tensor& operator-=(const Tensor &other) {
+                    utils::errorCheckSameDevice(*this, other); // will throw an error if devices don't match
                     // broadcast or exact-shape
                     if (shape != other.shape) {
                     auto outShape = utils::computeBroadcastShape(shape, other.shape);
@@ -746,7 +756,7 @@ namespace simplenet{
 
               // element wise subtract
             friend Tensor operator-(const Tensor &A, const double& b) {
-                Tensor C(A.shape);
+                Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i] - b;
                 return C;
@@ -754,7 +764,7 @@ namespace simplenet{
 
             // element wise subtract
             friend Tensor operator-(const double& b, const Tensor &A) {
-                Tensor C(A.shape);
+                Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = b- A.data[i]; // operation is switched as above
                 return C;
@@ -775,7 +785,7 @@ namespace simplenet{
 
             // element wise multiply
             friend Tensor operator*(const Tensor &A, const double& b) {
-                Tensor C(A.shape);
+                Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i]*b;
                 return C;
@@ -788,6 +798,7 @@ namespace simplenet{
 
 
             friend Tensor operator*(const Tensor &a, const Tensor &b) {
+                utils::errorCheckSameDevice(a, b); // will throw an error if devices don't match
 
                 // 5 cases that need to be checked for this
                 //                  case 0: A and B are scalars in the form of Tensors [TAKEN INSIDE CASE 1 and 2]
@@ -882,7 +893,7 @@ namespace simplenet{
 
             // element wise divide
             friend Tensor operator/(const Tensor &A, const double& b) {
-                Tensor C(A.shape);
+                Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i]/b;
                 return C;
@@ -890,7 +901,7 @@ namespace simplenet{
 
             // element wise divide
             friend Tensor operator/(const double& b, const Tensor &A) {
-                Tensor C(A.shape);
+                Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = b/A.data[i];
                 return C;
@@ -898,12 +909,19 @@ namespace simplenet{
 
 
             friend Tensor operator/(const Tensor &a, const Tensor &b) {
+
+                utils::errorCheckSameDevice(a, b); // will throw an error if devices don't match
+
                 if (b.shape != a.shape){
                     throw std::runtime_error("Shapes should match for element-wise divide");
                 }
 
                 // shapes match -> this is correct
-                Tensor C(a.shape);
+                Tensor C(a.shape, a.device);
+                if (a.device == DeviceType::CUDA) {
+                    cuda::launch_elementwise_contiguous<double>(a.data, b.data, C.data, C.getShape(), OP_Code::OP_DIV);
+                    return C;
+                }
                 for (size_t i = 0, N = a.sizeOfTensor(); i < N; ++i)
                     C.data[i] = a.data[i]/b.data[i];
                 return C;
@@ -967,6 +985,11 @@ namespace simplenet{
             static Tensor exp(Tensor& t){
                 // std::cout <<"EXPONENTIATED" <<std::endl;
                 Tensor  a = t; // copied
+
+                if (t.device == DeviceType::CUDA) {
+                    cuda::launch_elementwise_unary<double>(t.data, a.data, a.getShape(), OP_Code::OP_EXP);
+                    return a;
+                }
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::exp(t.data[i]);
                 }

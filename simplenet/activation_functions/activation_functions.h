@@ -20,7 +20,7 @@ namespace simplenet {
         // inherits from module -> need to test it
         class Sigmoid : public Module{
             public:
-                Sigmoid(int random_seed =42) : Module(random_seed){
+                Sigmoid(int random_seed =42, Device dev = Device(DeviceType::CPU, 0)) : Module(random_seed, dev){
 
                 }
 
@@ -34,13 +34,18 @@ namespace simplenet {
 
                 // we override this from Module class
                 std::shared_ptr<simplenet::Node<Tensor>> forward(std::shared_ptr<simplenet::Node<Tensor>> x) override{
+                    if (x->val.getDevice() != this->device) {
+                        x->val = x->val.to(this->device); // move to device if not already on it
+                    }
                     std::shared_ptr<simplenet::Node<Tensor>> node_x = exp(-1.0*x);
                     auto sigmoid = 1.0/(1.0 + node_x);
                     return sigmoid;
                 }
 
                 std::shared_ptr<simplenet::Node<Tensor>> forward(Tensor& x) override{
-
+                    if (x.getDevice() != this->device) {
+                        x = x.to(this->device); // move to device if not already on it
+                    }
                     std::shared_ptr<simplenet::Node<Tensor>> node_x = simplenet::Node<simplenet::Tensor>::make_node(x);
                     auto exp_node = exp(-1.0*node_x);
                     auto sigmoid = 1.0/(1.0 + exp_node);
@@ -66,7 +71,7 @@ namespace simplenet {
         // inherits from module -> need to test it
         class Tanh : public Module{
             public:
-                Tanh(int random_seed =42) : Module(random_seed){
+                Tanh(int random_seed =42, Device device = Device(DeviceType::CPU, 0)) : Module(random_seed, device){
 
                 }
 
@@ -80,6 +85,10 @@ namespace simplenet {
 
                 // we override this from Module class
                 std::shared_ptr<simplenet::Node<Tensor>> forward(std::shared_ptr<simplenet::Node<Tensor>> x) override{
+                    if (x->val.getDevice() != this->device) {
+                        x->val = x->val.to(this->device); // move to device if not already on it
+                    }
+
                     std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1.0*x);
                     std::shared_ptr<simplenet::Node<Tensor>> exp_plus = exp(x);
 
@@ -88,8 +97,11 @@ namespace simplenet {
                 }
 
                 std::shared_ptr<simplenet::Node<Tensor>> forward(Tensor& x) override{
-                    std::shared_ptr<simplenet::Node<Tensor>> node_x = simplenet::Node<simplenet::Tensor>::make_node(x);
+                    if (x.getDevice() != this->device) {
+                        x = x.to(this->device); // move to device if not already on it
+                    }
 
+                    std::shared_ptr<simplenet::Node<Tensor>> node_x = simplenet::Node<simplenet::Tensor>::make_node(x);
                     std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1.0*node_x);
                     std::shared_ptr<simplenet::Node<Tensor>> exp_plus = exp(node_x);
 
