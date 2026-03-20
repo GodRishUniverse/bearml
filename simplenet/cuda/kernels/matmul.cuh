@@ -5,8 +5,8 @@ namespace simplenet {
 
         template<typename T>
         void launch_gemm_broadcasted(
-            T* d_a,
-            T* d_b,
+            const T* d_a,
+            const T* d_b,
             T* d_c,
             int m,
             int k,

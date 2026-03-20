@@ -776,14 +776,15 @@ namespace simplenet{
             // Hadamard product
             friend Tensor linear_algebra::hadamard(const Tensor &a, const Tensor &other);
 
-
+            // TODO: setup CUDA dispatch
             // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
             friend Tensor linear_algebra::batchedMatMul(const Tensor& a, const Tensor& b);
 
+            //  TODO: setup CUDA dispatch
             friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<int>& afterShape);
 
 
-            // element wise multiply
+            // element wise multiply- TODO: setup CUDA dispatch
             friend Tensor operator*(const Tensor &A, const double& b) {
                 Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
@@ -794,7 +795,6 @@ namespace simplenet{
             friend Tensor operator*(const double& b, const Tensor &A) {
                 return A*b; // order of multiplication doesn't matter here -> does it?
             }
-
 
 
             friend Tensor operator*(const Tensor &a, const Tensor &b) {
@@ -824,10 +824,23 @@ namespace simplenet{
                 // CASE 3: vector-vector product - dot product
                 if (a_shape.size() == 1 && b_shape.size()==1){
                     if (a_shape[0] != b_shape[0]) {
-                        // TODO: put debugPrints
                         throw std::invalid_argument("Vector dimensions must match for dot product");
                     }
-                    // matches - calling Eigen
+
+                    if (a.device == DeviceType::CUDA) {
+                        // Treat as 1x1 matmul: (1,N) * (N,1) = (1,1), extract scalar
+                        Tensor result({1}, a.device);
+                        cuda::launch_gemm_contiguous<double>(
+                            a.data, b.data, result.data,
+                            1,    // batchsize
+                            1,    // m (rows of a treated as row vector)
+                            1,    // n (cols of result)
+                            a_shape[0], // k (common dim)
+                            1.0, 0.0, nullptr
+                        );
+                        return result;
+                    }
+
                     Eigen::Map<const Eigen::VectorXd> vec_a(a.data, a_shape[0]);
                     Eigen::Map<const Eigen::VectorXd> vec_b(b.data, b_shape[0]);
 
@@ -839,10 +852,23 @@ namespace simplenet{
                 // CASE 4: matrix n by m multiplied with m by 1 vector
                 if (a_shape.size() == 2 && b_shape.size() == 1) {
                     if (a_shape[1] != b_shape[0]) {
-                        // TODO: put debugPrints
                         throw std::invalid_argument("Matrix columns must match vector size");
                     }
-                    // matches - calling Eigen
+
+                    if (a.device == DeviceType::CUDA) {
+                        // Treat vector as (m,1) matrix: (n,m) * (m,1) = (n,1)
+                        Tensor result({a_shape[0]}, a.device);
+                        cuda::launch_gemm_contiguous<double>(
+                            a.data, b.data, result.data,
+                            1,           // batchsize
+                            a_shape[0],  // m
+                            1,           // n (output cols)
+                            a_shape[1],  // k (common dim)
+                            1.0, 0.0, nullptr
+                        );
+                        return result;
+                    }
+
                     Eigen::Map<const MatrixRowMajor> mat_a(a.data, a_shape[0], a_shape[1]);
                     Eigen::Map<const Eigen::VectorXd> vec_b(b.data, b_shape[0]);
 
@@ -859,6 +885,19 @@ namespace simplenet{
                         throw std::invalid_argument("Matrix dimensions incompatible for multiplication");
                     }
 
+                    if (a.device == DeviceType::CUDA) {
+                        Tensor result({a_shape[0], b_shape[1]}, a.device);
+                        cuda::launch_gemm_contiguous<double>(
+                            a.data, b.data, result.data,
+                            1,           // batchsize
+                            a_shape[0],  // m
+                            b_shape[1],  // n
+                            a_shape[1],  // k
+                            1.0, 0.0, nullptr
+                        );
+                        return result;
+                    }
+
                     Eigen::Map<const MatrixRowMajor> mat_a(a.data, a_shape[0], a_shape[1]);
                     Eigen::Map<const MatrixRowMajor> mat_b(b.data, b_shape[0], b_shape[1]);
 
@@ -869,7 +908,7 @@ namespace simplenet{
                     return result;
                 }
 
-                // CASE 5: batched batched matmul
+                // CASE 5: batched matmul (delegates to batchedMatMul which handles CUDA)
                 if (a_shape.size() >= 2 && b_shape.size() >= 2) {
                     return linear_algebra::batchedMatMul(a, b);
                 }

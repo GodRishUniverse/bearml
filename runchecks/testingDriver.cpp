@@ -19,7 +19,7 @@ class Model : public simplenet::neural_network::Model_Construct{
     simplenet::neural_network::ReLU nonlinearity;
     simplenet::neural_network::Linear layer2;
 
-    Model(int in_shape, int out_shape):  layer1(in_shape, out_shape), nonlinearity(), layer2(out_shape, out_shape) {
+    Model(int in_shape, int out_shape, simplenet::Device dev = simplenet::Device(simplenet::DeviceType::CPU, 0)):  layer1(in_shape, out_shape, "Xavier", dev), nonlinearity(42, dev), layer2(out_shape, out_shape, "Xavier", dev) {
 
     }
 
@@ -181,11 +181,11 @@ int main() {
     // cout << a << endl;
     //
 
-    simplenet::Tensor veca ({3,3});
-    simplenet::Device dev =         simplenet::Device(simplenet::DeviceType::CUDA,  0);
 
-    veca.to_(dev);
-    cout << veca<< endl;
+    // simplenet::Device dev =         simplenet::Device(simplenet::DeviceType::CUDA,  0);
+
+    // veca.to_(dev);
+    // cout << veca<< endl;
 
 
     // simplenet::Tensor vecb ({3});
@@ -272,8 +272,8 @@ int main() {
     // simplenet::autogradient::backward(vvvv);
     // cout << vvv->val << endl;
 
-
-    Model testmodel = Model(2, 5);
+    simplenet::Device dev = simplenet::Device(simplenet::DeviceType::CUDA,  0);
+    Model testmodel = Model(2, 5, dev);
 
     simplenet::Tensor tester2({1,2});
     tester2.linspace(1,2);

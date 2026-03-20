@@ -99,6 +99,232 @@ namespace simplenet {
             }
         }
 
+
+        // ---------------------------------- Template specification for floats ----------------------------------
+        // bfloat16
+        template __global__ void simplenet::cuda::gemm_kernel_broadcast<__nv_bfloat16>(
+            const int* __restrict__ batch_shape,
+            int batch_shape_size,
+            const int64_t* __restrict__ strides_a,
+            const int64_t* __restrict__ strides_b,
+            const int M,
+            const int K,
+            const int N,
+            __nv_bfloat16 alpha, __nv_bfloat16 beta,
+            int64_t total_batch_size,
+            const __nv_bfloat16* __restrict__ a,
+            const __nv_bfloat16* __restrict__ b,
+            __nv_bfloat16* c
+        );
+
+        // float16
+        template __global__ void simplenet::cuda::gemm_kernel_broadcast<__half>(
+            const int* __restrict__ batch_shape,
+            int batch_shape_size,
+            const int64_t* __restrict__ strides_a,
+            const int64_t* __restrict__ strides_b,
+            const int M,
+            const int K,
+            const int N,
+            __half alpha, __half beta,
+            int64_t total_batch_size,
+            const __half* __restrict__ a,
+            const __half* __restrict__ b,
+            __half* c
+        );
+
+        // float32
+        template __global__ void simplenet::cuda::gemm_kernel_broadcast<float>(
+            const int* __restrict__ batch_shape,
+            int batch_shape_size,
+            const int64_t* __restrict__ strides_a,
+            const int64_t* __restrict__ strides_b,
+            const int M,
+            const int K,
+            const int N,
+            float alpha, float beta,
+            int64_t total_batch_size,
+            const float* __restrict__ a,
+            const float* __restrict__ b,
+            float* c
+        );
+
+        // float64
+        template __global__ void simplenet::cuda::gemm_kernel_broadcast<double>(
+            const int* __restrict__ batch_shape,
+            int batch_shape_size,
+            const int64_t* __restrict__ strides_a,
+            const int64_t* __restrict__ strides_b,
+            const int M,
+            const int K,
+            const int N,
+            double alpha, double beta,
+            int64_t total_batch_size,
+            const double* __restrict__ a,
+            const double* __restrict__ b,
+            double* c
+        );
+
+        // ---------------------------------- Template specification for ints ----------------------------------
+        // int8
+        template __global__ void simplenet::cuda::gemm_kernel_broadcast<int8_t>(
+            const int* __restrict__ batch_shape,
+            int batch_shape_size,
+            const int64_t* __restrict__ strides_a,
+            const int64_t* __restrict__ strides_b,
+            const int M,
+            const int K,
+            const int N,
+            int8_t alpha, int8_t beta,
+            int64_t total_batch_size,
+            const int8_t* __restrict__ a,
+            const int8_t* __restrict__ b,
+            int8_t* c
+        );
+        // int16
+        template __global__ void simplenet::cuda::gemm_kernel_broadcast<int16_t>(
+            const int* __restrict__ batch_shape,
+            int batch_shape_size,
+            const int64_t* __restrict__ strides_a,
+            const int64_t* __restrict__ strides_b,
+            const int M,
+            const int K,
+            const int N,
+            int16_t alpha, int16_t beta,
+            int64_t total_batch_size,
+            const int16_t* __restrict__ a,
+            const int16_t* __restrict__ b,
+            int16_t* c
+        );
+        // int32
+        template __global__ void simplenet::cuda::gemm_kernel_broadcast<int32_t>(
+            const int* __restrict__ batch_shape,
+            int batch_shape_size,
+            const int64_t* __restrict__ strides_a,
+            const int64_t* __restrict__ strides_b,
+            const int M,
+            const int K,
+            const int N,
+            int32_t alpha, int32_t beta,
+            int64_t total_batch_size,
+            const int32_t* __restrict__ a,
+            const int32_t* __restrict__ b,
+            int32_t* c
+        );
+        // int64
+        template __global__ void simplenet::cuda::gemm_kernel_broadcast<int64_t>(
+            const int* __restrict__ batch_shape,
+            int batch_shape_size,
+            const int64_t* __restrict__ strides_a,
+            const int64_t* __restrict__ strides_b,
+            const int M,
+            const int K,
+            const int N,
+            int64_t alpha, int64_t beta,
+            int64_t total_batch_size,
+            const int64_t* __restrict__ a,
+            const int64_t* __restrict__ b,
+            int64_t* c
+        );
+
+
+        // ---------------------------------- Template specification for floats ----------------------------------
+        // bfloat16
+        template __global__ void simplenet::cuda::gemm_kernel_contiguous<__nv_bfloat16>(
+            int batchsize,
+            const int M, // row_count
+            const int K, // common_dim
+            const int N, // column_count
+            __nv_bfloat16 alpha, __nv_bfloat16 beta,
+            __nv_bfloat16* __restrict__ a,
+            __nv_bfloat16* __restrict__ b,
+            __nv_bfloat16* c
+        );
+
+        // float16
+        template __global__ void simplenet::cuda::gemm_kernel_contiguous<__half>(
+            int batchsize,
+            const int M, // row_count
+            const int K, // common_dim
+            const int N, // column_count
+            __half alpha, __half beta,
+            __half* __restrict__ a,
+            __half* __restrict__ b,
+            __half* c
+        );
+
+        // float32
+        template __global__ void simplenet::cuda::gemm_kernel_contiguous<float>(
+            int batchsize,
+            const int M, // row_count
+            const int K, // common_dim
+            const int N, // column_count
+            float alpha, float beta,
+            float* __restrict__ a,
+            float* __restrict__ b,
+            float* c
+        );
+
+        // float64
+        template __global__ void simplenet::cuda::gemm_kernel_contiguous<double>(
+            int batchsize,
+            const int M, // row_count
+            const int K, // common_dim
+            const int N, // column_count
+            double alpha, double beta,
+            double* __restrict__ a,
+            double* __restrict__ b,
+            double* c
+        );
+
+        // ---------------------------------- Template specification for ints ----------------------------------
+        // int8
+        template __global__ void simplenet::cuda::gemm_kernel_contiguous<int8_t>(
+            int batchsize,
+            const int M, // row_count
+            const int K, // common_dim
+            const int N, // column_count
+            int8_t alpha, int8_t beta,
+            int8_t* __restrict__ a,
+            int8_t* __restrict__ b,
+            int8_t* c
+        );
+
+        // int16
+        template __global__ void simplenet::cuda::gemm_kernel_contiguous<int16_t>(
+            int batchsize,
+            const int M, // row_count
+            const int K, // common_dim
+            const int N, // column_count
+            int16_t alpha, int16_t beta,
+            int16_t* __restrict__ a,
+            int16_t* __restrict__ b,
+            int16_t* c
+        );
+        // int32
+        template __global__ void simplenet::cuda::gemm_kernel_contiguous<int32_t>(
+            int batchsize,
+            const int M, // row_count
+            const int K, // common_dim
+            const int N, // column_count
+            int32_t alpha, int32_t beta,
+            int32_t* __restrict__ a,
+            int32_t* __restrict__ b,
+            int32_t* c
+        );
+        // int64
+        template __global__ void simplenet::cuda::gemm_kernel_contiguous<int64_t>(
+            int batchsize,
+            const int M, // row_count
+            const int K, // common_dim
+            const int N, // column_count
+            int64_t alpha, int64_t beta,
+            int64_t* __restrict__ a,
+            int64_t* __restrict__ b,
+            int64_t* c
+        );
+
+
         // test this out:
         template<typename T>
         void launch_gemm_broadcasted(
@@ -199,6 +425,277 @@ namespace simplenet {
 
         }
 
+
+        // ---------------------------------- Template specification for floats ----------------------------------
+        // bfloat16
+        template
+        void launch_gemm_broadcasted<__nv_bfloat16>(
+            const __nv_bfloat16* d_a,
+            const __nv_bfloat16* d_b,
+            __nv_bfloat16* d_c,
+            int m,
+            int k,
+            int n,
+            __nv_bfloat16 alpha,
+            __nv_bfloat16 beta,
+            std::vector<int>* batch_shape,
+            int batch_shape_size,
+            std::vector<int64_t>* strides_a,
+            std::vector<int64_t>* strides_b,
+            int64_t total_batch_size,
+            cudaStream_t stream
+        );
+
+        // float16
+        template
+        void launch_gemm_broadcasted<__half>(
+            const __half* d_a,
+            const __half* d_b,
+            __half* d_c,
+            int m,
+            int k,
+            int n,
+            __half alpha,
+            __half beta,
+            std::vector<int>* batch_shape,
+            int batch_shape_size,
+            std::vector<int64_t>* strides_a,
+            std::vector<int64_t>* strides_b,
+            int64_t total_batch_size,
+            cudaStream_t stream
+        );
+
+        // float32
+        template
+        void launch_gemm_broadcasted<float>(
+            const float* d_a,
+            const float* d_b,
+            float* d_c,
+            int m,
+            int k,
+            int n,
+            float alpha,
+            float beta,
+            std::vector<int>* batch_shape,
+            int batch_shape_size,
+            std::vector<int64_t>* strides_a,
+            std::vector<int64_t>* strides_b,
+            int64_t total_batch_size,
+            cudaStream_t stream
+        );
+
+        // float64
+        template
+        void launch_gemm_broadcasted<double>(
+            const double* d_a,
+            const double* d_b,
+            double* d_c,
+            int m,
+            int k,
+            int n,
+            double alpha,
+            double beta,
+            std::vector<int>* batch_shape,
+            int batch_shape_size,
+            std::vector<int64_t>* strides_a,
+            std::vector<int64_t>* strides_b,
+            int64_t total_batch_size,
+            cudaStream_t stream
+        );
+
+        // ---------------------------------- Template specification for ints ----------------------------------
+        // int8
+        template
+        void launch_gemm_broadcasted<int8_t>(
+            const int8_t* d_a,
+            const int8_t* d_b,
+            int8_t* d_c,
+            int m,
+            int k,
+            int n,
+            int8_t alpha,
+            int8_t beta,
+            std::vector<int>* batch_shape,
+            int batch_shape_size,
+            std::vector<int64_t>* strides_a,
+            std::vector<int64_t>* strides_b,
+            int64_t total_batch_size,
+            cudaStream_t stream
+        );
+        // int16
+        template
+        void launch_gemm_broadcasted<int16_t>(
+            const int16_t* d_a,
+            const int16_t* d_b,
+            int16_t* d_c,
+            int m,
+            int k,
+            int n,
+            int16_t alpha,
+            int16_t beta,
+            std::vector<int>* batch_shape,
+            int batch_shape_size,
+            std::vector<int64_t>* strides_a,
+            std::vector<int64_t>* strides_b,
+            int64_t total_batch_size,
+            cudaStream_t stream
+        );
+        // int32
+        template
+        void launch_gemm_broadcasted<int32_t>(
+            const int32_t* d_a,
+            const int32_t* d_b,
+            int32_t* d_c,
+            int m,
+            int k,
+            int n,
+            int32_t alpha,
+            int32_t beta,
+            std::vector<int>* batch_shape,
+            int batch_shape_size,
+            std::vector<int64_t>* strides_a,
+            std::vector<int64_t>* strides_b,
+            int64_t total_batch_size,
+            cudaStream_t stream
+        );
+        // int64
+        template
+        void launch_gemm_broadcasted<int64_t>(
+            const int64_t* d_a,
+            const int64_t* d_b,
+            int64_t* d_c,
+            int m,
+            int k,
+            int n,
+            int64_t alpha,
+            int64_t beta,
+            std::vector<int>* batch_shape,
+            int batch_shape_size,
+            std::vector<int64_t>* strides_a,
+            std::vector<int64_t>* strides_b,
+            int64_t total_batch_size,
+            cudaStream_t stream
+        );
+
+
+        // ---------------------------------- Template specification for floats ----------------------------------
+        // bfloat16
+        template
+        void launch_gemm_contiguous<__nv_bfloat16>(
+            __nv_bfloat16* d_a,
+            __nv_bfloat16* d_b,
+            __nv_bfloat16* d_c,
+            int batchsize,
+            int m,
+            int k,
+            int n,
+            __nv_bfloat16 alpha,
+            __nv_bfloat16 beta,
+            cudaStream_t stream
+        );
+
+        // float16
+        template
+        void launch_gemm_contiguous<__half>(
+            __half* d_a,
+            __half* d_b,
+            __half* d_c,
+            int batchsize,
+            int m,
+            int k,
+            int n,
+            __half alpha,
+            __half beta,
+            cudaStream_t stream
+        );
+
+        // float32
+        template
+        void launch_gemm_contiguous<float>(
+            float* d_a,
+            float* d_b,
+            float* d_c,
+            int batchsize,
+            int m,
+            int k,
+            int n,
+            float alpha,
+            float beta,
+            cudaStream_t stream
+        );
+
+        // float64
+        template
+        void launch_gemm_contiguous<double>(
+            double* d_a,
+            double* d_b,
+            double* d_c,
+            int batchsize,
+            int m,
+            int k,
+            int n,
+            double alpha,
+            double beta,
+            cudaStream_t stream
+        );
+
+        // ---------------------------------- Template specification for ints ----------------------------------
+        // int8
+        template
+        void launch_gemm_contiguous<int8_t>(
+            int8_t* d_a,
+            int8_t* d_b,
+            int8_t* d_c,
+            int batchsize,
+            int m,
+            int k,
+            int n,
+            int8_t alpha,
+            int8_t beta,
+            cudaStream_t stream
+        );
+        // int16
+        template
+        void launch_gemm_contiguous<int16_t>(
+            int16_t* d_a,
+            int16_t* d_b,
+            int16_t* d_c,
+            int batchsize,
+            int m,
+            int k,
+            int n,
+            int16_t alpha,
+            int16_t beta,
+            cudaStream_t stream
+        );
+        // int32
+        template
+        void launch_gemm_contiguous<int32_t>(
+            int32_t* d_a,
+            int32_t* d_b,
+            int32_t* d_c,
+            int batchsize,
+            int m,
+            int k,
+            int n,
+            int32_t alpha,
+            int32_t beta,
+            cudaStream_t stream
+        );
+        // int64
+        template
+        void launch_gemm_contiguous<int64_t>(
+            int64_t* d_a,
+            int64_t* d_b,
+            int64_t* d_c,
+            int batchsize,
+            int m,
+            int k,
+            int n,
+            int64_t alpha,
+            int64_t beta,
+            cudaStream_t stream
+        );
 
 
     }

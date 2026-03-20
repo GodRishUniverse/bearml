@@ -31,8 +31,6 @@ namespace simplenet {
                 throw std::invalid_argument("Tensors must be on the same device");
             }
 
-            // TODO: CUDA implementation
-
             // Compute broadcast shape for batch dimensions
             std::vector<int> a_batch_dims(a_size.begin(), a_size.end() - 2);
             std::vector<int> b_batch_dims(b_size.begin(), b_size.end() - 2);
@@ -67,17 +65,51 @@ namespace simplenet {
             Tensor a_view = Tensor::makeBroadcastView(a, full_a_shape);
             Tensor b_view = Tensor::makeBroadcastView(b, full_b_shape);
 
-            // Perform batched matrix multiplication
-            ll matrix_size_a = a_rows * a_cols;
-            ll matrix_size_b = b_rows * b_cols;
-            ll matrix_size_result = a_rows * b_cols;
-
-
             ll total_batch_size {1};
             for (int i : batch_shape){
                 total_batch_size*=i;
             }
             total_batch_size = (total_batch_size>0) ? total_batch_size : 1;
+
+            // CUDA path
+            if (a.device == DeviceType::CUDA) {
+                // Check if broadcasting is needed by comparing batch dims
+                bool needs_broadcast = (a_view.strides != b_view.strides) ||
+                                       (a.getShape() != b.getShape());
+
+                if (needs_broadcast) {
+                    // Use broadcast kernel with strides computed from the views
+                    // We only need the batch strides (not the matrix dim strides)
+                    std::vector<int64_t> batch_strides_a(a_view.strides.begin(),
+                        a_view.strides.begin() + batch_shape.size());
+                    std::vector<int64_t> batch_strides_b(b_view.strides.begin(),
+                        b_view.strides.begin() + batch_shape.size());
+
+                    cuda::launch_gemm_broadcasted<double>(
+                        a.data, b.data, result.data,
+                        a_rows, a_cols, b_cols,
+                        1.0, 0.0,
+                        &batch_shape,
+                        batch_shape.size(),
+                        &batch_strides_a,
+                        &batch_strides_b,
+                        total_batch_size,
+                        nullptr
+                    );
+                } else {
+                    // Contiguous batched matmul - no broadcasting needed
+                    cuda::launch_gemm_contiguous<double>(
+                        a.data, b.data, result.data,
+                        static_cast<int>(total_batch_size),
+                        a_rows, b_cols, a_cols,
+                        1.0, 0.0, nullptr
+                    );
+                }
+                return result;
+            }
+
+            // CPU path
+            ll matrix_size_result = a_rows * b_cols;
 
             // loop over the total batch size -
             for (ll batch_index = 0; batch_index<total_batch_size; batch_index++){

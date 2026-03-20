@@ -123,12 +123,18 @@ namespace simplenet {
                 std::string initialization_method;
             public:
                 Linear(int in_shape, int out_shape, std::string initialization = "Xavier", Device dev = Device(DeviceType::CPU, 0), int random_seed =42) : Module(random_seed, dev), input_size(in_shape), output_size(out_shape), initialization_method(initialization){
-                    Tensor weight_tensor({input_size, output_size}, dev);
+                    // Initialize on CPU first  so that we dont get GPU direct access errors - then transfer to the target device
+                    Tensor weight_tensor({input_size, output_size});
                     W = simplenet::Node<Tensor>::make_node(weight_tensor);
 
-                    Tensor bias_tensor({ output_size}, dev);
+                    Tensor bias_tensor({ output_size});
                     B = simplenet::Node<Tensor>::make_node(bias_tensor);
                     initialize_parameters();
+
+                    if (!dev.is_cpu()) {
+                        W->val.to_(dev);
+                        B->val.to_(dev);
+                    }
                 }
 
                 std::shared_ptr<simplenet::Node<Tensor>> operator()(Tensor&x) override {
