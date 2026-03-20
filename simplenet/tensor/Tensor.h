@@ -1039,6 +1039,13 @@ namespace simplenet{
             //----------------------------------------Max and Min------------------------------------------------------
             static Tensor max(const Tensor& t,const  double val){
                 // std::cout <<"MAX" <<std::endl;
+                if (t.device == DeviceType::CUDA) {
+                    // Create a scalar tensor on CUDA filled with val
+                    Tensor scalar_t(t.getShape());
+                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.data[i] = val;
+                    scalar_t.to_(t.device);
+                    return Tensor::max(t, scalar_t);
+                }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::max({t.data[i], val});
@@ -1055,6 +1062,14 @@ namespace simplenet{
                 if (t.getShape() != s.getShape()){
                     throw std::invalid_argument("Shapes dont match for max operation");
                 }
+                if (t.device == DeviceType::CUDA) {
+                    Tensor result(t.getShape(), t.device);
+                    cuda::launch_elementwise_contiguous<double>(
+                        t.data, s.data, result.data,
+                        t.getShape(), OP_Code::OP_MAX
+                    );
+                    return result;
+                }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::max({t.data[i], s.data[i]});
@@ -1064,6 +1079,12 @@ namespace simplenet{
 
             static Tensor min(const Tensor& t, double val){
                 // std::cout <<"MIN" <<std::endl;
+                if (t.device == DeviceType::CUDA) {
+                    Tensor scalar_t(t.getShape());
+                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.data[i] = val;
+                    scalar_t.to_(t.device);
+                    return Tensor::min(t, scalar_t);
+                }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::min({t.data[i], val});
@@ -1079,6 +1100,14 @@ namespace simplenet{
                 // std::cout <<"MIN" <<std::endl;
                 if (t.getShape() != s.getShape()){
                     throw std::invalid_argument("Shapes dont match for min operation");
+                }
+                if (t.device == DeviceType::CUDA) {
+                    Tensor result(t.getShape(), t.device);
+                    cuda::launch_elementwise_contiguous<double>(
+                        t.data, s.data, result.data,
+                        t.getShape(), OP_Code::OP_MIN
+                    );
+                    return result;
                 }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){

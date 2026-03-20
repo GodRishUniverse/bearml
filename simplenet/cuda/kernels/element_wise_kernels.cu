@@ -55,6 +55,14 @@ namespace simplenet {
                         result = a[offA]/b[offB];
                         break;
                     }
+                    case OP_Code::OP_MAX: {
+                        result = (a[offA] > b[offB]) ? a[offA] : b[offB];
+                        break;
+                    }
+                    case OP_Code::OP_MIN: {
+                        result = (a[offA] < b[offB]) ? a[offA] : b[offB];
+                        break;
+                    }
 
                     // default operation -> since we cannot throw an error inside the kernel
                     default:
@@ -117,6 +125,14 @@ namespace simplenet {
                     }
                     case OP_Code::OP_DIV:{
                         result = a[thread_idx]/b[thread_idx];
+                        break;
+                    }
+                    case OP_Code::OP_MAX:{
+                        result = (a[thread_idx] > b[thread_idx]) ? a[thread_idx] : b[thread_idx];
+                        break;
+                    }
+                    case OP_Code::OP_MIN:{
+                        result = (a[thread_idx] < b[thread_idx]) ? a[thread_idx] : b[thread_idx];
                         break;
                     }
                     // default operation -> since we cannot throw an error inside the kernel
