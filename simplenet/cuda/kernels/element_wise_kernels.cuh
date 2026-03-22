@@ -38,5 +38,14 @@ namespace simplenet {
             OP_Code op_code,
             cudaStream_t stream = nullptr
         );
+
+
+        template <typename T>
+        void launch_sign_contiguous(
+            const T* d_a,
+            T* d_out,
+            const std::vector<int>& res_shape,
+            cudaStream_t stream = nullptr
+        );
     }
 }

@@ -1,11 +1,17 @@
 #pragma once
 #include <vector>
 #include <stdexcept>
-
+#include "compare_ops.h" // to get the compare ops enum
 
 namespace simplenet {
     class Tensor; // forward declaration
+
+
     namespace linear_algebra {
+        // TODO: add CPU side operator that allows a custom Comparison
+        // TODO: add CUDA to all these to allow back propagation
+
+        Tensor compare(const Tensor& a, const Tensor& b,CompareOp op, double true_val, double false_val);
 
         Tensor batchedMatMul(const Tensor& a, const Tensor& b);
 

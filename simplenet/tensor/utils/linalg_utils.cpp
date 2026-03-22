@@ -194,100 +194,78 @@ namespace simplenet {
 
 
         // -----------------------------------------------Operations helpful in mask generations------------------
-        Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val) {
-            if (first.getShape() != other.getShape()){
-                throw std::runtime_error("In >= Mask and shapes don't match");
-            }
-            Tensor result(first.getShape(), first.device);
 
-            if (first.device != other.device) {
+        Tensor compare(const Tensor& a, const Tensor& b, CompareOp op, double true_val, double false_val) {
+            if (a.getShape() != b.getShape()) {
+                throw std::runtime_error("In compare and shapes don't match");
+            }
+            Tensor result(a.getShape(), a.device);
+
+            if (a.device != b.device) {
                 throw std::invalid_argument("Tensors must be on the same device");
             }
 
             // TODO: CUDA implementation
 
-            for (size_t i = 0; i < first.sizeOfTensor(); i++) {
-                result.data[i] = (first.data[i] >= other.data[i]) ? first_val : second_val;
+            for (size_t i = 0; i < a.sizeOfTensor(); i++) {
+                switch (op) {
+                    case CompareOp::GT: // greater than
+                        result.data[i] = (a.data[i] > b.data[i]) ? true_val : false_val;
+                        break;
+                    case CompareOp::GE: // greater than or equal to
+                        result.data[i] = (a.data[i] >= b.data[i]) ? true_val : false_val;
+                        break;
+                    case CompareOp::LT: // less than
+                        result.data[i] = (a.data[i] < b.data[i]) ? true_val : false_val;
+                        break;
+                    case CompareOp::LE: // less than or equal to
+                        result.data[i] = (a.data[i] <= b.data[i]) ? true_val : false_val;
+                        break;
+                    case CompareOp::EQ: // equal to
+                        result.data[i] = ((std::abs(a.data[i] - b.data[i]) < 1e-12)) ? true_val : false_val;
+                        break;
+                    case CompareOp::NE: // not equal to
+                        result.data[i] = ((std::abs(a.data[i] - b.data[i]) >= 1e-12)) ? true_val : false_val;
+                        break;
+                    default:
+                        throw std::invalid_argument("Invalid compare op");
+                }
             }
             return result;
+        }
+
+        Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val) {
+            return compare(first, other, CompareOp::GE, first_val, second_val);
         }
 
         Tensor mask_of_greater_than(const Tensor& first, const Tensor& other,  double first_val, double second_val) {
-            if (first.getShape() != other.getShape()){
-                throw std::runtime_error("In > Mask and shapes don't match");
-            }
-            Tensor result(first.getShape(), first.device);
-
-            if (first.device != other.device) {
-                throw std::invalid_argument("Tensors must be on the same device");
-            }
-
-            // TODO: CUDA implementation
-
-
-            for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
-                result.data[i] = (first.data[i] > other.data[i]) ? first_val: second_val;
-            }
-            return result;
+            return compare(first, other, CompareOp::GT, first_val, second_val);
         }
 
         Tensor mask_of_less_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val) {
-            if (first.getShape() != other.getShape()){
-                throw std::runtime_error("In <= Mask and shapes don't match");
-            }
-            Tensor result(first.getShape(), first.device);
-
-            if (first.device != other.device) {
-                throw std::invalid_argument("Tensors must be on the same device");
-            }
-
-            // TODO: CUDA implementation
-
-            for (size_t i = 0; i < first.sizeOfTensor(); i++) {
-                result.data[i] = (first.data[i] <= other.data[i]) ? first_val : second_val;
-            }
-            return result;
+            return compare(first, other, CompareOp::LE, first_val, second_val);
         }
 
         Tensor mask_of_less_than(const Tensor& first, const Tensor& other,  double first_val, double second_val) {
-            if (first.getShape() != other.getShape()){
-                throw std::runtime_error("In < Mask and shapes don't match");
-            }
-            Tensor result(first.getShape(), first.device);
-            if (first.device != other.device) {
-                throw std::invalid_argument("Tensors must be on the same device");
-            }
-            // TODO: CUDA implementation
-            for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
-                result.data[i] = (first.data[i] < other.data[i]) ? first_val: second_val;
-            }
-            return result;
+            return compare(first, other, CompareOp::LT, first_val, second_val);
         }
 
         Tensor mask_of_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val){
-            if (first.getShape() != other.getShape()){
-                throw std::runtime_error("In = Mask and shapes don't match");
-            }
-            Tensor result(first.getShape(), first.device);
-            if (first.device != other.device) {
-                throw std::invalid_argument("Tensors must be on the same device");
-            }
-            // TODO: CUDA implementation
-            for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
-                result.data[i] = (std::abs(first.data[i] - other.data[i]) < 1e-12) ? first_val : second_val;
-            }
-            return result;
+            return compare(first, other, CompareOp::EQ, first_val, second_val);
         }
 
 
 
         // Double and Tensor
         Tensor mask_of_greater_than_equal_to(double first, const Tensor& other,  double first_val, double second_val) {
+
             Tensor result(other.getShape(), other.device);
 
             for (size_t i = 0; i < other.sizeOfTensor(); i++) {
                 result.data[i] = (first >= other.data[i]) ? first_val : second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
@@ -297,6 +275,8 @@ namespace simplenet {
             for (size_t i = 0; i < other.sizeOfTensor(); i++) {
                 result.data[i] = (first > other.data[i]) ? first_val : second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
@@ -306,6 +286,8 @@ namespace simplenet {
             for (size_t i = 0; i <  other.sizeOfTensor(); i++) {
                 result.data[i] = (first <= other.data[i]) ? first_val : second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
@@ -315,6 +297,8 @@ namespace simplenet {
             for (size_t i = 0; i <  other.sizeOfTensor(); i++) {
                 result.data[i] = (first < other.data[i]) ? first_val : second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
@@ -323,6 +307,8 @@ namespace simplenet {
             for (size_t i = 0; i < other.sizeOfTensor(); ++i) {
                 result.data[i] = (std::abs(first - other.data[i]) < 1e-12) ? first_val : second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
@@ -333,6 +319,8 @@ namespace simplenet {
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
                 result.data[i] = (first.data[i] >= other) ? first_val : second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
@@ -341,6 +329,8 @@ namespace simplenet {
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
                 result.data[i] = (first.data[i] > other) ? first_val: second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
@@ -350,6 +340,8 @@ namespace simplenet {
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
                 result.data[i] = (first.data[i] <= other) ? first_val : second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
@@ -359,6 +351,8 @@ namespace simplenet {
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
                 result.data[i] = (first.data[i] < other) ? first_val : second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
@@ -367,15 +361,25 @@ namespace simplenet {
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
                 result.data[i] = (std::abs(first.data[i] - other) < 1e-12) ? first_val : second_val;
             }
+            // TODO: CUDA implementation
+
             return result;
         }
 
-
+        // TODO: templatize
         Tensor sign(const Tensor& a){
             Tensor result(a.getShape(), a.device);
-            for (size_t i = 0; i < a.sizeOfTensor(); ++i) {
-                result.data[i] = (std::abs(a.data[i] - 0.0) < 1e-12) ? 0.0 : ((a.data[i] < 0.0) ? -1.0 : 1.0);
+
+            if (a.getDevice().type == DeviceType::CPU) {
+                for (size_t i = 0; i < a.sizeOfTensor(); ++i) {
+                    result.data[i] = (std::abs(a.data[i] - 0.0) < 1e-12) ? 0.0 : ((a.data[i] < 0.0) ? -1.0 : 1.0);
+                }
+                return result;
             }
+
+            // CUDA implementation
+            cuda::launch_sign_contiguous<double>(a.data, result.data, a.getShape());
+
             return result;
         }
 

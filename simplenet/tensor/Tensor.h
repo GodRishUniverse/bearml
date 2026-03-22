@@ -49,6 +49,8 @@ namespace simplenet{
        Tensor reduce(const Tensor& a, std::vector<int>& afterShape); // forward declare for the friend reduce
        Tensor hadamard(const Tensor &a, const Tensor &other);
 
+       Tensor compare(const Tensor& a, const Tensor& b,CompareOp op, double true_val, double false_val);
+
        // Tensor and Tensor
        Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
        Tensor mask_of_greater_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
@@ -994,13 +996,15 @@ namespace simplenet{
 
 
             // -----------------------------------------------Operations helpful in mask generations------------------
+
+
+            friend Tensor linear_algebra::compare(const Tensor& a, const Tensor& b,CompareOp op, double true_val, double false_val);
+
             friend Tensor linear_algebra::mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other, double first_val, double second_val);
             friend Tensor linear_algebra::mask_of_greater_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
             friend Tensor linear_algebra::mask_of_less_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
             friend Tensor linear_algebra::mask_of_less_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
             friend Tensor linear_algebra::mask_of_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
-
-
 
             // Double and Tensor
             friend Tensor linear_algebra::mask_of_greater_than_equal_to(double first, const Tensor& other,  double first_val, double second_val);
@@ -1015,6 +1019,7 @@ namespace simplenet{
             friend Tensor linear_algebra::mask_of_less_than_equal_to(const Tensor& first, double other,  double first_val, double second_val);
             friend Tensor linear_algebra::mask_of_less_than(const Tensor& first, double other,  double first_val, double second_val);
             friend Tensor linear_algebra::mask_of_equal_to(const Tensor& first, double other,  double first_val, double second_val);
+
 
             // sign matrix
             friend Tensor linear_algebra::sign(const Tensor& a);
@@ -1163,6 +1168,7 @@ namespace simplenet{
                     size_t sizeTensor = t.sizeOfTensor();
                     for (size_t i =0; i<sizeTensor; i++){
                        sum += t.data[i];
+
                     }
                     result.set(sum / static_cast<double>(t.sizeOfTensor()), {0}) ;
                 }
@@ -1194,6 +1200,17 @@ namespace simplenet{
             // TODO: refactor
             // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
             void fill(double v){
+                // CUDA fill
+                if (!this->device.is_cpu()) {
+                    cuda::launch_fill<double>(
+                        this->data,
+                        v,
+                        this->shape
+                    );
+                    return;
+                }
+
+                // CPU fill
                 for (size_t i =0;i<sizeOfTensor(); i++){
                     this->data[i] = v;
                 }
@@ -1208,6 +1225,7 @@ namespace simplenet{
                     }
                 }
                 return false;
+                // TODO: add CUDA support
             }
 
             // TODO: refactor

@@ -58,7 +58,7 @@ namespace simplenet {
                 if constexpr (std::is_same<T,double>::value){
                     node->grad = 0.0;
                 }else if constexpr (std::is_same<T,simplenet::Tensor>::value){
-                    node->grad = simplenet::Tensor(node->val.getShape());
+                    node->grad = simplenet::Tensor(node->val.getShape(), node->val.getDevice());
                 }
              }
           }
@@ -66,7 +66,7 @@ namespace simplenet {
           if constexpr (std::is_same<T,double>::value){
               end_node->grad = 1.0;
           }else if constexpr (std::is_same<T,simplenet::Tensor>::value){
-              end_node->grad = simplenet::Tensor(end_node->val.getShape()); // The whole matrix is filled with 1 - because we want to compute the Jacobian matrix
+              end_node->grad = simplenet::Tensor(end_node->val.getShape(), end_node->val.getDevice()); // The whole matrix is filled with 1 - because we want to compute the Jacobian matrix
               end_node->grad.fill(1.0); // fill returns void;
           }
 
