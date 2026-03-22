@@ -1156,9 +1156,9 @@ namespace simplenet{
                 double sum = 0.0;
                 if (t.device == DeviceType::CUDA) {
                     cuda::launch_sum_kernel(t.data, result.data, t.sizeOfTensor());
-                    result.to_(Device::cpu());
-                    result.set(sum / static_cast<double>(t.sizeOfTensor()), {0});
-                    result.to_(t.device);
+                    result.to_(Device::cpu()); // send to CPU to get the sum as GPU direct memory access is NOT SET UP
+                    result.set(sum / static_cast<double>(t.sizeOfTensor()), {0}); // set the mean value
+                    result.to_(t.device); // send back to GPU
                 }else {
                     size_t sizeTensor = t.sizeOfTensor();
                     for (size_t i =0; i<sizeTensor; i++){
