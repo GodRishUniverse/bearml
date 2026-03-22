@@ -1119,6 +1119,16 @@ namespace simplenet{
             //----------------------------------------Absolute value------------------------------------------------------
             // Note: const accepts both non-const and const tensors
             static Tensor abs(const Tensor &t ){
+                if (t.device == DeviceType::CUDA) {
+                    Tensor result(t.getShape(), t.device);
+                    cuda::launch_elementwise_unary<double>(
+                        t.data,
+                        result.data,
+                        t.getShape(),
+                        OP_Code::OP_ABS
+                    );
+                    return result;
+                }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::abs(t.data[i]);
@@ -1142,7 +1152,7 @@ namespace simplenet{
 
             //----------------------------------------Mean ------------------------------------------------------
 
-            // To be changed - can be accelerated using SIMD instructions - GPU
+            // TODO: To be changed - can be accelerated using SIMD instructions - GPU
             static Tensor mean(Tensor &t ){
                 Tensor returnMean({1});
                 size_t sizeTensor = t.sizeOfTensor();
@@ -1156,8 +1166,17 @@ namespace simplenet{
 
             //---------------------------------------- Log ------------------------------------------------------
 
-            // To be changed
             static Tensor log(Tensor &t ){
+                if (t.device == DeviceType::CUDA) {
+                    Tensor result(t.getShape(), t.device);
+                    cuda::launch_elementwise_unary<double>(
+                        t.data,
+                        result.data,
+                        t.getShape(),
+                        OP_Code::OP_LOG
+                    );
+                    return result;
+                }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::log(t.data[i]);

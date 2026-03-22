@@ -79,7 +79,7 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 * **Refactoring for CUDA Support (Major Overhaul)** — **IN PROGRESS (Priority)** - need to recheck as I have not opened repo in a while
     * Write host code and kernels — **Status: Kernels in progress**
       * kernels need to be fixed for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
-    * Call kernels in the `Tensor` class when devices match (CUDA).
+    * Call kernels in the `Tensor` class when devices match (CUDA). **DOING alongside CUDA support**
     * Implement **Lazy Copy** operation.
     * **Memory Management:** Address CPU/GPU memory usage. (Decision needed: Single memory space vs. syncing to avoid expensive copy operations).
 * **Dependency Management:** Fix `#includes` for the repo to remove cyclical dependencies and repeated includes. — **Priority After Kernels**
@@ -95,7 +95,7 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 ## Math Engine & Tensor Operations
 * **Matrix Multiplication (GEMM):** Use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) integration.
     * Device-aware execution: Check device string to call CUDA kernel or standard Matmul.
-    * **TODO:** Use CUDA for GEMM and Matmul.
+    * **TODO:** Use CUDA for GEMM and Matmul.**Naive kernel is made**
 * **Vector Operations:** Rectify `Transpose` for vector operations (column vs. row).
     * Apply corresponding modifications to multiplication in `autogradient.h`.
 * **Padding:** Implement tensor padding support.
