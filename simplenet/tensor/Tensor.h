@@ -1151,16 +1151,22 @@ namespace simplenet{
 
 
             //----------------------------------------Mean ------------------------------------------------------
-
-            // TODO: To be changed - can be accelerated using SIMD instructions - GPU
             static Tensor mean(Tensor &t ){
-                Tensor returnMean({1});
-                size_t sizeTensor = t.sizeOfTensor();
-                for (size_t i =0; i<sizeTensor; i++){
-                    returnMean.data[0] += t.data[i];
+                Tensor result({1}, t.device);
+                double sum = 0.0;
+                if (t.device == DeviceType::CUDA) {
+                    cuda::launch_sum_kernel(t.data, result.data, t.sizeOfTensor());
+                    result.to_(Device::cpu());
+                    result.set(sum / static_cast<double>(t.sizeOfTensor()), {0});
+                    result.to_(t.device);
+                }else {
+                    size_t sizeTensor = t.sizeOfTensor();
+                    for (size_t i =0; i<sizeTensor; i++){
+                       sum += t.data[i];
+                    }
+                    result.set(sum / static_cast<double>(t.sizeOfTensor()), {0}) ;
                 }
-                returnMean.data[0]/= static_cast<double>(sizeTensor);
-                return returnMean;
+                return result;
             }
 
 
