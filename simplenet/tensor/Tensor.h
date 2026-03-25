@@ -528,315 +528,243 @@ namespace simplenet{
             // TODO: REFACTOR ALL OPERATIONS for CUDA support as well
             // ================================ OPERATIONS ========================================================================
 
-            // --------------------------------ADDITION----------------------------------------------------------------------------
-            // friend function - add tensors
-            friend Tensor operator+(const Tensor &A, const Tensor &B) {
-                utils::errorCheckSameDevice(A, B); // will throw an error if devices don't match
-
+            // Reduced the repetitive code - CPU side element-wise binary — handles both contiguous and broadcast paths
+            template<typename Func>
+            static Tensor elementwise_binary_cpu(const Tensor& A, const Tensor& B, Func fn) {
                 if (A.shape == B.shape) {
-                    // CUDA
-                    if (A.device == DeviceType::CUDA) {
-                        Tensor C(A.shape, A.device);
-                        cuda::launch_elementwise_contiguous<double>(
-                            A.data,
-                            B.data,
-                            C.data,
-                            C.getShape(),
-                            OP_Code::OP_ADD
-                        );
-                        return C;
-                    }
                     Tensor C(A.shape, A.device);
                     for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                        C.data[i] = A.data[i] + B.data[i];
+                        C.data[i] = fn(A.data[i], B.data[i]);
                     return C;
                 }
-
                 // broadcast path
                 auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
-
-                // make “broadcasted views” - we copy as we do not want the original shapes and strides of A and B to change
                 Tensor aView = makeBroadcastView(A, outShape);
                 Tensor bView = makeBroadcastView(B, outShape);
-
-                // CUDA
-                if (A.device == DeviceType::CUDA) {
-                    Tensor C(outShape, A.device);
-
-                    cuda::launch_elementwise_broadcast<double>(A.data, B.data, C.data, A.getStrides(), B.getStrides(), C.getShape(),OP_Code::OP_ADD );
-                    return C;
-                }
-
-                Tensor  C(outShape);
-                // now do a single flat loop
+                Tensor C(outShape, A.device);
                 size_t N = C.sizeOfTensor();
-
-                for (ll idx = 0; idx < N; ++idx) {
-                    // decode idx → coordinates and accumulate offsets
+                for (ll idx = 0; idx < static_cast<ll>(N); ++idx) {
                     ll tmp = idx, offA = 0, offB = 0;
-                    std::vector<int> coords(outShape.size());
-                    // Decode coordinates from rightmost to leftmost
-                    for (int d = outShape.size() - 1; d >= 0; --d) {
-                        coords[d] = tmp % outShape[d];
+                    for (int d = static_cast<int>(outShape.size()) - 1; d >= 0; --d) {
+                        int coord = tmp % outShape[d];
                         tmp /= outShape[d];
+                        offA += coord * aView.strides[d];
+                        offB += coord * bView.strides[d];
                     }
-
-                    // Now compute offsets using broadcast strides
-                    for (size_t d = 0; d < outShape.size(); ++d) {
-                        offA += coords[d] * aView.strides[d];
-                        offB += coords[d] * bView.strides[d];
-                    }
-                    C.data[idx] = A.data[offA] + B.data[offB];
+                    C.data[idx] = fn(A.data[offA], B.data[offB]);
                 }
                 return C;
             }
 
-            Tensor& operator+=(const Tensor &other) {
-                utils::errorCheckSameDevice(*this, other); // will throw an error if devices don't match
+            // Tensor-Tensor operator: uses device types to choose the path - uses OpCode for choosing the operator
+            static Tensor elementwise_binary(const Tensor& A, const Tensor& B, OP_Code op) {
+                utils::errorCheckSameDevice(A, B);
+                if (A.device.type == DeviceType::CUDA) {
+                    if (A.shape == B.shape) {
+                        Tensor C(A.shape, A.device);
+                        cuda::launch_elementwise_contiguous<double>(A.data, B.data, C.data, C.getShape(), op);
+                        return C;
+                    }
+                    auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
+                    Tensor C(outShape, A.device);
+                    cuda::launch_elementwise_broadcast<double>(A.data, B.data, C.data,
+                        A.getStrides(), B.getStrides(), C.getShape(), op);
+                    return C;
+                }
+                // CPU path with appropriate lambda
+                switch(op) {
+                    case OP_Code::OP_ADD: return elementwise_binary_cpu(A, B, std::plus<double>{});
+                    case OP_Code::OP_SUB: return elementwise_binary_cpu(A, B, std::minus<double>{});
+                    case OP_Code::OP_MUL: return elementwise_binary_cpu(A, B, std::multiplies<double>{});
+                    case OP_Code::OP_DIV: return elementwise_binary_cpu(A, B, std::divides<double>{});
+                    case OP_Code::OP_MAX: return elementwise_binary_cpu(A, B, [](double a, double b){ return std::max(a,b); });
+                    case OP_Code::OP_MIN: return elementwise_binary_cpu(A, B, [](double a, double b){ return std::min(a,b); });
+                    default:
+                        throw std::invalid_argument("OP Code does not exist - in elementwise_binary.");
+                }
+            }
 
-                // broadcast or exact-shape
+            // Tensor-scalar operator: handles Tensor op scalar and scalar op Tensor
+            static Tensor elementwise_scalar(const Tensor& A, double b, OP_Code op, LHS_RHS_Code side) {
+                Tensor C(A.shape, A.device);
+                if (A.device.type == DeviceType::CUDA) {
+                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, op, side);
+                    return C;
+                }
+                size_t N = A.sizeOfTensor();
+                if (side == LHS_RHS_Code::OP_RHS) {
+                    // A op b
+                    switch(op) {
+                        case OP_Code::OP_ADD:
+                            for (size_t i=0;i<N;++i) C.data[i]=A.data[i]+b;
+                            break;
+                        case OP_Code::OP_SUB:
+                            for (size_t i=0;i<N;++i) C.data[i]=A.data[i]-b;
+                            break;
+                        case OP_Code::OP_MUL:
+                            for (size_t i=0;i<N;++i) C.data[i]=A.data[i]*b;
+                            break;
+                        case OP_Code::OP_DIV:
+                            for (size_t i=0;i<N;++i) C.data[i]=A.data[i]/b;
+                            break;
+                        default:
+                            throw std::invalid_argument("OP Code not supported for scalar op.");
+                    }
+                } else {
+                    // b op A
+                    switch(op) {
+                        case OP_Code::OP_ADD:
+                            for (size_t i=0;i<N;++i) C.data[i]=b+A.data[i];
+                            break;
+                        case OP_Code::OP_SUB:
+                            for (size_t i=0;i<N;++i) C.data[i]=b-A.data[i];
+                            break;
+                        case OP_Code::OP_MUL:
+                            for (size_t i=0;i<N;++i) C.data[i]=b*A.data[i];
+                            break;
+                        case OP_Code::OP_DIV:
+                            for (size_t i=0;i<N;++i) C.data[i]=b/A.data[i];
+                            break;
+                        default:
+                            throw std::invalid_argument("OP Code not supported for scalar op.");
+                    }
+                }
+                return C;
+            }
+
+            // in-place Tensor-Tensor operator -> used only for + and -
+            Tensor& inplace_tensor_binary(const Tensor& other, OP_Code op) {
+                utils::errorCheckSameDevice(*this, other);
                 if (shape != other.shape) {
-
                     auto outShape = utils::computeBroadcastShape(shape, other.shape);
                     // we require that *this already has exactly outShape:
                     // otherwise you'd need to reallocate or error.
                     if (shape != outShape)
-                        throw std::invalid_argument("LHS must match broadcasted shape");
+                        throw std::invalid_argument("LHS must match broadcasted shape for in-place op");
 
                     // CUDA
-                    if (device == DeviceType::CUDA) {
+                    if (device.type == DeviceType::CUDA) {
                         Tensor result(outShape, device);
-                        cuda::launch_elementwise_broadcast<double>(data, other.data, result.data, getStrides(), other.getStrides(), outShape, OP_Code::OP_ADD);
+                        cuda::launch_elementwise_broadcast<double>(data, other.data, result.data,
+                            getStrides(), other.getStrides(), outShape, op);
                         allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
                         return *this;
                     }
 
+                    // CPU broadcast in-place
                     Tensor oView = makeBroadcastView(other, outShape);
-
-
                     size_t N = sizeOfTensor();
                     for (size_t idx = 0; idx < N; ++idx) {
-                        // same flat-to-multi decode as above
-
-                        std::vector<int> coords(outShape.size(), 0);
                         ll tmp = idx, offO = 0;
-
-                        for (int d = outShape.size() - 1; d >= 0; --d) {
-                            coords[d] = tmp % outShape[d];
+                        for (int d = static_cast<int>(outShape.size()) - 1; d >= 0; --d) {
+                            int coord = tmp % outShape[d];
                             tmp /= outShape[d];
+                            offO += coord * oView.strides[d];
                         }
-
-                        // Now compute offsets using broadcast strides
-                        for (size_t d = 0; d < outShape.size(); ++d) {
-                            offO += coords[d] * oView.strides[d];
+                        switch(op) {
+                            case OP_Code::OP_ADD:
+                                data[idx] += oView.data[offO];
+                                break;
+                            case OP_Code::OP_SUB:
+                                data[idx] -= oView.data[offO];
+                                break;
+                            default:
+                                throw std::invalid_argument("Unsupported in-place broadcast op");
                         }
-
-                        data[idx] += oView.data[offO];
                     }
                 } else {
                     // CUDA
-                    if (device == DeviceType::CUDA) {
+                    if (device.type == DeviceType::CUDA) {
                         Tensor result(shape, device);
-                        cuda::launch_elementwise_contiguous<double>(data, other.data, result.data, shape, OP_Code::OP_ADD);
+                        cuda::launch_elementwise_contiguous<double>(data, other.data, result.data, shape, op);
                         allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
                         return *this;
                     }
-                    for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
-                        data[i] += other.data[i];
+                    size_t N = sizeOfTensor();
+                    switch(op) {
+                        case OP_Code::OP_ADD:
+                            for (size_t i=0;i<N;++i) data[i]+=other.data[i];
+                            break;
+                        case OP_Code::OP_SUB:
+                            for (size_t i=0;i<N;++i) data[i]-=other.data[i];
+                            break;
+                        default:
+                            throw std::invalid_argument("Unsupported in-place contiguous op");
+                    }
                 }
                 return *this;
+            }
+
+            // in-place scalar-Tensor operator
+            Tensor& inplace_scalar(double b, OP_Code op) {
+                if (device.type == DeviceType::CUDA) {
+                    Tensor result(shape, device);
+                    cuda::launch_elementwise_contiguous_with_constant<double>(data, b, result.data, shape, op, LHS_RHS_Code::OP_RHS);
+                    allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+                    return *this;
+                }
+                size_t N = sizeOfTensor();
+                switch(op) {
+                    case OP_Code::OP_ADD:
+                        for (size_t i=0;i<N;++i) data[i]+=b;
+                        break;
+                    case OP_Code::OP_SUB:
+                        for (size_t i=0;i<N;++i) data[i]-=b;
+                        break;
+                    default:
+                        throw std::invalid_argument("Unsupported in-place scalar op");
+                }
+                return *this;
+            }
+
+            // ================================ OPERATORS - Using the above new element_wise functions =========================================
+
+            // --------------------------------ADDITION----------------------------------------------------------------------------
+
+            friend Tensor operator+(const Tensor &A, const Tensor &B) {
+                return elementwise_binary(A, B, OP_Code::OP_ADD);
+            }
+
+            Tensor& operator+=(const Tensor &other) {
+                return inplace_tensor_binary(other, OP_Code::OP_ADD);
             }
 
             // element wise add
             Tensor& operator+=(const double& b) {
-                if (device == DeviceType::CUDA) {
-                    Tensor result(shape, device);
-                    cuda::launch_elementwise_contiguous_with_constant<double>(data, b, result.data, shape, OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
-                    allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
-                    return *this;
-                }
-
-                for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
-                    data[i] += b;
-                return *this;
+                return inplace_scalar(b, OP_Code::OP_ADD);
             }
 
             // element wise add
             friend Tensor operator+(const Tensor &A, const double& b) {
-                Tensor C(A.shape, A.device);
-
-                if (A.getDevice() == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
-                    return C;
-                }
-
-                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                    C.data[i] = A.data[i] + b;
-                return C;
+                return elementwise_scalar(A, b, OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
             }
 
             friend Tensor operator+(const double& b, const Tensor &A) {
-                return A+b; // same as above
-            }
+                return A+b;
+            } // same as above
 
 
             // --------------------------------SUBTRACTION-------------------------------------------------------------------------
-
-
-
-            // friend function - subtract tensors
             friend Tensor operator-(const Tensor &A, const Tensor &B) {
-                utils::errorCheckSameDevice(A, B); // will throw an error if devices don't match
-
-                if (A.shape == B.shape) {
-                    // Cuda contiguous kernel call
-                    if (A.device == DeviceType::CUDA) {
-                         Tensor C(A.shape, A.device);
-                         cuda::launch_elementwise_contiguous<double>(A.data, B.data, C.data, C.getShape(), OP_Code::OP_SUB);
-                         return C;
-                     }
-
-                    Tensor C(A.shape, A.device);
-                    for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                        C.data[i] = A.data[i] - B.data[i];
-                    return C;
-                }
-
-                // broadcast path
-                auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
-                Tensor  C(outShape, A.device);
-
-                // make “broadcasted views”
-                Tensor aView = makeBroadcastView(A, outShape);
-                Tensor bView = makeBroadcastView(B, outShape);
-
-                // CUDA
-                if (A.device == DeviceType::CUDA) {
-                    Tensor C(outShape, A.device);
-
-                    cuda::launch_elementwise_broadcast<double>(A.data, B.data, C.data, A.getStrides(), B.getStrides(), C.getShape(),OP_Code::OP_SUB );
-                    return C;
-                }
-
-
-                // now do a single flat loop
-                size_t N = C.sizeOfTensor();
-                for (ll idx = 0; idx < N; ++idx) {
-                    // decode idx → coordinates and accumulate offsets
-                    ll tmp = idx, offA = 0, offB = 0;
-                    std::vector<int> coords(outShape.size());
-                    // Decode coordinates from rightmost to leftmost
-                    for (int d = outShape.size() - 1; d >= 0; --d) {
-                        coords[d] = tmp % outShape[d];
-                        tmp /= outShape[d];
-                    }
-
-                    // Now compute offsets using broadcast strides
-                    for (size_t d = 0; d < outShape.size(); ++d) {
-                        offA += coords[d] * aView.strides[d];
-                        offB += coords[d] * bView.strides[d];
-                    }
-                    C.data[idx] = A.data[offA] - B.data[offB];
-                }
-                return C;
+                return elementwise_binary(A, B, OP_Code::OP_SUB);
             }
-
             Tensor& operator-=(const Tensor &other) {
-                    utils::errorCheckSameDevice(*this, other); // will throw an error if devices don't match
-                    // broadcast or exact-shape
-                    if (shape != other.shape) {
-                    auto outShape = utils::computeBroadcastShape(shape, other.shape);
-                    // we require that *this already has exactly outShape:
-                    // otherwise you'd need to reallocate or error.
-                    if (shape != outShape)
-                        throw std::invalid_argument("LHS must match broadcasted shape");
-
-                        // CUDA
-                        if (device == DeviceType::CUDA) {
-                            Tensor result(outShape, device);
-                            cuda::launch_elementwise_broadcast<double>(data, other.data, result.data, getStrides(), other.getStrides(), outShape, OP_Code::OP_SUB);
-                            allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
-                            return *this;
-                        }
-
-                        Tensor oView = makeBroadcastView(other, outShape);
-
-                        size_t N = sizeOfTensor();
-                        for (size_t idx = 0; idx < N; ++idx) {
-                            // same flat-to-multi decode as above
-
-                            std::vector<int> coords(outShape.size(), 0);
-                            ll tmp = idx, offO = 0;
-
-                            for (int d = outShape.size() - 1; d >= 0; --d) {
-                                coords[d] = tmp % outShape[d];
-                                tmp /= outShape[d];
-                            }
-
-                            // Now compute offsets using broadcast strides
-                            for (size_t d = 0; d < outShape.size(); ++d) {
-                                offO += coords[d] * oView.strides[d];
-                            }
-
-                            data[idx] -= oView.data[offO];
-                        }
-                } else {
-
-                    // CUDA
-                    if (device == DeviceType::CUDA) {
-                        Tensor result(shape, device);
-                        cuda::launch_elementwise_contiguous<double>(data, other.data, result.data, shape, OP_Code::OP_SUB);
-                        allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
-                        return *this;
-                    }
-
-                    for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
-                        data[i] -= other.data[i];
-                }
-                return *this;
+                return inplace_tensor_binary(other, OP_Code::OP_SUB);
             }
-
             // element wise subtract
             Tensor& operator-=(const double& b) {
-
-                if (device == DeviceType::CUDA) {
-                    Tensor result(shape, device);
-                    cuda::launch_elementwise_contiguous_with_constant<double>(data, b, result.data, shape, OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
-                    allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
-                    return *this;
-                }
-
-                for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
-                    data[i] -= b;
-                return *this;
+                return inplace_scalar(b, OP_Code::OP_SUB);
             }
-
             // element wise subtract
             friend Tensor operator-(const Tensor &A, const double& b) {
-                Tensor C(A.shape, A.device);
-                if (A.getDevice() == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
-                    return C;
-                }
-                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                    C.data[i] = A.data[i] - b;
-                return C;
+                return elementwise_scalar(A, b, OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
             }
-
-            // element wise subtract
+            // element wise subtract - operation is switched (b - A)
             friend Tensor operator-(const double& b, const Tensor &A) {
-                Tensor C(A.shape, A.device);
-                if (A.getDevice() == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_SUB, LHS_RHS_Code::OP_LHS);
-                    return C;
-                }
-                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                    C.data[i] = b- A.data[i]; // operation is switched as above
-                return C;
+                return elementwise_scalar(A, b, OP_Code::OP_SUB, LHS_RHS_Code::OP_LHS);
             }
 
             // --------------------------------MULTIPLICATION----------------------------------------------------------------------
-
 
             // Hadamard product
             friend Tensor linear_algebra::hadamard(const Tensor &a, const Tensor &other);
@@ -847,16 +775,9 @@ namespace simplenet{
             // TODO: write CUDA kernel
             friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<int>& afterShape);
 
-            // element wise multiply
+            // element wise multiply (now uses elementwise_scalar dispatch)
             friend Tensor operator*(const Tensor &A, const double& b) {
-                Tensor C(A.shape, A.device);
-                if (A.getDevice() == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
-                    return C;
-                }
-                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                    C.data[i] = A.data[i]*b;
-                return C;
+                return elementwise_scalar(A, b, OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
             }
 
             // for when the operations are reversed
@@ -997,49 +918,21 @@ namespace simplenet{
             }
 
             // -------------------------------DIVISION--------------------------------------------------------------------------
-
-            // element wise divide
             friend Tensor operator/(const Tensor &A, const double& b) {
-                Tensor C(A.shape, A.device);
-                if (A.getDevice() == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS);
-                    return C;
-                }
-                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                    C.data[i] = A.data[i]/b;
-                return C;
+                return elementwise_scalar(A, b, OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS);
             }
 
-            // element wise divide
             friend Tensor operator/(const double& b, const Tensor &A) {
-                Tensor C(A.shape, A.device);
-                if (A.getDevice() == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
-                    return C;
-                }
-                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                    C.data[i] = b/A.data[i];
-                return C;
+                return elementwise_scalar(A, b, OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
             }
 
-
+            // TODO: add broadcast support - right now only supports same-shape (no broadcast)
             friend Tensor operator/(const Tensor &a, const Tensor &b) {
-
-                utils::errorCheckSameDevice(a, b); // will throw an error if devices don't match
-
+                // TODO: add broadcast support via elementwise_binary(a, b, OP_Code::OP_DIV)
                 if (b.shape != a.shape){
                     throw std::runtime_error("Shapes should match for element-wise divide");
                 }
-
-                // shapes match -> this is correct
-                Tensor C(a.shape, a.device);
-                if (a.device == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous<double>(a.data, b.data, C.data, C.getShape(), OP_Code::OP_DIV);
-                    return C;
-                }
-                for (size_t i = 0, N = a.sizeOfTensor(); i < N; ++i)
-                    C.data[i] = a.data[i]/b.data[i];
-                return C;
+                return elementwise_binary(a, b, OP_Code::OP_DIV);
             }
 
             // TODO: Another case exists but that is when matrix b is invertible and then it just becomes matrix mul
