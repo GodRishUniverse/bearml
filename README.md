@@ -90,6 +90,7 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
     * Provide template specification for types
 * Change data types in Tensor class to use `int8, int16, int32, int64, float16, float32, float64, bfloat8, bfloat16, bfloat32, bfloat64` (Need to check types)
   * Allow Mixed Precision
+* Add OpenMP support for CPU side
 * **Hardware Support:** Potential support for AMD HIP/ROCm. — **Maybe**
 
 ## Math Engine & Tensor Operations

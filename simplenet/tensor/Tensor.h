@@ -1218,14 +1218,20 @@ namespace simplenet{
 
             // TODO: refactor
             static bool has_nonzero_gradient(Tensor& t){
-                // we only have to check if there is at least one of the numbers that is non-zero
-                for (size_t i =0;i<t.sizeOfTensor(); i++){
-                    if (std::abs(t.data[i]) > 1e-12) {
-                        return true;
+
+                if (t.device.is_cpu()) {
+                    // we only have to check if there is at least one of the numbers that is non-zero
+                    for (size_t i =0;i<t.sizeOfTensor(); i++){
+                        if (std::abs(t.data[i]) > 1e-12) {
+                            return true;
+                        }
                     }
+                    return false;
                 }
-                return false;
-                // TODO: add CUDA support
+
+                //CUDA support
+                return cuda::launch_check_zero_kernel(t.data, t.sizeOfTensor());
+
             }
 
             // TODO: refactor

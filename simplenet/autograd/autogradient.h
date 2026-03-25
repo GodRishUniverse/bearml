@@ -554,8 +554,9 @@ namespace simplenet{
                     auto a_locked = weak_a.lock();
                     auto node_locked = weak_node.lock();
                     ll n = a_locked->val.sizeOfTensor();
-                    simplenet::Tensor grad_broadcast(a_locked->val.getShape());
-                    double scalar_grad = node_locked->grad.get({0});
+                    simplenet::Tensor grad_broadcast(a_locked->val.getShape(), a_locked->val.getDevice());
+                    simplenet::Tensor grad_cpu = node_locked->grad.to(simplenet::Device::cpu());
+                    double scalar_grad = grad_cpu.get({0}); // we shift to the cpu because GPU direct access is not supported
                     grad_broadcast.fill(scalar_grad / static_cast<double>(n));
 
                     a_locked->grad+= grad_broadcast;

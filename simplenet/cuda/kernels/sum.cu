@@ -1,4 +1,6 @@
 #include "sum.cuh"
+#include <cstddef>
+#include <cstdint>
 
 namespace simplenet {
     namespace cuda {

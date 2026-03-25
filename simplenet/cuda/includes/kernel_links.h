@@ -5,3 +5,4 @@
 #include "../kernels/fill.cuh"
 #include "../kernels/matmul.cuh"
 #include "../kernels/sum.cuh"
+#include "../kernels/checks.cuh"
