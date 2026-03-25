@@ -170,97 +170,91 @@ namespace simplenet {
         template __global__ void simplenet::cuda::element_wise_contiguous<int64_t >(const int64_t*, const int64_t*, int64_t*, size_t, OP_Code);
 
 
+        // template <typename T>
+        // __global__
+        // void element_wise_broadcast_with_constant(
+        //     const size_t* __restrict__ strides_a,
+        //     const size_t* __restrict__ res_shape,
+        //     size_t res_flat_shape,
+        //     size_t outShapeSize,
+        //     const T* __restrict__ a,
+        //     const T* __restrict__ b,
+        //     T* res,
+        //     OP_Code op_code,
+        //     LHS_RHS_Code lhs_rhs_code
+        // ){
+        //     size_t thread_idx = blockIdx.x*blockDim.x + threadIdx.x;
 
+        //     if (thread_idx< res_flat_shape){
+        //         size_t tmp = thread_idx;
+        //         size_t offA = 0;
 
-        //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
-        // TODO: Cache frequently accessed data in shared memory
-        // CASE: BROADCASTED VERSION
-        template <typename T>
-        __global__
-        void element_wise_broadcast_with_constant(
-            const size_t* __restrict__ strides_a,
-            const size_t* __restrict__ res_shape,
-            size_t res_flat_shape,
-            size_t outShapeSize,
-            const T* __restrict__ a,
-            const T* __restrict__ b,
-            T* res,
-            OP_Code op_code,
-            LHS_RHS_Code lhs_rhs_code
-        ){
-            size_t thread_idx = blockIdx.x*blockDim.x + threadIdx.x;
+        //         for (int d = outShapeSize - 1; d >= 0; --d) {
+        //             size_t coord  = tmp % res_shape[d];
+        //             tmp /= res_shape[d];
+        //             offA += coord * strides_a[d];
+        //         }
 
-            if (thread_idx< res_flat_shape){
-                size_t tmp = thread_idx;
-                size_t offA = 0;
+        //         T result;
+        //         switch (op_code) {
+        //             case OP_Code::OP_ADD: {
+        //                 result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? (*b + a[offA] ) : (a[offA] + *b);
+        //                 break;
+        //             }
+        //             case OP_Code::OP_SUB:{
+        //                 result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? (*b - a[offA] ) : (a[offA] - *b);
+        //                 break;
+        //             }
+        //             case OP_Code::OP_MUL: {
+        //                 result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? (*b * a[offA] ) : (a[offA] * *b);
+        //                 break;
+        //             }
+        //             case OP_Code::OP_DIV: {
+        //                 result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? (*b / a[offA] ) : (a[offA] / *b);
+        //                 break;
+        //             }
+        //             case OP_Code::OP_MAX: {
+        //                 result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? ((*b > a[offA]) ? *b : a[offA] ) : ((a[offA] > *b) ? a[offA] : *b);
+        //                 break;
+        //             }
+        //             case OP_Code::OP_MIN: {
+        //                 result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? ((*b < a[offA]) ? *b : a[offA] ) : ((a[offA] < *b) ? a[offA] : *b);
+        //                 break;
+        //             }
 
-                for (int d = outShapeSize - 1; d >= 0; --d) {
-                    size_t coord  = tmp % res_shape[d];
-                    tmp /= res_shape[d];
-                    offA += coord * strides_a[d];
-                }
+        //             // default operation -> since we cannot throw an error inside the kernel
+        //             default:
+        //                 result = static_cast<T>(NAN);
+        //                 break;
+        //         }
+        //         res[thread_idx] = result;
+        //     }
+        // }
 
-                T result;
-                switch (op_code) {
-                    case OP_Code::OP_ADD: {
-                        result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? (*b + a[offA] ) : (a[offA] + *b);
-                        break;
-                    }
-                    case OP_Code::OP_SUB:{
-                        result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? (*b - a[offA] ) : (a[offA] - *b);
-                        break;
-                    }
-                    case OP_Code::OP_MUL: {
-                        result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? (*b * a[offA] ) : (a[offA] * *b);
-                        break;
-                    }
-                    case OP_Code::OP_DIV: {
-                        result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? (*b / a[offA] ) : (a[offA] / *b);
-                        break;
-                    }
-                    case OP_Code::OP_MAX: {
-                        result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? ((*b > a[offA]) ? *b : a[offA] ) : ((a[offA] > *b) ? a[offA] : *b);
-                        break;
-                    }
-                    case OP_Code::OP_MIN: {
-                        result = (lhs_rhs_code == LHS_RHS_Code::OP_LHS) ? ((*b < a[offA]) ? *b : a[offA] ) : ((a[offA] < *b) ? a[offA] : *b);
-                        break;
-                    }
+        // // ---------------------------------- Template specification for floats ----------------------------------
+        // // bfloat16
+        // template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<__nv_bfloat16 >(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const __nv_bfloat16*  a, const __nv_bfloat16*  b, __nv_bfloat16* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
 
-                    // default operation -> since we cannot throw an error inside the kernel
-                    default:
-                        result = static_cast<T>(NAN);
-                        break;
-                }
-                res[thread_idx] = result;
-            }
-        }
+        // // float16
+        // template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<__half >(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const __half*  a, const __half*  b, __half* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
 
-        // ---------------------------------- Template specification for floats ----------------------------------
-        // bfloat16
-        template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<__nv_bfloat16 >(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const __nv_bfloat16*  a, const __nv_bfloat16*  b, __nv_bfloat16* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
+        // // float32
+        // template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<float >(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const float*  a, const float*  b, float* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
 
-        // float16
-        template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<__half >(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const __half*  a, const __half*  b, __half* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
+        // // float64
+        // template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<double >(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const double*  a, const double*  b, double* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
 
-        // float32
-        template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<float >(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const float*  a, const float*  b, float* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
-
-        // float64
-        template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<double >(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const double*  a, const double*  b, double* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
-
-        // ---------------------------------- Template specification for ints ----------------------------------
-        // int8
-        template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<int8_t>(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const int8_t*  a, const int8_t*  b, int8_t* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
-        // int16
-        template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<int16_t>(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const int16_t*  a, const int16_t*  b, int16_t* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
-        // int32
-        template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<int32_t>(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const int32_t*  a, const int32_t*  b, int32_t* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
-        // int64
-        template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<int64_t>(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const int64_t*  a, const int64_t*  b, int64_t* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
+        // // ---------------------------------- Template specification for ints ----------------------------------
+        // // int8
+        // template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<int8_t>(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const int8_t*  a, const int8_t*  b, int8_t* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
+        // // int16
+        // template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<int16_t>(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const int16_t*  a, const int16_t*  b, int16_t* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
+        // // int32
+        // template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<int32_t>(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const int32_t*  a, const int32_t*  b, int32_t* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
+        // // int64
+        // template __global__ void simplenet::cuda::element_wise_broadcast_with_constant<int64_t>(const size_t*  strides_a, const size_t*  res_shape, size_t res_flat_shape, size_t outShapeSize, const int64_t*  a, const int64_t*  b, int64_t* res, OP_Code op_code, LHS_RHS_Code lhs_rhs_code);
 
         //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
-        // CASE: NO BROADCASTING NEEDED
         template <typename T>
         __global__
         void element_wise_contiguous_with_constant(
@@ -369,6 +363,14 @@ namespace simplenet {
                             result = ::abs(a[thread_idx]);
                         } else {
                             result = static_cast<T>(::logf(static_cast<float>(a[thread_idx])));
+                        }
+                        break;
+                    }
+                    case OP_Code::OP_SQRT: {
+                        if constexpr (std::is_same_v<T, double>) {
+                            result = ::sqrt(a[thread_idx]);
+                        } else {
+                            result = static_cast<T>(::sqrtf(static_cast<float>(a[thread_idx])));
                         }
                         break;
                     }
@@ -588,100 +590,102 @@ namespace simplenet {
 
         }
 
-        // TODO: calling code must have the device check for the data
-        template <typename T>
-        void launch_elementwise_broadcast_with_constant(
-            const T* d_a,
-            const T* d_b,
-            T* d_out,
-            const std::vector<int>& strides_a,
-            const std::vector<int>& res_shape,
-            OP_Code op_code,
-            LHS_RHS_Code lhs_rhs_code,
-            cudaStream_t stream
-        ) {
+        // template <typename T>
+        // void launch_elementwise_broadcast_with_constant(
+        //     const T* d_a,
+        //     const T b,
+        //     T* d_out,
+        //     const std::vector<int>& strides_a,
+        //     const std::vector<int>& res_shape,
+        //     OP_Code op_code,
+        //     LHS_RHS_Code lhs_rhs_code,
+        //     cudaStream_t stream
+        // ) {
 
-            bool own_stream = (stream == nullptr);
-            // if we do need to create a stream then we create it here
-            if (own_stream) {
-                CUDA_CHECK(cudaStreamCreate(&stream));
-            }
+        //     bool own_stream = (stream == nullptr);
+        //     // if we do need to create a stream then we create it here
+        //     if (own_stream) {
+        //         CUDA_CHECK(cudaStreamCreate(&stream));
+        //     }
 
-            // Computing the flat shape of the result tensor
-            size_t res_flat_shape = 1;
-            for (size_t d = 0; d < res_shape.size(); ++d) {
-                res_flat_shape *= res_shape[d];
-            }
+        //     // Computing the flat shape of the result tensor
+        //     size_t res_flat_shape = 1;
+        //     for (size_t d = 0; d < res_shape.size(); ++d) {
+        //         res_flat_shape *= res_shape[d];
+        //     }
 
-            // allocating the device memory for shape/stride
-            void* d_buffer = nullptr;
+        //     // allocating the device memory for shape/stride
+        //     void* d_buffer = nullptr;
 
-            // Using async allocation
-            size_t total_size = (strides_a.size() + res_shape.size()) * sizeof(size_t);
-            CUDA_CHECK(cudaMallocAsync(&d_buffer, total_size, stream));
-
-            // pointer arithmetic to get the buffers on the device
-            size_t* d_strides_a = static_cast<size_t*>(d_buffer);
-            size_t* d_res_shape = d_strides_a + strides_a.size();
-
-            // packing the data on host side for one memcpy
-            std::vector<size_t> host_buffer;
-            host_buffer.reserve(strides_a.size() + res_shape.size());
-            host_buffer.insert(host_buffer.end(), strides_a.begin(), strides_a.end());
-            host_buffer.insert(host_buffer.end(), res_shape.begin(), res_shape.end());
-
-            // copying the data from host → device
-            // Using Async copies
-            CUDA_CHECK(
-                cudaMemcpyAsync(
-                    d_buffer,
-                    host_buffer.data(),
-                    total_size,
-                    cudaMemcpyHostToDevice,
-                    stream
-                )
-            );
-
-            const size_t resShapeSize = res_shape.size();
+        //     // Using async allocation
+        //     size_t total_size = (strides_a.size() + res_shape.size()) * sizeof(size_t);
+        //     CUDA_CHECK(cudaMallocAsync(&d_buffer, total_size, stream));
+        //     T* d_b;
+        //     CUDA_CHECK(cudaMallocAsync(&d_b, sizeof(T), stream));
+        //     CUDA_CHECK(cudaMemcpyAsync(d_b, &b, sizeof(T), cudaMemcpyHostToDevice, stream));
 
 
-            // Configuring kernel launch
-            dim3 block(THREAD_COUNT);
-            dim3 grid = get_blocks(res_flat_shape, THREAD_COUNT);
-            // ((res_flat_shape + THREAD_COUNT - 1) / THREAD_COUNT);
+        //     // pointer arithmetic to get the buffers on the device
+        //     size_t* d_strides_a = static_cast<size_t*>(d_buffer);
+        //     size_t* d_res_shape = d_strides_a + strides_a.size();
 
-            // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
-            element_wise_broadcast_with_constant<T>
-                <<<grid, block, 0, stream>>>(
-                    d_strides_a,
-                    d_res_shape,
-                    res_flat_shape,
-                    resShapeSize,
-                    d_a,
-                    d_b,
-                    d_out,
-                    op_code,
-                    lhs_rhs_code
-            );
+        //     // packing the data on host side for one memcpy
+        //     std::vector<size_t> host_buffer;
+        //     host_buffer.reserve(strides_a.size() + res_shape.size());
+        //     host_buffer.insert(host_buffer.end(), strides_a.begin(), strides_a.end());
+        //     host_buffer.insert(host_buffer.end(), res_shape.begin(), res_shape.end());
 
-            CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
+        //     // copying the data from host → device
+        //     // Using Async copies
+        //     CUDA_CHECK(
+        //         cudaMemcpyAsync(
+        //             d_buffer,
+        //             host_buffer.data(),
+        //             total_size,
+        //             cudaMemcpyHostToDevice,
+        //             stream
+        //         )
+        //     );
 
-            // cleanup after kernel finishes
-            CUDA_CHECK(cudaFreeAsync(d_buffer, stream));
-
-            if (own_stream) {
-                CUDA_CHECK(cudaStreamSynchronize(stream));
-                CUDA_CHECK(cudaStreamDestroy(stream));
-            }
-
-        }
+        //     const size_t resShapeSize = res_shape.size();
 
 
-        // TODO: calling code must have the device check for the data
+        //     // Configuring kernel launch
+        //     dim3 block(THREAD_COUNT);
+        //     dim3 grid = get_blocks(res_flat_shape, THREAD_COUNT);
+        //     // ((res_flat_shape + THREAD_COUNT - 1) / THREAD_COUNT);
+
+        //     // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
+        //     element_wise_broadcast_with_constant<T>
+        //         <<<grid, block, 0, stream>>>(
+        //             d_strides_a,
+        //             d_res_shape,
+        //             res_flat_shape,
+        //             resShapeSize,
+        //             d_a,
+        //             d_b,
+        //             d_out,
+        //             op_code,
+        //             lhs_rhs_code
+        //     );
+
+        //     CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
+
+        //     // cleanup after kernel finishes
+        //     CUDA_CHECK(cudaFreeAsync(d_buffer, stream));
+        //     CUDA_CHECK(cudaFreeAsync(d_b, stream));
+
+        //     if (own_stream) {
+        //         CUDA_CHECK(cudaStreamSynchronize(stream));
+        //         CUDA_CHECK(cudaStreamDestroy(stream));
+        //     }
+
+        // }
+
         template <typename T>
         void launch_elementwise_contiguous_with_constant(
             const T* d_a,
-            const T* d_b,
+            const T b,
             T* d_out,
             const std::vector<int>& res_shape, // same as d_a shape cause contiguous
             OP_Code op_code,
@@ -694,6 +698,10 @@ namespace simplenet {
             if (own_stream) {
                 CUDA_CHECK(cudaStreamCreate(&stream));
             }
+
+            T* d_b;
+            CUDA_CHECK(cudaMallocAsync(&d_b, sizeof(T), stream));
+            CUDA_CHECK(cudaMemcpyAsync(d_b, &b, sizeof(T), cudaMemcpyHostToDevice, stream));
 
             // Computing the flat shape of the result/a/b tensor
             size_t n = 1;
@@ -717,6 +725,8 @@ namespace simplenet {
             );
 
             CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
+
+            CUDA_CHECK(cudaFreeAsync(d_b, stream));
 
             if (own_stream) {
                 CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -841,33 +851,33 @@ namespace simplenet {
 
 
 
-        // Template specification
+        // // Template specification
+        // // Float types
+        // template void launch_elementwise_broadcast_with_constant<float>(const float*, const float, float*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        // template void launch_elementwise_broadcast_with_constant<double>(const double*, const double, double*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        // template void launch_elementwise_broadcast_with_constant<__half>(const __half*, const __half, __half*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        // template void launch_elementwise_broadcast_with_constant<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16, __nv_bfloat16*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+
+        // // Int types
+        // template void launch_elementwise_broadcast_with_constant<int8_t>(const int8_t*, const int8_t, int8_t*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        // template void launch_elementwise_broadcast_with_constant<int16_t>(const int16_t*, const int16_t, int16_t*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        // template void launch_elementwise_broadcast_with_constant<int32_t>(const int32_t*, const int32_t, int32_t*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        // template void launch_elementwise_broadcast_with_constant<int64_t>(const int64_t*, const int64_t, int64_t*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+
         // Float types
-        template void launch_elementwise_broadcast_with_constant<float>(const float*, const float*, float*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_broadcast_with_constant<double>(const double*, const double*, double*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_broadcast_with_constant<__half>(const __half*, const __half*, __half*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_broadcast_with_constant<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
 
-        // Int types
-        template void launch_elementwise_broadcast_with_constant<int8_t>(const int8_t*, const int8_t*, int8_t*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_broadcast_with_constant<int16_t>(const int16_t*, const int16_t*, int16_t*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_broadcast_with_constant<int32_t>(const int32_t*, const int32_t*, int32_t*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_broadcast_with_constant<int64_t>(const int64_t*, const int64_t*, int64_t*, const std::vector<int>&, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-
-        // Float types
-
-        template void launch_elementwise_contiguous_with_constant<float>(const float*, const float*, float*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_contiguous_with_constant<double>(const double*, const double*, double*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_contiguous_with_constant<__half>(const __half*, const __half*, __half*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_contiguous_with_constant<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        template void launch_elementwise_contiguous_with_constant<float>(const float*, const float, float*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        template void launch_elementwise_contiguous_with_constant<double>(const double*, const double, double*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        template void launch_elementwise_contiguous_with_constant<__half>(const __half*, const __half, __half*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        template void launch_elementwise_contiguous_with_constant<__nv_bfloat16>(const __nv_bfloat16*, const __nv_bfloat16, __nv_bfloat16*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
 
 
 
         // Int Types
-        template void launch_elementwise_contiguous_with_constant<int8_t>(const int8_t*, const int8_t*, int8_t*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_contiguous_with_constant<int16_t>(const int16_t*, const int16_t*, int16_t*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_contiguous_with_constant<int32_t>(const int32_t*, const int32_t*, int32_t*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
-        template void launch_elementwise_contiguous_with_constant<int64_t>(const int64_t*, const int64_t*, int64_t*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        template void launch_elementwise_contiguous_with_constant<int8_t>(const int8_t*, const int8_t, int8_t*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        template void launch_elementwise_contiguous_with_constant<int16_t>(const int16_t*, const int16_t, int16_t*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        template void launch_elementwise_contiguous_with_constant<int32_t>(const int32_t*, const int32_t, int32_t*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
+        template void launch_elementwise_contiguous_with_constant<int64_t>(const int64_t*, const int64_t, int64_t*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t);
 
 
 

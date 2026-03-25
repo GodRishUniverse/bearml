@@ -647,18 +647,29 @@ namespace simplenet{
                 return *this;
             }
 
-            // TODO: write CUDA kernel
             // element wise add
             Tensor& operator+=(const double& b) {
+                if (device == DeviceType::CUDA) {
+                    Tensor result(shape, device);
+                    cuda::launch_elementwise_contiguous_with_constant<double>(data, b, result.data, shape, OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
+                    allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+                    return *this;
+                }
+
                 for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
                     data[i] += b;
                 return *this;
             }
 
-            // TODO: write CUDA kernel
             // element wise add
             friend Tensor operator+(const Tensor &A, const double& b) {
                 Tensor C(A.shape, A.device);
+
+                if (A.getDevice() == DeviceType::CUDA) {
+                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
+                    return C;
+                }
+
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i] + b;
                 return C;
@@ -785,27 +796,40 @@ namespace simplenet{
                 return *this;
             }
 
-            // TODO: write CUDA kernel
             // element wise subtract
             Tensor& operator-=(const double& b) {
+
+                if (device == DeviceType::CUDA) {
+                    Tensor result(shape, device);
+                    cuda::launch_elementwise_contiguous_with_constant<double>(data, b, result.data, shape, OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
+                    allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+                    return *this;
+                }
+
                 for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
                     data[i] -= b;
                 return *this;
             }
 
-            // TODO: write CUDA kernel
             // element wise subtract
             friend Tensor operator-(const Tensor &A, const double& b) {
                 Tensor C(A.shape, A.device);
+                if (A.getDevice() == DeviceType::CUDA) {
+                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
+                    return C;
+                }
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i] - b;
                 return C;
             }
 
-            // TODO: write CUDA kernel
             // element wise subtract
             friend Tensor operator-(const double& b, const Tensor &A) {
                 Tensor C(A.shape, A.device);
+                if (A.getDevice() == DeviceType::CUDA) {
+                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_SUB, LHS_RHS_Code::OP_LHS);
+                    return C;
+                }
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = b- A.data[i]; // operation is switched as above
                 return C;
@@ -823,16 +847,18 @@ namespace simplenet{
             // TODO: write CUDA kernel
             friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<int>& afterShape);
 
-            // TODO: write CUDA kernel
             // element wise multiply
             friend Tensor operator*(const Tensor &A, const double& b) {
                 Tensor C(A.shape, A.device);
+                if (A.getDevice() == DeviceType::CUDA) {
+                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
+                    return C;
+                }
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i]*b;
                 return C;
             }
 
-            // TODO: write CUDA kernel
             // for when the operations are reversed
             friend Tensor operator*(const double& b, const Tensor &A) {
                 return A*b; // order of multiplication doesn't matter here -> does it?
@@ -975,6 +1001,10 @@ namespace simplenet{
             // element wise divide
             friend Tensor operator/(const Tensor &A, const double& b) {
                 Tensor C(A.shape, A.device);
+                if (A.getDevice() == DeviceType::CUDA) {
+                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS);
+                    return C;
+                }
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i]/b;
                 return C;
@@ -983,6 +1013,10 @@ namespace simplenet{
             // element wise divide
             friend Tensor operator/(const double& b, const Tensor &A) {
                 Tensor C(A.shape, A.device);
+                if (A.getDevice() == DeviceType::CUDA) {
+                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
+                    return C;
+                }
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = b/A.data[i];
                 return C;
@@ -1014,7 +1048,7 @@ namespace simplenet{
 
             // --------------------------------EQUALITY--------------------------------------------------------------------------
 
-
+            // TODO: write a CUDA check kernel
             // will change as float precision is added
             friend bool operator==(const Tensor &a, const Tensor &b){
                 if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
@@ -1029,7 +1063,7 @@ namespace simplenet{
                 return false;
             }
 
-
+            // TODO: write a CUDA check kernel
             friend bool operator!=(const Tensor &a, const Tensor &b){
                 return !(a==b);
             }
@@ -1082,6 +1116,8 @@ namespace simplenet{
 
 
             //----------------------------------------Max and Min------------------------------------------------------
+
+            // TODO: fix this - CUDA kernel as well
             static Tensor max(const Tensor& t,const  double val){
                 // std::cout <<"MAX" <<std::endl;
                 if (t.device == DeviceType::CUDA) {
@@ -1187,6 +1223,11 @@ namespace simplenet{
 
             static Tensor sqrt(const Tensor &t ){
                 Tensor  a = t; // copied
+
+                if (t.device == DeviceType::CUDA) {
+                    cuda::launch_elementwise_unary<double>(t.data, a.data, a.getShape(), OP_Code::OP_SQRT);
+                    return a;
+                }
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
                     a.data[i] = std::sqrt(t.data[i]);
                 }
@@ -1284,7 +1325,7 @@ namespace simplenet{
                 computeStrides();
             }
 
-            // TODO: refactor
+            // TODO: refactor for CUDA
             // in place summation across a dimension - works like torch.sum()
             Tensor sum(int dim, bool keepdims = false){
                 if (dim<0 || dim>=shape.size()){
@@ -1315,12 +1356,16 @@ namespace simplenet{
                 Tensor new_t(newShape);
                 double* flat_data = new_t.data;
 
+                // gpu direct access not allowed, so we copy to CPU first
+                Tensor copy_tensor = *this;
+                copy_tensor.to_(Device(DeviceType::CPU, -1));
+
                 ll dest_idx = 0;
                 for (size_t v =0; v<sizeOfTensor(); v+=offset_old){
                     for (size_t s = 0; s<offset_new_shape;s++){
                         double val {};
                         for (int idx = 0; idx<oldDim; idx++){
-                            val+= data[v+idx*offset_new_shape+s];
+                            val+= copy_tensor.data[v+idx*offset_new_shape+s]; // edited from this->data to copy_tensor.data
                         }
                         flat_data[dest_idx]= val;
                         dest_idx++;
@@ -1328,6 +1373,7 @@ namespace simplenet{
                 }
                 if (keepdims) return new_t;
                 new_t.flatten_inplace((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
+                new_t.to_(this->device);
                 return new_t;
             }
 
@@ -1363,7 +1409,7 @@ namespace simplenet{
                 // Case 3: Transpose the last 2 dims
                 std::vector<int> new_shape = this->shape;
                 std::reverse(new_shape.begin()+(new_shape.size()-2), new_shape.end()); // reverse the shape
-                Tensor n (new_shape); // new matrix with reversed shape (transposed)
+                Tensor n (new_shape, this->device); // new matrix with reversed shape (transposed)
                 ll offset = new_shape[new_shape.size()-1]*new_shape[new_shape.size()-2];
                 for (size_t s = 0; s<n.sizeOfTensor(); s+=offset){
                     for (int r = 0 ; r<new_shape[this->shape.size()-2]; r++){
