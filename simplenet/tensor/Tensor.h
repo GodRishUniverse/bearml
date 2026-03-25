@@ -37,7 +37,7 @@ using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eig
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten
 // TODO: element-wise divide
 // TODO: allow float values as well (32-bit precision) - template specialize equal to
-
+// TODO: fix inplace operators for CUDA
 
 #ifndef TENSOR_H
 #define TENSOR_H
@@ -602,6 +602,15 @@ namespace simplenet{
                     // otherwise you'd need to reallocate or error.
                     if (shape != outShape)
                         throw std::invalid_argument("LHS must match broadcasted shape");
+
+                    // CUDA
+                    if (device == DeviceType::CUDA) {
+                        Tensor result(outShape, device);
+                        cuda::launch_elementwise_broadcast<double>(data, other.data, result.data, getStrides(), other.getStrides(), outShape, OP_Code::OP_ADD);
+                        allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+                        return *this;
+                    }
+
                     Tensor oView = makeBroadcastView(other, outShape);
 
 
@@ -625,6 +634,13 @@ namespace simplenet{
                         data[idx] += oView.data[offO];
                     }
                 } else {
+                    // CUDA
+                    if (device == DeviceType::CUDA) {
+                        Tensor result(shape, device);
+                        cuda::launch_elementwise_contiguous<double>(data, other.data, result.data, shape, OP_Code::OP_ADD);
+                        allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+                        return *this;
+                    }
                     for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
                         data[i] += other.data[i];
                 }
