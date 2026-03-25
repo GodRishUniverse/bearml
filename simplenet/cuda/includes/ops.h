@@ -19,3 +19,14 @@ enum class OP_Code : uint16_t {
     OP_ABS
 };
 #endif
+
+
+#ifndef LHS_RHS_CODE
+#define LHS_RHS_CODE
+
+// operation (op) codes for the operations that will be done element-wise
+enum class LHS_RHS_Code : uint16_t {
+    OP_RHS,
+    OP_LHS
+};
+#endif

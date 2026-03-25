@@ -49,7 +49,7 @@ namespace simplenet{
        Tensor reduce(const Tensor& a, std::vector<int>& afterShape); // forward declare for the friend reduce
        Tensor hadamard(const Tensor &a, const Tensor &other);
 
-       Tensor compare(const Tensor& a, const Tensor& b,CompareOp op, double true_val, double false_val);
+       Tensor comare(const Tensor& a, const Tensor& b,CompareOp op, double true_val, double false_val);
 
        // Tensor and Tensor
        Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
@@ -647,6 +647,7 @@ namespace simplenet{
                 return *this;
             }
 
+            // TODO: write CUDA kernel
             // element wise add
             Tensor& operator+=(const double& b) {
                 for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
@@ -654,6 +655,7 @@ namespace simplenet{
                 return *this;
             }
 
+            // TODO: write CUDA kernel
             // element wise add
             friend Tensor operator+(const Tensor &A, const double& b) {
                 Tensor C(A.shape, A.device);
@@ -737,42 +739,62 @@ namespace simplenet{
                     // otherwise you'd need to reallocate or error.
                     if (shape != outShape)
                         throw std::invalid_argument("LHS must match broadcasted shape");
-                    Tensor oView = makeBroadcastView(other, outShape);
 
-                    size_t N = sizeOfTensor();
-                    for (size_t idx = 0; idx < N; ++idx) {
-                        // same flat-to-multi decode as above
-
-                        std::vector<int> coords(outShape.size(), 0);
-                        ll tmp = idx, offO = 0;
-
-                        for (int d = outShape.size() - 1; d >= 0; --d) {
-                            coords[d] = tmp % outShape[d];
-                            tmp /= outShape[d];
+                        // CUDA
+                        if (device == DeviceType::CUDA) {
+                            Tensor result(outShape, device);
+                            cuda::launch_elementwise_broadcast<double>(data, other.data, result.data, getStrides(), other.getStrides(), outShape, OP_Code::OP_SUB);
+                            allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+                            return *this;
                         }
 
-                        // Now compute offsets using broadcast strides
-                        for (size_t d = 0; d < outShape.size(); ++d) {
-                            offO += coords[d] * oView.strides[d];
-                        }
+                        Tensor oView = makeBroadcastView(other, outShape);
 
-                        data[idx] -= oView.data[offO];
-                    }
+                        size_t N = sizeOfTensor();
+                        for (size_t idx = 0; idx < N; ++idx) {
+                            // same flat-to-multi decode as above
+
+                            std::vector<int> coords(outShape.size(), 0);
+                            ll tmp = idx, offO = 0;
+
+                            for (int d = outShape.size() - 1; d >= 0; --d) {
+                                coords[d] = tmp % outShape[d];
+                                tmp /= outShape[d];
+                            }
+
+                            // Now compute offsets using broadcast strides
+                            for (size_t d = 0; d < outShape.size(); ++d) {
+                                offO += coords[d] * oView.strides[d];
+                            }
+
+                            data[idx] -= oView.data[offO];
+                        }
                 } else {
+
+                    // CUDA
+                    if (device == DeviceType::CUDA) {
+                        Tensor result(shape, device);
+                        cuda::launch_elementwise_contiguous<double>(data, other.data, result.data, shape, OP_Code::OP_SUB);
+                        allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+                        return *this;
+                    }
+
                     for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
                         data[i] -= other.data[i];
                 }
                 return *this;
             }
 
-             // element wise subtract
+            // TODO: write CUDA kernel
+            // element wise subtract
             Tensor& operator-=(const double& b) {
                 for (size_t i = 0, N = sizeOfTensor(); i < N; ++i)
                     data[i] -= b;
                 return *this;
             }
 
-              // element wise subtract
+            // TODO: write CUDA kernel
+            // element wise subtract
             friend Tensor operator-(const Tensor &A, const double& b) {
                 Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
@@ -780,6 +802,7 @@ namespace simplenet{
                 return C;
             }
 
+            // TODO: write CUDA kernel
             // element wise subtract
             friend Tensor operator-(const double& b, const Tensor &A) {
                 Tensor C(A.shape, A.device);
@@ -794,21 +817,22 @@ namespace simplenet{
             // Hadamard product
             friend Tensor linear_algebra::hadamard(const Tensor &a, const Tensor &other);
 
-            // TODO: setup CUDA dispatch
             // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
             friend Tensor linear_algebra::batchedMatMul(const Tensor& a, const Tensor& b);
 
-            //  TODO: setup CUDA dispatch
+            // TODO: write CUDA kernel
             friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<int>& afterShape);
 
-
-            // element wise multiply- TODO: setup CUDA dispatch
+            // TODO: write CUDA kernel
+            // element wise multiply
             friend Tensor operator*(const Tensor &A, const double& b) {
                 Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
                     C.data[i] = A.data[i]*b;
                 return C;
             }
+
+            // TODO: write CUDA kernel
             // for when the operations are reversed
             friend Tensor operator*(const double& b, const Tensor &A) {
                 return A*b; // order of multiplication doesn't matter here -> does it?

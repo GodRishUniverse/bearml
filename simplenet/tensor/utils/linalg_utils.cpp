@@ -152,7 +152,7 @@ namespace simplenet {
 
 
 
-
+        // TODO: write CUDA kernel
         // Maybe I was thinking too much as this works
         Tensor reduce(const Tensor& a, std::vector<int>& afterShape){
             Tensor b = a;
