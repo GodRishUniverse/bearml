@@ -168,6 +168,11 @@ namespace simplenet{
                 return temp;
             }
 
+            // utility for permute
+            void setShape(std::vector<int> &newShape){
+                this->shape = newShape;
+            }
+
             // ==============================PRIVATE========================================
 
         public:
@@ -529,6 +534,7 @@ namespace simplenet{
             // ================================ OPERATIONS ========================================================================
 
             // Reduced the repetitive code - CPU side element-wise binary — handles both contiguous and broadcast paths
+            // TODO: add unary functionss as well
             template<typename Func>
             static Tensor elementwise_binary_cpu(const Tensor& A, const Tensor& B, Func fn) {
                 if (A.shape == B.shape) {
@@ -715,6 +721,40 @@ namespace simplenet{
                         throw std::invalid_argument("Unsupported in-place scalar op");
                 }
                 return *this;
+            }
+
+
+
+            // Unary Operations
+
+            template<typename Func>
+            static Tensor elementwise_unary_cpu(const Tensor& A, Func fn) {
+                Tensor C(A.shape, A.device);
+                for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
+                    C.data[i] = fn(A.data[i]);
+                return C;
+            }
+
+            static Tensor elementwise_unary(const Tensor& A, OP_Code op) {
+                if (A.device.type == DeviceType::CUDA) {
+                    Tensor C(A.shape, A.device);
+                    cuda::launch_elementwise_unary<double>(
+                        A.data,
+                        C.data,
+                        C.getShape(),
+                        op
+                    );
+                    return C;
+                }
+                // CPU path with appropriate lambda
+                switch(op) {
+                    case OP_Code::OP_EXP: return elementwise_unary_cpu(A, [](double a){ return std::exp(a); });
+                    case OP_Code::OP_LOG: return elementwise_unary_cpu(A, [](double a){ return std::log(a); });
+                    case OP_Code::OP_SQRT: return elementwise_unary_cpu(A, [](double a){ return std::sqrt(a); });
+                    case OP_Code::OP_ABS: return elementwise_unary_cpu(A, [](double a){ return std::abs(a); });
+                    default:
+                        throw std::invalid_argument("OP Code does not exist - in elementwise_unary.");
+                }
             }
 
             // ================================ OPERATORS - Using the above new element_wise functions =========================================
@@ -996,19 +1036,12 @@ namespace simplenet{
             static Tensor exp(Tensor& t){
                 // std::cout <<"EXPONENTIATED" <<std::endl;
                 Tensor  a = t; // copied
-
-                if (t.device == DeviceType::CUDA) {
-                    cuda::launch_elementwise_unary<double>(t.data, a.data, a.getShape(), OP_Code::OP_EXP);
-                    return a;
-                }
-                for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = std::exp(t.data[i]);
-                }
+                elementwise_unary(a, OP_Code::OP_EXP);
                 return a;
             }
 
 
-            //----------------------------------------Max and Min------------------------------------------------------
+            //----------------------------------------Max------------------------------------------------------
 
             // TODO: fix this - CUDA kernel as well
             static Tensor max(const Tensor& t,const  double val){
@@ -1050,6 +1083,8 @@ namespace simplenet{
                 }
                 return a;
             }
+
+            //----------------------------------------Min------------------------------------------------------
 
             static Tensor min(const Tensor& t, double val){
                 // std::cout <<"MIN" <<std::endl;
@@ -1093,20 +1128,8 @@ namespace simplenet{
             //----------------------------------------Absolute value------------------------------------------------------
             // Note: const accepts both non-const and const tensors
             static Tensor abs(const Tensor &t ){
-                if (t.device == DeviceType::CUDA) {
-                    Tensor result(t.getShape(), t.device);
-                    cuda::launch_elementwise_unary<double>(
-                        t.data,
-                        result.data,
-                        t.getShape(),
-                        OP_Code::OP_ABS
-                    );
-                    return result;
-                }
                 Tensor  a = t; // copied
-                for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = std::abs(t.data[i]);
-                }
+                elementwise_unary(a, OP_Code::OP_ABS);
                 return a;
             }
 
@@ -1116,14 +1139,7 @@ namespace simplenet{
 
             static Tensor sqrt(const Tensor &t ){
                 Tensor  a = t; // copied
-
-                if (t.device == DeviceType::CUDA) {
-                    cuda::launch_elementwise_unary<double>(t.data, a.data, a.getShape(), OP_Code::OP_SQRT);
-                    return a;
-                }
-                for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = std::sqrt(t.data[i]);
-                }
+                elementwise_unary(a, OP_Code::OP_SQRT);
                 return a;
             }
 
@@ -1153,20 +1169,8 @@ namespace simplenet{
             //---------------------------------------- Log ------------------------------------------------------
 
             static Tensor log(Tensor &t ){
-                if (t.device == DeviceType::CUDA) {
-                    Tensor result(t.getShape(), t.device);
-                    cuda::launch_elementwise_unary<double>(
-                        t.data,
-                        result.data,
-                        t.getShape(),
-                        OP_Code::OP_LOG
-                    );
-                    return result;
-                }
                 Tensor  a = t; // copied
-                for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = std::log(t.data[i]);
-                }
+                elementwise_unary(a, OP_Code::OP_LOG);
                 return a;
             }
 
@@ -1327,11 +1331,9 @@ namespace simplenet{
                 for (int i = 0; i < new_order.size(); i++){
                         temp.push_back(this->shape[new_order[i]]);
                 }
-                Tensor result(temp);
-                // the numbers position will be the same - only the way they are represented will be different
-                for (size_t i = 0; i < this->sizeOfTensor(); i++){
-                        result.data[i] = this->data[i];
-                }
+                Tensor result= *this;
+                result.setShape(temp);
+                result.computeStrides();
                 return result;
             }
 

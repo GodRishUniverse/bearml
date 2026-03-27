@@ -12,10 +12,11 @@ enum class OP_Code : uint16_t {
     OP_SUB,
     OP_MUL,
     OP_DIV,
-    OP_EXP,
-    OP_LOG,
     OP_MAX,
     OP_MIN,
+    // unary operations
+    OP_EXP,
+    OP_LOG,
     OP_ABS,
     OP_SQRT
 };
