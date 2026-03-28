@@ -863,8 +863,8 @@ namespace simplenet{
                             a.data, b.data, result.data,
                             1,    // batchsize
                             1,    // m (rows of a treated as row vector)
+                            a_shape[0], // k (common dim),
                             1,    // n (cols of result)
-                            a_shape[0], // k (common dim)
                             1.0, 0.0, nullptr
                         );
                         return result;
@@ -891,8 +891,8 @@ namespace simplenet{
                             a.data, b.data, result.data,
                             1,           // batchsize
                             a_shape[0],  // m
+                            a_shape[1],  // k (common dim),
                             1,           // n (output cols)
-                            a_shape[1],  // k (common dim)
                             1.0, 0.0, nullptr
                         );
                         return result;
@@ -920,8 +920,8 @@ namespace simplenet{
                             a.data, b.data, result.data,
                             1,           // batchsize
                             a_shape[0],  // m
-                            b_shape[1],  // n
                             a_shape[1],  // k
+                            b_shape[1],  // n
                             1.0, 0.0, nullptr
                         );
                         return result;
@@ -1035,9 +1035,7 @@ namespace simplenet{
             //----------------------------------------Exponential------------------------------------------------------
             static Tensor exp(Tensor& t){
                 // std::cout <<"EXPONENTIATED" <<std::endl;
-                Tensor  a = t; // copied
-                elementwise_unary(a, OP_Code::OP_EXP);
-                return a;
+                return elementwise_unary(t, OP_Code::OP_EXP);
             }
 
 
@@ -1128,9 +1126,7 @@ namespace simplenet{
             //----------------------------------------Absolute value------------------------------------------------------
             // Note: const accepts both non-const and const tensors
             static Tensor abs(const Tensor &t ){
-                Tensor  a = t; // copied
-                elementwise_unary(a, OP_Code::OP_ABS);
-                return a;
+                return elementwise_unary(t, OP_Code::OP_ABS);
             }
 
 
@@ -1138,9 +1134,7 @@ namespace simplenet{
             // Note: const accepts both non-const and const tensors
 
             static Tensor sqrt(const Tensor &t ){
-                Tensor  a = t; // copied
-                elementwise_unary(a, OP_Code::OP_SQRT);
-                return a;
+                return elementwise_unary(t, OP_Code::OP_SQRT);
             }
 
 
@@ -1152,7 +1146,7 @@ namespace simplenet{
                 if (t.device == DeviceType::CUDA) {
                     cuda::launch_sum_kernel(t.data, result.data, t.sizeOfTensor());
                     result.to_(Device::cpu()); // send to CPU to get the sum as GPU direct memory access is NOT SET UP
-                    result.set(sum / static_cast<double>(t.sizeOfTensor()), {0}); // set the mean value
+                    result.set(result.data[0] / static_cast<double>(t.sizeOfTensor()), {0}); // set the mean value
                     result.to_(t.device); // send back to GPU
                 }else {
                     size_t sizeTensor = t.sizeOfTensor();
@@ -1169,9 +1163,7 @@ namespace simplenet{
             //---------------------------------------- Log ------------------------------------------------------
 
             static Tensor log(Tensor &t ){
-                Tensor  a = t; // copied
-                elementwise_unary(a, OP_Code::OP_LOG);
-                return a;
+                return elementwise_unary(t, OP_Code::OP_LOG);
             }
 
 
@@ -1236,6 +1228,7 @@ namespace simplenet{
                     for (size_t i =0; i < sizeOfTensor(); i++){
                         new_t.data[0]+=data[i];
                     }
+                    new_t.to_(this->device);
                     return new_t;
                 }
 
@@ -1268,7 +1261,10 @@ namespace simplenet{
                         dest_idx++;
                     }
                 }
-                if (keepdims) return new_t;
+                if (keepdims) {
+                    new_t.to_(this->device);
+                    return new_t;
+                }
                 new_t.flatten_inplace((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
                 new_t.to_(this->device);
                 return new_t;
@@ -1311,11 +1307,8 @@ namespace simplenet{
 
 
                 if (this->device.type == DeviceType::CUDA) {
-                    std::cout << "Transpose CUDA kernel launch" << std::endl;
-                    std::cout << *this << std::endl;
-                    std::cout << "Offset: " << offset << std::endl;
+
                     ll batch_size = this->sizeOfTensor() / offset;
-                    std::cout << "Batch size: " << batch_size << std::endl;
                     // batch size is the number of elements in each batch
                     cuda::launch_transpose_kernel(this->data, n.data, batch_size, this->shape[this->shape.size()-2], this->shape[this->shape.size()-1]);
                 } else {

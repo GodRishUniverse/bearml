@@ -30,7 +30,14 @@ namespace simplenet {
             }
 
             bool operator==(const Device& other) const {
-                return type == other.type && device_id == other.device_id;
+                // we dont care about device_id for CPU devices
+                if (type == DeviceType::CPU && other.type == DeviceType::CPU) {
+                    return true;
+                }
+                if (type == DeviceType::CUDA && other.type == DeviceType::CUDA) {
+                    return device_id == other.device_id;
+                }
+                return false;
             }
 
             bool operator!=(const Device& other) const {

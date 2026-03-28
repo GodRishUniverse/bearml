@@ -101,7 +101,7 @@ namespace simplenet {
                     cuda::launch_gemm_contiguous<double>(
                         a.data, b.data, result.data,
                         static_cast<int>(total_batch_size),
-                        a_rows, b_cols, a_cols,
+                        a_rows, a_cols, b_cols,
                         1.0, 0.0, nullptr
                     );
                 }

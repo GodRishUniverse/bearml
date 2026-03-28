@@ -73,7 +73,7 @@ namespace simplenet{
                 if constexpr (std::is_same<T, double>::value) {
                     return 0.0;
                 } else if constexpr (std::is_same<T, simplenet::Tensor>::value) {
-                    return simplenet::Tensor(value.getShape());
+                    return simplenet::Tensor(value.getShape(), value.getDevice()  );
                 }
             }()) {
         }

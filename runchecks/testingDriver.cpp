@@ -273,6 +273,7 @@ int main() {
     // cout << vvv->val << endl;
 
     simplenet::Device dev = simplenet::Device(simplenet::DeviceType::CUDA,  0);
+
     Model testmodel = Model(2, 5, dev);
 
     simplenet::Tensor tester2({1,2});
@@ -290,7 +291,7 @@ int main() {
     simplenet::Tensor actual({1,5});
     actual.linspace(1,5);
     actual.to_(dev);
-    simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.01);
+    simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.1);
 
     // Sample - works gets closer to the ideal values
     for (int i =0;i <1000; i++){
@@ -303,11 +304,9 @@ int main() {
         optim.step();
 
         cout << "Loss value: " << loss->val << endl;
-        // cout << "Pred grad: " << pred->grad << endl;
-        // cout << "Layer2 weight grad: " << testmodel.layer2.get_weights() << endl; // check if parameters have gradients
 
         pred = testmodel.forward({tester2});
-        cout << pred->val << endl;
+        cout << "Pred value: " << pred->val << endl;
     }
     cout << "Pred grad: " << pred->grad << endl;
 

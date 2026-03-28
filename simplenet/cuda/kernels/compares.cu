@@ -1,4 +1,5 @@
 #include "compares.cuh"
+#include <cstdint>
 
 
 namespace simplenet {
@@ -10,7 +11,11 @@ namespace simplenet {
                 if constexpr (std::is_floating_point<T>::value) {
                     T eps = T(1e-12);
                     return fabs(a - b) < eps;
-                } else {
+                } else if constexpr  (std::is_same_v<T, __half> || std::is_same_v<T, __nv_bfloat16>) {
+                    T eps = T(1e-12);
+                    return __habs(a - b) < eps; // half precision
+                }
+                else  {
                     return a == b;
                 }
             }
@@ -22,7 +27,10 @@ namespace simplenet {
                 if constexpr (std::is_floating_point<T>::value) {
                     T eps = T(1e-12);
                     return fabs(a - b) >= eps;
-                } else {
+                }  else if constexpr  (std::is_same_v<T, __half> || std::is_same_v<T, __nv_bfloat16>) {
+                    T eps = T(1e-12);
+                    return __habs(a - b) >= eps; // half precision
+                }else {
                     return a != b;
                 }
             }
@@ -65,6 +73,7 @@ namespace simplenet {
             }
         }
 
+
         template<typename T>
         void launch_comparison_kernel(T* a, T* b, T* output, size_t size, CompareOp op, cudaStream_t stream) {
             bool own_stream = (stream == nullptr);
@@ -100,7 +109,14 @@ namespace simplenet {
         }
 
 
-        template void launch_comparison_kernel<__nv_blo>(T* a, T* b, T* output, size_t size, CompareOp op, cudaStream_t stream)
+        template void launch_comparison_kernel<__nv_bfloat16>(__nv_bfloat16* a, __nv_bfloat16* b, __nv_bfloat16* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<__half>(__half* a, __half* b, __half* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<float>(float* a, float* b, float* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<double>(double* a, double* b, double* output, size_t size, CompareOp op, cudaStream_t stream);
 
+        template void launch_comparison_kernel<int8_t>(int8_t* a, int8_t* b, int8_t* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<int16_t>(int16_t* a, int16_t* b, int16_t* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<int32_t>(int32_t* a, int32_t* b, int32_t* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<int64_t>(int64_t* a, int64_t* b, int64_t* output, size_t size, CompareOp op, cudaStream_t stream);
     }
 }
