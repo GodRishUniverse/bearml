@@ -205,30 +205,54 @@ namespace simplenet {
                 throw std::invalid_argument("Tensors must be on the same device");
             }
 
-            // TODO: CUDA implementation
 
-            for (size_t i = 0; i < a.sizeOfTensor(); i++) {
+            if (a.device.type == DeviceType::CUDA) {
                 switch (op) {
                     case CompareOp::GT: // greater than
-                        result.data[i] = (a.data[i] > b.data[i]) ? true_val : false_val;
+                        simplenet::cuda::launch_comparison_kernel<double>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::GE: // greater than or equal to
-                        result.data[i] = (a.data[i] >= b.data[i]) ? true_val : false_val;
+                        simplenet::cuda::launch_comparison_kernel<double>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::LT: // less than
-                        result.data[i] = (a.data[i] < b.data[i]) ? true_val : false_val;
+                        simplenet::cuda::launch_comparison_kernel<double>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::LE: // less than or equal to
-                        result.data[i] = (a.data[i] <= b.data[i]) ? true_val : false_val;
+                        simplenet::cuda::launch_comparison_kernel<double>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::EQ: // equal to
-                        result.data[i] = ((std::abs(a.data[i] - b.data[i]) < 1e-12)) ? true_val : false_val;
+                        simplenet::cuda::launch_comparison_kernel<double>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::NE: // not equal to
-                        result.data[i] = ((std::abs(a.data[i] - b.data[i]) >= 1e-12)) ? true_val : false_val;
+                        simplenet::cuda::launch_comparison_kernel<double>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     default:
                         throw std::invalid_argument("Invalid compare op");
+                }
+            } else {
+                for (size_t i = 0; i < a.sizeOfTensor(); i++) {
+                    switch (op) {
+                        case CompareOp::GT: // greater than
+                            result.data[i] = (a.data[i] > b.data[i]) ? true_val : false_val;
+                            break;
+                        case CompareOp::GE: // greater than or equal to
+                            result.data[i] = (a.data[i] >= b.data[i]) ? true_val : false_val;
+                            break;
+                        case CompareOp::LT: // less than
+                            result.data[i] = (a.data[i] < b.data[i]) ? true_val : false_val;
+                            break;
+                        case CompareOp::LE: // less than or equal to
+                            result.data[i] = (a.data[i] <= b.data[i]) ? true_val : false_val;
+                            break;
+                        case CompareOp::EQ: // equal to
+                            result.data[i] = ((std::abs(a.data[i] - b.data[i]) < 1e-12)) ? true_val : false_val;
+                            break;
+                        case CompareOp::NE: // not equal to
+                            result.data[i] = ((std::abs(a.data[i] - b.data[i]) >= 1e-12)) ? true_val : false_val;
+                            break;
+                        default:
+                            throw std::invalid_argument("Invalid compare op");
+                    }
                 }
             }
             return result;

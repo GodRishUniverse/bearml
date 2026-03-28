@@ -1308,10 +1308,22 @@ namespace simplenet{
                 std::reverse(new_shape.begin()+(new_shape.size()-2), new_shape.end()); // reverse the shape
                 Tensor n (new_shape, this->device); // new matrix with reversed shape (transposed)
                 ll offset = new_shape[new_shape.size()-1]*new_shape[new_shape.size()-2];
-                for (size_t s = 0; s<n.sizeOfTensor(); s+=offset){
-                    for (int r = 0 ; r<new_shape[this->shape.size()-2]; r++){
-                        for (int c = 0; c < new_shape[this->shape.size()-1]; c++){
-                            n.data[s+r*new_shape[new_shape.size()-1]+c] = this->data[s+c*this->shape[this->shape.size()-1]+r]; // transpose last two dims
+
+
+                if (this->device.type == DeviceType::CUDA) {
+                    std::cout << "Transpose CUDA kernel launch" << std::endl;
+                    std::cout << *this << std::endl;
+                    std::cout << "Offset: " << offset << std::endl;
+                    ll batch_size = this->sizeOfTensor() / offset;
+                    std::cout << "Batch size: " << batch_size << std::endl;
+                    // batch size is the number of elements in each batch
+                    cuda::launch_transpose_kernel(this->data, n.data, batch_size, this->shape[this->shape.size()-2], this->shape[this->shape.size()-1]);
+                } else {
+                    for (size_t s = 0; s<n.sizeOfTensor(); s+=offset){
+                        for (int r = 0 ; r<new_shape[this->shape.size()-2]; r++){
+                            for (int c = 0; c < new_shape[this->shape.size()-1]; c++){
+                                n.data[s+r*new_shape[new_shape.size()-1]+c] = this->data[s+c*this->shape[this->shape.size()-1]+r]; // transpose last two dims
+                            }
                         }
                     }
                 }

@@ -7,3 +7,4 @@
 #include "../kernels/sum.cuh"
 #include "../kernels/checks.cuh"
 #include "../kernels/transpose.cuh"
+#include "../kernels/compares.cuh"
