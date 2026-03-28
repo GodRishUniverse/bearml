@@ -6,3 +6,8 @@
 #ifndef BLOCK_SIZE
     #define BLOCK_SIZE 32 // multiple of 32 for hardware efficiency reasons - CUDA hard limit per block is 1024 threads i think so 32 by 32 is max - TODO: check this otherwise make difference consts forr linear, 2D and 3D kernel blocks
 #endif
+
+// tile size for transpose kernel (right now) - helps in memory coalescing
+#ifndef TILE_SIZE
+    #define TILE_SIZE 32
+#endif
