@@ -40,7 +40,7 @@ namespace simplenet {
                    Tensor m_hat = m[i] / (1 - std::pow(beta1, step_count)); // element wise division
                    Tensor v_hat = v[i] / (1 - std::pow(beta2, step_count)); // element wise division
 
-                   p->val -= learning_rate * m_hat / (simplenet::Tensor::sqrt(v_hat) + eps); // TODO: write a function for sqrt for Tensor - element wise
+                   p->val -= learning_rate * m_hat / (simplenet::Tensor::sqrt(v_hat) + eps);
                }
                this->step_count++;
            }
