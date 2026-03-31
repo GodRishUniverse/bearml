@@ -572,9 +572,17 @@ namespace simplenet{
                         return C;
                     }
                     auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
+
+                    Tensor aView = makeBroadcastView(A, outShape);
+                    Tensor bView = makeBroadcastView(B, outShape);
+
+                    // aView.to_(A.device);
+                    // bView.to_(A.device);
+
                     Tensor C(outShape, A.device);
-                    cuda::launch_elementwise_broadcast<double>(A.data, B.data, C.data,
-                        A.getStrides(), B.getStrides(), C.getShape(), op);
+
+                    cuda::launch_elementwise_broadcast<double>(aView.data, bView.data, C.data,
+                        aView.getStrides(), bView.getStrides(), C.getShape(), op);
                     return C;
                 }
                 // CPU path with appropriate lambda
@@ -650,10 +658,12 @@ namespace simplenet{
 
                     // CUDA
                     if (device.type == DeviceType::CUDA) {
-                        Tensor result(outShape, device);
-                        cuda::launch_elementwise_broadcast<double>(data, other.data, result.data,
-                            getStrides(), other.getStrides(), outShape, op);
-                        allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+
+                        Tensor oView = makeBroadcastView(other, outShape);
+
+                        cuda::launch_elementwise_broadcast<double>(data, other.data, data,
+                            getStrides(), oView.getStrides(), outShape, op);
+
                         return *this;
                     }
 
@@ -681,9 +691,7 @@ namespace simplenet{
                 } else {
                     // CUDA
                     if (device.type == DeviceType::CUDA) {
-                        Tensor result(shape, device);
-                        cuda::launch_elementwise_contiguous<double>(data, other.data, result.data, shape, op);
-                        allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+                        cuda::launch_elementwise_contiguous<double>(data, other.data, data, shape, op);
                         return *this;
                     }
                     size_t N = sizeOfTensor();
@@ -704,9 +712,7 @@ namespace simplenet{
             // in-place scalar-Tensor operator
             Tensor& inplace_scalar(double b, OP_Code op) {
                 if (device.type == DeviceType::CUDA) {
-                    Tensor result(shape, device);
-                    cuda::launch_elementwise_contiguous_with_constant<double>(data, b, result.data, shape, op, LHS_RHS_Code::OP_RHS);
-                    allocator_->copy_device_to_device(data, result.data, sizeOfTensor() * sizeof(double));
+                    cuda::launch_elementwise_contiguous_with_constant<double>(this->data, b, this->data, shape, op, LHS_RHS_Code::OP_RHS);
                     return *this;
                 }
                 size_t N = sizeOfTensor();
@@ -835,7 +841,8 @@ namespace simplenet{
                 // case 2: B is scalar
                 // case 3: A is a vector and B is a vector
                 // case 4: A is matrix and B is a vector
-                // case 5: matrix multiplication - batched and unbatched (GEMM operations)
+                // case 5: A is a vector and B is a matrix
+                // case 6: matrix multiplication - batched and unbatched (GEMM operations)
 
                 // CASE 1
                 if (isScalar(a)){
@@ -908,7 +915,38 @@ namespace simplenet{
                     return result;
                 }
 
-                // CASE 5: unbatched matmul
+                // CASE 5: vector m multiplied with m by n matrix
+                if (a_shape.size() == 1 && b_shape.size() == 2) {
+                    if (a_shape[0] != b_shape[0]) {
+                        throw std::invalid_argument("Matrix columns must match vector size: : vector m multiplied with m by n matrix");
+                    }
+
+                    if (a.device == DeviceType::CUDA) {
+                        // Treat vector as (1,m) matrix: (1,m) * (m,n) = (1,n)
+                        Tensor result({1,b_shape[1]}, a.device);
+                        cuda::launch_gemm_contiguous<double>(
+                            a.data, b.data, result.data,
+                            1,           // batchsize
+                            1,           // m
+                            b_shape[0],  // k (common dim),
+                            b_shape[1],  // n (output cols)
+                            1.0, 0.0, nullptr
+                        );
+                        return result;
+                    }
+
+                    Eigen::Map<const Eigen::VectorXd> vec_a(a.data, a_shape[0]);
+                    Eigen::Map<const MatrixRowMajor> mat_b(b.data, b_shape[0], b_shape[1]);
+
+
+                    Tensor result({b_shape[1]});
+                    Eigen::Map<Eigen::VectorXd> result_vec(result.data, b_shape[1]);
+                    result_vec = mat_b * vec_a;
+
+                    return result;
+                }
+
+                // CASE 6: unbatched matmul
                 if (a_shape.size() == 2 && b_shape.size() == 2) {
                     if (a_shape[1] != b_shape[0]) {
                         throw std::invalid_argument("Matrix dimensions incompatible for multiplication");
@@ -937,7 +975,7 @@ namespace simplenet{
                     return result;
                 }
 
-                // CASE 5: batched matmul (delegates to batchedMatMul which handles CUDA)
+                // CASE 6: batched matmul (delegates to batchedMatMul which handles CUDA)
                 if (a_shape.size() >= 2 && b_shape.size() >= 2) {
                     return linear_algebra::batchedMatMul(a, b);
                 }
@@ -966,9 +1004,7 @@ namespace simplenet{
                 return elementwise_scalar(A, b, OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
             }
 
-            // TODO: add broadcast support - right now only supports same-shape (no broadcast)
             friend Tensor operator/(const Tensor &a, const Tensor &b) {
-                // TODO: add broadcast support via elementwise_binary(a, b, OP_Code::OP_DIV)
                 if (b.shape != a.shape){
                     throw std::runtime_error("Shapes should match for element-wise divide");
                 }

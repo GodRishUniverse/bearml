@@ -73,38 +73,25 @@ namespace simplenet {
 
             // CUDA path
             if (a.device == DeviceType::CUDA) {
-                // Check if broadcasting is needed by comparing batch dims
-                bool needs_broadcast = (a_view.strides != b_view.strides) ||
-                                       (a.getShape() != b.getShape());
+                // Use broadcast kernel with strides computed from the views
+                // We only need the batch strides (not the matrix dim strides)
+                std::vector<int64_t> batch_strides_a(a_view.strides.begin(),
+                    a_view.strides.begin() + batch_shape.size());
+                std::vector<int64_t> batch_strides_b(b_view.strides.begin(),
+                    b_view.strides.begin() + batch_shape.size());
 
-                if (needs_broadcast) {
-                    // Use broadcast kernel with strides computed from the views
-                    // We only need the batch strides (not the matrix dim strides)
-                    std::vector<int64_t> batch_strides_a(a_view.strides.begin(),
-                        a_view.strides.begin() + batch_shape.size());
-                    std::vector<int64_t> batch_strides_b(b_view.strides.begin(),
-                        b_view.strides.begin() + batch_shape.size());
+                cuda::launch_gemm_broadcasted<double>(
+                    a.data, b.data, result.data,
+                    a_rows, a_cols, b_cols,
+                    1.0, 0.0,
+                    &batch_shape,
+                    batch_shape.size(),
+                    &batch_strides_a,
+                    &batch_strides_b,
+                    total_batch_size,
+                    nullptr
+                );
 
-                    cuda::launch_gemm_broadcasted<double>(
-                        a.data, b.data, result.data,
-                        a_rows, a_cols, b_cols,
-                        1.0, 0.0,
-                        &batch_shape,
-                        batch_shape.size(),
-                        &batch_strides_a,
-                        &batch_strides_b,
-                        total_batch_size,
-                        nullptr
-                    );
-                } else {
-                    // Contiguous batched matmul - no broadcasting needed
-                    cuda::launch_gemm_contiguous<double>(
-                        a.data, b.data, result.data,
-                        static_cast<int>(total_batch_size),
-                        a_rows, a_cols, b_cols,
-                        1.0, 0.0, nullptr
-                    );
-                }
                 return result;
             }
 
