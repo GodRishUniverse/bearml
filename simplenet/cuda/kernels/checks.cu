@@ -6,8 +6,13 @@ namespace simplenet {
 
         template <typename T>
         __global__ void check_nonzero_kernel(const T* data, size_t n, int* result) {
-            size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-            if (idx < n && *result == 0) {
+            // ensures we dont get outta bounds
+            for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < n; idx += blockDim.x * gridDim.x) {
+                // exit early if result is already set
+                if (*result != 0) {
+                    return;
+                }
+
                 float val;
                 if constexpr (std::is_same_v<T, __half> || std::is_same_v<T, __nv_bfloat16>) {
                     val = fabsf(float(data[idx]));

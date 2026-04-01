@@ -15,8 +15,9 @@ namespace simplenet {
             T value,
             size_t n
         ) {
-            size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-            if (idx < n) {
+            for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+                 idx < n;
+                 idx += blockDim.x * gridDim.x) {
                 data[idx] = value;
             }
         }

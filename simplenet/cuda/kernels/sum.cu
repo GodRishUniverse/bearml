@@ -7,35 +7,12 @@ namespace simplenet {
 
         template<typename T>
         __global__ void sum_kernel(const T* d_data, double* result, int64_t size) {
-            int idx = blockIdx.x * blockDim.x + threadIdx.x;
-            if (idx < size) {
+            for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+                idx < size;
+                idx += blockDim.x * gridDim.x) {
                 atomicAdd(result, static_cast<double>(d_data[idx]));
             }
         }
-
-        // ---------------------------------- Template specification for floats ----------------------------------
-        // bfloat16
-        template __global__ void sum_kernel<__nv_bfloat16>(const __nv_bfloat16 *d_data, double *result, int64_t size);
-
-        // float16
-        template __global__ void sum_kernel<__half>(const __half *d_data, double *result, int64_t size);
-
-        // float32
-        template __global__ void sum_kernel<float>(const float *d_data, double *result, int64_t size);
-
-        // float64
-        template __global__ void sum_kernel<double>(const double *d_data, double *result, int64_t size);
-
-        // ---------------------------------- Template specification for ints ----------------------------------
-        // int8
-        template __global__ void sum_kernel<int8_t>(const int8_t *d_data, double *result, int64_t size);
-        // int16
-        template __global__ void sum_kernel<int16_t>(const int16_t *d_data, double *result, int64_t size);
-        // int32
-        template __global__ void sum_kernel<int32_t>(const int32_t *d_data, double *result, int64_t size);
-        // int64
-        template __global__ void sum_kernel<int64_t>(const int64_t *d_data, double *result, int64_t size);
-
 
         template<typename T>
         void launch_sum_kernel(T *d_data, double *result, int64_t size, cudaStream_t stream) {
@@ -57,15 +34,16 @@ namespace simplenet {
         }
 
         // floats
-        template void launch_sum_kernel<__nv_bfloat16>(__nv_bfloat16 *d_data, double *result, int64_t size, cudaStream_t stream);
-        template void launch_sum_kernel<__half>(__half *d_data, double *result, int64_t size, cudaStream_t stream);
-        template void launch_sum_kernel<float>(float *d_data, double *result, int64_t size, cudaStream_t stream);
-        template void launch_sum_kernel<double>(double *d_data, double *result, int64_t size, cudaStream_t stream);
+        INSTANTIATE_SUM(__nv_bfloat16);
+        INSTANTIATE_SUM(__half);
+        INSTANTIATE_SUM(float);
+        INSTANTIATE_SUM(double);
+
         // ints
-        template void launch_sum_kernel<int8_t>(int8_t *d_data, double *result, int64_t size, cudaStream_t stream);
-        template void launch_sum_kernel<int16_t>(int16_t *d_data, double *result, int64_t size, cudaStream_t stream);
-        template void launch_sum_kernel<int32_t>(int32_t *d_data, double *result, int64_t size, cudaStream_t stream);
-        template void launch_sum_kernel<int64_t>(int64_t *d_data, double *result, int64_t size, cudaStream_t stream);
+        INSTANTIATE_SUM(int8_t);
+        INSTANTIATE_SUM(int16_t);
+        INSTANTIATE_SUM(int32_t);
+        INSTANTIATE_SUM(int64_t);
 
     }
 }

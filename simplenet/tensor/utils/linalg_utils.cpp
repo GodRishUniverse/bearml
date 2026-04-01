@@ -394,9 +394,40 @@ namespace simplenet {
             return result;
         }
 
+        // inverse matrix
+        Tensor inverse(const Tensor& a) {
+            // inverse is only defined for square matrices
+            std::vector<int> a_shape = a.getShape();
 
+            if (a_shape.size() < 2) {
+                throw std::runtime_error("inverse: only square matrices are supported. Passed in a vector or a scalar.");
+            }
 
+            if (a_shape[a_shape.size() - 1] != a_shape[a_shape.size() - 2]) {
+                throw std::runtime_error("inverse: only square matrices are supported");
+            }
 
+            Tensor result = a; // copy the input tensor
+
+            if (a.getDevice().type == DeviceType::CPU) {
+                using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+                for (int batch = 0; batch < a.sizeOfTensor() / (a_shape[a_shape.size() - 1] * a_shape[a_shape.size() - 2]); ++batch) {
+                    int row = a_shape[a_shape.size() - 1];
+                    int col = a_shape[a_shape.size() - 2];
+                    Eigen::Map<MatrixRowMajor> matrix(result.data + batch * row * col, row, col); // get the matrix for this batch
+                    Eigen::FullPivLU<Eigen::MatrixXd> lu(matrix);
+                    if (!lu.isInvertible()) {
+                        throw std::runtime_error("Matrix is not invertible");
+                    }
+                    matrix = lu.inverse(); // map handles the memory copy back to result.data
+                }
+            }
+
+            // TODO: CUDA implementation
+
+            return result;
+        }
 
         // // Opposite of broadcasting - NOT A VIEW OPERATION
         // Tensor reduce(const Tensor &t, const std::vector<int>& targetShape) {

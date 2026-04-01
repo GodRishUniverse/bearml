@@ -67,8 +67,8 @@ namespace simplenet {
         template<typename T, typename Op>
         __global__
         void comparison_kernel(T* a, T* b, T* output, size_t size, Op op) {
-            size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-            if (idx < size) {
+            // ensures each thread processes a unique element (also avoiding out-of-bounds access)
+            for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < size; idx += blockDim.x * gridDim.x) {
                 output[idx] = T(op(a[idx], b[idx]));
             }
         }

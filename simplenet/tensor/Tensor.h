@@ -73,6 +73,8 @@ namespace simplenet{
        Tensor mask_of_equal_to(const Tensor& first, double other,  double first_val, double second_val);
 
        Tensor sign(const Tensor& a);
+
+       Tensor inverse(const Tensor& a);
     }
 
     class Tensor {
@@ -534,7 +536,6 @@ namespace simplenet{
             // ================================ OPERATIONS ========================================================================
 
             // Reduced the repetitive code - CPU side element-wise binary — handles both contiguous and broadcast paths
-            // TODO: add unary functionss as well
             template<typename Func>
             static Tensor elementwise_binary_cpu(const Tensor& A, const Tensor& B, Func fn) {
                 if (A.shape == B.shape) {
@@ -1011,8 +1012,8 @@ namespace simplenet{
                 return elementwise_binary(a, b, OP_Code::OP_DIV);
             }
 
-            // TODO: Another case exists but that is when matrix b is invertible and then it just becomes matrix mul
-            // call it inverse
+            // Another case exists but that is when matrix b is invertible and then it just becomes matrix mul
+            friend Tensor linear_algebra::inverse(const Tensor& a); // TODO: add CUDA dispatch function to compute inverse
 
 
             // --------------------------------EQUALITY--------------------------------------------------------------------------

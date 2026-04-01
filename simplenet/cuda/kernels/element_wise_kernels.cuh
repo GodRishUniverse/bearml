@@ -65,6 +65,18 @@ namespace simplenet {
         );
 
 
+        #ifndef INSTANTIATE_ELEMENT_WISE
+        #define INSTANTIATE_ELEMENT_WISE(T) \
+            template __global__ void simplenet::cuda::element_wise_broadcast<T>(const size_t*, const size_t*,  const size_t*, size_t, size_t, const T*, const T*, T*, OP_Code); \
+            template __global__ void simplenet::cuda::element_wise_contiguous<T>(const T* __restrict__ a,const T* __restrict__ b, T* res, size_t n, OP_Code op_code); \
+            template __global__ void simplenet::cuda::element_wise_contiguous_with_constant<T>(const T*, const T*, T*, size_t, OP_Code, LHS_RHS_Code); \
+            template void launch_elementwise_broadcast<T>(const T*, const T*, T*, const std::vector<int>&, const std::vector<int>&, const std::vector<int>&, OP_Code, cudaStream_t); \
+            template void launch_elementwise_contiguous<T>(const T*, const T*, T*, const std::vector<int>&, OP_Code, cudaStream_t); \
+            template void launch_elementwise_contiguous_with_constant<T>(const T*, const T, T*, const std::vector<int>&, OP_Code, LHS_RHS_Code, cudaStream_t); \
+            template __global__ void simplenet::cuda::element_wise_unary<T>(const T*, T*, size_t, OP_Code); \
+            template void launch_elementwise_unary<T>(const T*, T*, const std::vector<int>&, OP_Code, cudaStream_t);
+        #endif
+
         template <typename T>
         void launch_sign_contiguous(
             const T* d_a,

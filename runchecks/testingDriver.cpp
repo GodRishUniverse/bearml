@@ -312,17 +312,26 @@ int main() {
     //
 
 
-    simplenet::Tensor a ({5});
-    a.linspace(1,5);
+    // simplenet::Tensor a ({5});
+    // a.linspace(1,5);
 
-    cout << a << endl;
-    simplenet::Tensor b ({5,3});
-    b.fill(2.0);
+    // cout << a << endl;
+    // simplenet::Tensor b ({5,3});
+    // b.fill(2.0);
 
-    a.to_(dev);
-    b.to_(dev);
+    // a.to_(dev);
+    // b.to_(dev);
 
-    auto c = a * b;
-    cout << c << endl;
+    // auto c = a * b;
+    // cout << c << endl;
 
+     simplenet::Tensor mat_inv ({5,5});
+     mat_inv.set(1.0, {0,0});
+     mat_inv.set(1.0, {1,1});
+     mat_inv.set(1.0, {2,2});
+     mat_inv.set(1.0, {3,3});
+     mat_inv.set(1.0, {4,4});
+
+
+     cout << simplenet::linear_algebra::inverse(mat_inv) << endl;
 }

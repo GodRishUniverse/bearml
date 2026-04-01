@@ -37,31 +37,6 @@ namespace simplenet {
             }
         }
 
-        // ---------------------------------- Template specification for floats ----------------------------------
-        // bfloat16
-        template __global__ void transpose_kernel<__nv_bfloat16>(__nv_bfloat16* input, __nv_bfloat16* output,  long long int batch_size, int rows, int cols);
-
-        // float16
-        template __global__ void transpose_kernel<__half>(__half* input, __half* output,  long long int batch_size, int rows, int cols);
-
-        // float32
-        template __global__ void transpose_kernel<float>(float* input, float* output,  long long int batch_size, int rows, int cols);
-
-        // float64
-        template __global__ void transpose_kernel<double>(double* input, double* output,  long long int batch_size, int rows, int cols);
-
-        // ---------------------------------- Template specification for ints ----------------------------------
-        // int8
-        template __global__ void transpose_kernel<int8_t>(int8_t* input, int8_t* output,  long long int batch_size, int rows, int cols);
-        // int16
-        template __global__ void transpose_kernel<int16_t>(int16_t* input, int16_t* output,  long long int batch_size, int rows, int cols);
-        // int32
-        template __global__ void transpose_kernel<int32_t>(int32_t* input, int32_t* output,  long long int batch_size, int rows, int cols);
-        // int64
-        template __global__ void transpose_kernel<int64_t>(int64_t* input, int64_t* output,  long long int batch_size, int rows, int cols);
-
-
-
         template<typename T>
         void launch_transpose_kernel(T* input, T* output,  long long int batch_size, int rows, int cols, cudaStream_t stream) {
             bool own_stream = (stream == nullptr);
@@ -82,17 +57,17 @@ namespace simplenet {
             }
         }
 
-
         // floats
-        template void launch_transpose_kernel(__nv_bfloat16* input, __nv_bfloat16* output,  long long int batch_size, int rows, int cols, cudaStream_t stream);
-        template void launch_transpose_kernel(__half* input, __half* output,  long long int batch_size, int rows, int cols, cudaStream_t stream);
-        template void launch_transpose_kernel(float* input, float* output,  long long int batch_size, int rows, int cols, cudaStream_t stream);
-        template void launch_transpose_kernel(double* input, double* output,  long long int batch_size, int rows, int cols, cudaStream_t stream);
+        INSTANTIATE_TRANSPOSE(__nv_bfloat16);
+        INSTANTIATE_TRANSPOSE(__half);
+        INSTANTIATE_TRANSPOSE(float);
+        INSTANTIATE_TRANSPOSE(double);
+
         // ints
-        template void launch_transpose_kernel(int8_t* input, int8_t* output,  long long int batch_size, int rows, int cols, cudaStream_t stream);
-        template void launch_transpose_kernel(int16_t* input, int16_t* output,  long long int batch_size, int rows, int cols, cudaStream_t stream);
-        template void launch_transpose_kernel(int32_t* input, int32_t* output,  long long int batch_size, int rows, int cols, cudaStream_t stream);
-        template void launch_transpose_kernel(int64_t* input, int64_t* output,  long long int batch_size, int rows, int cols, cudaStream_t stream);
+        INSTANTIATE_TRANSPOSE(int8_t);
+        INSTANTIATE_TRANSPOSE(int16_t);
+        INSTANTIATE_TRANSPOSE(int32_t);
+        INSTANTIATE_TRANSPOSE(int64_t);
 
     }
 }
