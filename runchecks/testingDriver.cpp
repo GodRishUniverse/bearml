@@ -330,8 +330,19 @@ int main() {
      mat_inv.set(1.0, {1,1});
      mat_inv.set(1.0, {2,2});
      mat_inv.set(1.0, {3,3});
-     mat_inv.set(1.0, {4,4});
+     mat_inv.set(-1.0, {4,4});
+
+     // simplenet::neural_network::LeakyReLU leaky_relu(0.1);
+     // auto leaky_relu_node = simplenet::Node<simplenet::Tensor>::make_node(mat_inv);
+     // auto leaky_relu_out = leaky_relu.forward(leaky_relu_node);
+     // cout << leaky_relu_out->val << endl;
+     mat_inv.fill(1.0);
+     simplenet::Tensor mat_inv_2 ({5,2});
 
 
-     cout << simplenet::linear_algebra::inverse(mat_inv) << endl;
+
+     auto concat_out = simplenet::Tensor::concat({mat_inv, mat_inv_2}, 1);
+     cout << concat_out << endl;
+
+
 }

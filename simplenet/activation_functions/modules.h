@@ -199,7 +199,6 @@ namespace simplenet {
 
         };
 
-        // inherits from module -> need to test it
         class ReLU : public Module{
             public:
                 ReLU(int random_seed =42, Device dev =  Device(DeviceType::CPU, 0)) : Module(random_seed, dev){

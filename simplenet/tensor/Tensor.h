@@ -1430,18 +1430,20 @@ namespace simplenet{
                 }
             }
 
-
-            Tensor concat(std::initializer_list<Tensor> tensors, int dim =0 ){
+            // TODO: CUDA support
+            static Tensor concat(std::initializer_list<Tensor> tensors, int dim =0 ){
                 if (tensors.size() <= 1) {
                     throw std::invalid_argument("More than one tensor is required for concatenation.");
                 }
-                std::vector<int> concatShapePrev = tensors[0].getShape();
+                std::vector<int> concatShapePrev = tensors.begin()[0].getShape();
                 int concatShapeSize = concatShapePrev.size();
                 int concatDim = concatShapePrev[dim];
+                Device device = tensors.begin()[0].device;
+
 
                 concatShapePrev[dim]= 0 ; // for comparison
                 for (size_t i = 1; i < tensors.size(); ++i) {
-                    std::vector<int> copiedShape = tensors[i].getShape();
+                    std::vector<int> copiedShape = tensors.begin()[i].getShape();
                     copiedShape[dim] = 0;
                     if (copiedShape != concatShapePrev){
                         throw std::invalid_argument("Tensors must have the same shape for concatenation except along the concatenation dimension");
@@ -1449,16 +1451,50 @@ namespace simplenet{
                     if (copiedShape.size() != concatShapeSize) {
                         throw std::invalid_argument("Tensors must have the same shape for concatenation");
                     }
-                    concatDim += tensors[i].getShape()[dim];
+
+                    if (tensors.begin()[i].device != device) {
+                        throw std::invalid_argument("Tensors must have the same device for concatenation");
+                    }
+                    concatDim += tensors.begin()[i].getShape()[dim];
                 }
 
-                std::vector<int> temp = tensors[0].getShape();
+                std::vector<int> temp = tensors.begin()[0].getShape();
                 temp[dim] = concatDim;
-                Tensor result(temp, tensors[0].device);
+                Tensor result(temp, tensors.begin()[0].device);
 
-                //TODO: figure out how to copy data into result (device wise and mathematically like pytorch)
+                if (device.type == DeviceType::CUDA) {
+                    result.to_(Device::cpu());
+                }
 
                 // outer_dim, dim, inner_dim is what we have
+                // copy the dim*inner_dim elements for each outer_dim (like the chunks)
+                ll outerDim = 1;
+                for (int i = 0; i < dim; ++i) {
+                    outerDim *= concatShapePrev[i];
+                }
+
+                ll innerDim = 1;
+                for (int i = dim + 1; i < concatShapeSize; i++) {
+                    innerDim *= concatShapePrev[i];
+                }
+
+                for (size_t o = 0; o < outerDim; ++o) {
+                    int offset = 0; // offset will be used to move the pointer to execute the copies
+                    for (size_t i = 0; i < tensors.size(); ++i) {
+                        int src_cat_dim = tensors.begin()[i].getShape()[dim];
+                        int copy_size = src_cat_dim * innerDim;
+                        // we copy the data for each tensor into the result tensor
+                        // outer*concatDim * innerDim moves the pointer to the correct position in the result tensor
+                        // offset * innerDim is the offset that will be copied from the source tensor using (o*src_cat_dim*innerDim)
+                        std::memcpy(result.data  + o*concatDim *innerDim + offset*innerDim, tensors.begin()[i].data + o*src_cat_dim*innerDim, copy_size * sizeof(double));
+                        offset += copy_size;
+                    }
+                }
+
+                if (device.type == DeviceType::CUDA) {
+                    result.to_(device);
+                }
+
                 return result;
             }
 
