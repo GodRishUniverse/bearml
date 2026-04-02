@@ -2,13 +2,11 @@
 
 namespace simplenet{
 
-    // TODO: refactor
     // flatten
     Tensor Tensor::flatten(int start_dim, int end_dim, bool keepdims) {
-        Tensor result(Tensor::flatten_(start_dim, end_dim, keepdims)); // we do this so that the strides are correctly calculate for the new tensor
-        for (ll i = 0; i < this->sizeOfTensor(); i++){
-            result.data[i] = this->data[i];
-        }
+        Tensor result = *this; // copy the tensor
+        result.setShape(Tensor::flatten_(start_dim, end_dim, keepdims));
+        result.computeStrides();
         return result;
     }
 }

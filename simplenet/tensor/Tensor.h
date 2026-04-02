@@ -1204,7 +1204,6 @@ namespace simplenet{
             }
 
 
-            // TODO: refactor
             // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
             void fill(double v){
                 // CUDA fill
@@ -1241,10 +1240,8 @@ namespace simplenet{
 
             }
 
-            // TODO: refactor
-            Tensor flatten(int start_dim =0, int end_dim = -1, bool keepdims=false);
+            Tensor flatten(int start_dim =0, int end_dim = -1, bool keepdims=false); // function declaration
 
-            // TODO: refactor
             // flatten - inplace
             void flatten_inplace(int start_dim =0, int end_dim = -1, bool keepdims=false){
                 this->shape = Tensor::flatten_(start_dim, end_dim, keepdims);
@@ -1308,7 +1305,7 @@ namespace simplenet{
             }
 
 
-            // TODO: refactor
+            // TODO: refactor - CUDA
             // linspace function  to edit the current tensor
             Tensor& linspace(double start, double end){
                 size_t long_size = this->sizeOfTensor();
@@ -1324,7 +1321,6 @@ namespace simplenet{
 
 
 
-            // TODO: refactor
             Tensor transpose(){
                 // 3 cases:
                 // Case 1: 1 as the shape return the same thing - scalar - If transposing the same dimension or a single element tensor, return a copy
@@ -1332,8 +1328,13 @@ namespace simplenet{
                     return *this; // copy op
                 }
 
-                // Case 2: Vectors
-                // TODO: ROW Tranpose or COLUMN Transpose
+                // Case 2: Vectors: ROW Tranpose or COLUMN Transpose
+                if (this->shape.size() == 2 && (this->shape[0]==1 || this->shape[1]==1)) {
+                    Tensor newTensor = *this; // copy
+                    std::swap(newTensor.shape[0], newTensor.shape[1]);
+                    newTensor.computeStrides();
+                    return newTensor;
+                }
 
 
                 // Case 3: Transpose the last 2 dims
@@ -1363,7 +1364,13 @@ namespace simplenet{
 
             // Permute - Not the same as TRANSPOSE
             Tensor permute(std::vector<int> new_order){
-                std::vector<int > temp ;
+                Tensor result= *this; // copy constructor
+                result.inplace_permute(new_order);
+                return result;
+            }
+
+            void inplace_permute(std::vector<int> new_order) {
+                std::vector<int> temp ;
                 for (int i = 0; i < new_order.size(); i++){
                         if (new_order[i] < 0 || new_order[i] >= this->shape.size()){
                             throw std::invalid_argument("Invalid permute order");
@@ -1371,12 +1378,10 @@ namespace simplenet{
                 }
                 // permuting the shape
                 for (int i = 0; i < new_order.size(); i++){
-                        temp.push_back(this->shape[new_order[i]]);
+                    temp.push_back(this->shape[new_order[i]]);
                 }
-                Tensor result= *this;
-                result.setShape(temp);
-                result.computeStrides();
-                return result;
+                this->shape = temp;
+                this->computeStrides();
             }
 
 
@@ -1426,10 +1431,35 @@ namespace simplenet{
             }
 
 
+            Tensor concat(std::initializer_list<Tensor> tensors, int dim =0 ){
+                if (tensors.size() <= 1) {
+                    throw std::invalid_argument("More than one tensor is required for concatenation.");
+                }
+                std::vector<int> concatShapePrev = tensors[0].getShape();
+                int concatShapeSize = concatShapePrev.size();
+                int concatDim = concatShapePrev[dim];
 
-            // TODO:concat
-            void concat(std::initializer_list<Tensor> tensors){
+                concatShapePrev[dim]= 0 ; // for comparison
+                for (size_t i = 1; i < tensors.size(); ++i) {
+                    std::vector<int> copiedShape = tensors[i].getShape();
+                    copiedShape[dim] = 0;
+                    if (copiedShape != concatShapePrev){
+                        throw std::invalid_argument("Tensors must have the same shape for concatenation except along the concatenation dimension");
+                    }
+                    if (copiedShape.size() != concatShapeSize) {
+                        throw std::invalid_argument("Tensors must have the same shape for concatenation");
+                    }
+                    concatDim += tensors[i].getShape()[dim];
+                }
 
+                std::vector<int> temp = tensors[0].getShape();
+                temp[dim] = concatDim;
+                Tensor result(temp, tensors[0].device);
+
+                //TODO: figure out how to copy data into result (device wise and mathematically like pytorch)
+
+                // outer_dim, dim, inner_dim is what we have
+                return result;
             }
 
 
@@ -1438,10 +1468,10 @@ namespace simplenet{
                 if (tensors.size() == 0) {
                     throw std::invalid_argument("At least one tensor is required for stacking.");
                 }
-
+                // need to check that all tensors have the same shape - for stacking
                 for (const Tensor& tensor : tensors){
                     if (tensor.shape != this->shape){
-                        throw std::invalid_argument("Tensors must have the same shape");
+                        throw std::invalid_argument("Tensors must have the same shape for stacking");
                     }
                 }
 
@@ -1470,37 +1500,7 @@ namespace simplenet{
             }
 
             // TODO
-            // static Tensor identity_matrix(std::vector<int>& sizePassed, int n) {
-            //     Tensor t (sizePassed);
-            //     // fill the diagonals with one
-            //     if (sizePassed.size() ==1){
-            //         // vector basically - does also work for scalars
-            //         if (sizePassed[0] != n){
-            //             std::invalid_argument("Identity vector is just 1s and size should match what is entered");
-            //         }
-            //         for (int r =0; r < sizePassed[0]; r++){
-            //             t.set(1.0, {r});
-            //         }
-            //     } else if (sizePassed.size() ==2){
-            //         if (sizePassed[sizePassed.size()-1] != n || sizePassed[sizePassed.size()-2]!=n){
-            //             std::invalid_argument("Identity matrices are only defined for square matrices");
-            //         }
-            //         for (int r =0; r < sizePassed[0]; r++){
-            //             t.set(1.0, {r,r}); // diagonals only
-            //         }
-            //     } else{
-            //         // batched matrix - set individually to identity matrix
-            //         //TODO:
-            //     }
-
-            //     return t;
-            // }
-
-            // // acts as an alias for the identity matrix
-            // static Tensor eye(std::vector<int>& sizePassed, int n){
-            //     return identity_matrix(sizePassed, n);
-            // }
-
+            // static Tensor identity_matrix(std::vector<int>& sizePassed, int n)
 
         };
 }
