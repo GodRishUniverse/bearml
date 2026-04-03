@@ -8,7 +8,7 @@
 #include "autograd/autogradient.h"
 #include "activation_functions/modules.h" // has the abstract Modules class and the Linear and ReLU modules
 #include "activation_functions/activation_functions.h" // major activation functions
-#include "activation_functions/polling_layers.h" // pooling layers
+#include "activation_functions/pooling_layers.h" // pooling layers
 #include "activation_functions/convolution_layers.h" // convolution layers
 #include "model_construct/model_construct.h"
 #include "loss_functions/loss.h"

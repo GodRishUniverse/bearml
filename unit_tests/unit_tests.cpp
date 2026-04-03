@@ -279,17 +279,6 @@ TEST(TensorTest, BroadcastAdd) {
     EXPECT_DOUBLE_EQ(c.get({1, 2}), 31.0);
 }
 
-TEST(TensorTest, SumDim) {
-    Tensor a({2, 3});
-    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
-    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
-    // sum along dim 1: [6, 15]
-    Tensor s = a.sum(1);
-    EXPECT_EQ(s.getShape(), (std::vector<int>{2}));
-    EXPECT_DOUBLE_EQ(s.get({0}), 6.0);
-    EXPECT_DOUBLE_EQ(s.get({1}), 15.0);
-}
-
 TEST(TensorTest, CopyConstructor) {
     Tensor a({2, 2});
     a.fill(5.0);

@@ -141,15 +141,15 @@ namespace simplenet {
 
         // TODO: write CUDA kernel
         // Maybe I was thinking too much as this works
-        Tensor reduce(const Tensor& a, std::vector<int>& afterShape){
+        Tensor reduce(const Tensor& a, std::vector<int>& afterShape, reductions::ReductionOps op){
             Tensor b = a;
             while (b.getShape().size() > afterShape.size()){
-                b = b.sum(0, false); // we dont keep the dims
+                b = b.accumulate(0, op, false); // we dont keep the dims
             }
             // Now we compare with the already existing values
             for (size_t i = 0; i<b.getShape().size(); i++){
                 if (b.getShape()[i] != afterShape[i]){
-                    b =b.sum(i, true); // we keep the dims
+                    b =b.accumulate(i, op, true); // we keep the dims
                 }
             }
             return b;

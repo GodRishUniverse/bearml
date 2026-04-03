@@ -2,6 +2,7 @@
 #include <vector>
 #include <stdexcept>
 #include "compare_ops.h" // to get the compare ops enum
+#include "../reductions/reduction_ops.h" // to get the reduction ops enum
 
 namespace simplenet {
     class Tensor; // forward declaration
@@ -15,7 +16,8 @@ namespace simplenet {
 
         Tensor batchedMatMul(const Tensor& a, const Tensor& b);
 
-        Tensor reduce(const Tensor& a, std::vector<int>& afterShape);
+        // Reduction operations (default is sum unless specified otherwise)
+        Tensor reduce(const Tensor& a, std::vector<int>& afterShape, reductions::ReductionOps op= reductions::ReductionOps::SUM);
 
         Tensor hadamard(const Tensor &a, const Tensor &other);
 

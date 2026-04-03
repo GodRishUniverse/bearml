@@ -62,6 +62,8 @@ namespace simplenet{
    // TODO: add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads
    template <typename T>
    class Node {
+        // C++17 inline static variable - only one copy shared across all instances of the class
+        inline static simplenet::reductions::ReductionOps reduction_op = simplenet::reductions::ReductionOps::SUM;
     public:
         T val;
         T grad; // delay grad creation and use jacobians to solbe the broadcasting problem
@@ -69,7 +71,8 @@ namespace simplenet{
         std::vector<std::weak_ptr<Node<T>>> outputs; // CHILDREN- using stl weak pointer - to break the cycle of shared_ptr references in inputs and outputs
         std::function<void()> backward_fn; // will be used for backward pass rather than the gradients
 
-        Node(T value) : val(value) , grad([&value]() {
+
+        Node(T value ) : val(value) , grad([&value]() {
                 if constexpr (std::is_same<T, double>::value) {
                     return 0.0;
                 } else if constexpr (std::is_same<T, simplenet::Tensor>::value) {
@@ -87,6 +90,16 @@ namespace simplenet{
         static std::shared_ptr<Node<T>> constant(T value) {
             auto node = make_node(value);
             return node; // this is a leaf node with no inputs and no backward_fn
+        }
+
+        // a utility to set the reduction operation for all nodes
+        static void set_reduction(simplenet::reductions::ReductionOps op) {
+            reduction_op = op;
+        }
+
+        // a utility to get the current reduction operation
+        static simplenet::reductions::ReductionOps get_reduction() {
+            return reduction_op;
         }
 
         void backward(){
@@ -121,8 +134,8 @@ namespace simplenet{
                     if constexpr (std::is_same<T, simplenet::Tensor>::value){
                         std::vector<int> temp_a =  a_locked->grad.getShape();
                         std::vector<int> temp_b = b_locked->grad.getShape();
-                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_a);  // dc/da = b
-                        b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_b);  // dc/db = a
+                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_a, reduction_op);  // dc/da = b
+                        b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_b, reduction_op);  // dc/db = a
                     }else{
                         // case for doubles
                         a_locked->grad += node_locked->grad;  // dc/da = b
@@ -179,8 +192,8 @@ namespace simplenet{
                         std::vector<int> temp_a =  a_locked->grad.getShape();
                         std::vector<int> temp_b = b_locked->grad.getShape();
 
-                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad,temp_a);  // dc/da = 1
-                        b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * -1.0,temp_b);  // dc/db = -1
+                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad,temp_a, reduction_op);  // dc/da = 1
+                        b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * -1.0,temp_b, reduction_op);  // dc/db = -1
                     }else{
                         // case for doubles
                         a_locked->grad += node_locked->grad*1.0;  // dc/da = 1
@@ -236,8 +249,8 @@ namespace simplenet{
                     if constexpr (std::is_same<T, simplenet::Tensor>::value){
                         std::vector<int> temp_a =  a_locked->grad.getShape();
                         std::vector<int> temp_b = b_locked->grad.getShape();
-                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * b_locked->val.transpose(),temp_a); // grad_a = grad * b^T
-                        b_locked->grad += simplenet::linear_algebra::reduce(a_locked->val.transpose() * node_locked->grad, temp_b); // grad_b = a^T * grad
+                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * b_locked->val.transpose(),temp_a, reduction_op); // grad_a = grad * b^T
+                        b_locked->grad += simplenet::linear_algebra::reduce(a_locked->val.transpose() * node_locked->grad, temp_b, reduction_op); // grad_b = a^T * grad
                     }else{
                         // case for doubles
                         a_locked->grad += node_locked->grad * b_locked->val; // grad_a = grad * b^T
@@ -270,7 +283,7 @@ namespace simplenet{
 
                     if constexpr (std::is_same<T, simplenet::Tensor>::value){
                         std::vector<int> temp_b = b_locked->grad.getShape();
-                        b_locked->grad += simplenet::linear_algebra::reduce(scalar * node_locked->grad, temp_b); // grad_b = scalar * grad
+                        b_locked->grad += simplenet::linear_algebra::reduce(scalar * node_locked->grad, temp_b, reduction_op); // grad_b = scalar * grad
                     }else{
                        // TODO
                     }
@@ -305,7 +318,7 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
                     std::vector<int> a_shape = a_locked->grad.getShape();
-                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * node_locked->val, a_shape);  //  dc/da = exp(a)
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * node_locked->val, a_shape, reduction_op);  //  dc/da = exp(a)
                 };
 
                 return node;

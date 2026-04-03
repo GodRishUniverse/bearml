@@ -22,6 +22,8 @@
 #include "utils/linalg_utils.h"
 #include "utils/device_utils.h"
 
+#include "reductions/reduction_ops.h"
+
 // #include <cmath>
 #include <iomanip>
 
@@ -46,10 +48,10 @@ namespace simplenet{
     // forward declaration
     namespace linear_algebra {
        Tensor batchedMatMul(const Tensor& a, const Tensor& b); // Forward declare the friend function
-       Tensor reduce(const Tensor& a, std::vector<int>& afterShape); // forward declare for the friend reduce
+       Tensor reduce(const Tensor& a, std::vector<int>& afterShape, reductions::ReductionOps op); // forward declare for the friend reduce
        Tensor hadamard(const Tensor &a, const Tensor &other);
 
-       Tensor comare(const Tensor& a, const Tensor& b,CompareOp op, double true_val, double false_val);
+       Tensor compare(const Tensor& a, const Tensor& b,CompareOp op, double true_val, double false_val);
 
        // Tensor and Tensor
        Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
@@ -820,7 +822,7 @@ namespace simplenet{
             friend Tensor linear_algebra::batchedMatMul(const Tensor& a, const Tensor& b);
 
             // TODO: write CUDA kernel
-            friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<int>& afterShape);
+            friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<int>& afterShape, reductions::ReductionOps op);
 
             // element wise multiply (now uses elementwise_scalar dispatch)
             friend Tensor operator*(const Tensor &A, const double& b) {
@@ -1068,6 +1070,87 @@ namespace simplenet{
             // sign matrix
             friend Tensor linear_algebra::sign(const Tensor& a);
 
+            // TODO: refactor for native CUDA support
+            Tensor accumulate(int dim, reductions::ReductionOps op, bool keepdims = false){
+                if (dim<0 || dim>=shape.size()){
+                    throw std::invalid_argument("DIM not in the correct range!");
+                }
+
+                // edge cases to consider - when we only have a vector then sum will give a scalar
+                if (shape.size()==1 && dim ==0){
+                    // no need to check keep dims as if keepdims is false then it will be a scalar anyways
+                    Tensor new_t({1});
+                    for (size_t i =0; i < sizeOfTensor(); i++){
+                        new_t.data[0]+=data[i];
+                    }
+                    new_t.to_(this->device);
+                    return new_t;
+                }
+
+                std::vector<int> newShape = shape;
+                int oldDim = newShape[dim];
+                newShape[dim] = 1; // we will change the shape afterwards
+
+                ll offset_new_shape{1};
+                for (int d = dim+1; d <newShape.size(); d++){
+                    offset_new_shape*=newShape[d];
+                }
+
+                ll offset_old{offset_new_shape*oldDim};
+
+                Tensor new_t(newShape);
+                double* flat_data = new_t.data;
+
+                // gpu direct access not allowed, so we copy to CPU first
+                Tensor copy_tensor = *this;
+                copy_tensor.to_(Device(DeviceType::CPU, -1));
+
+                ll dest_idx = 0;
+                for (size_t v =0; v<sizeOfTensor(); v+=offset_old){
+                    for (size_t s = 0; s<offset_new_shape;s++){
+                        // accumulate initial value based on reduction op
+                        double val = (op == reductions::ReductionOps::PROD) ? 1.0
+                                                 : (op == reductions::ReductionOps::MAX)  ? -std::numeric_limits<double>::infinity()
+                                                 : (op == reductions::ReductionOps::MIN)  ?  std::numeric_limits<double>::infinity()
+                                                 : 0.0;
+                        for (int idx = 0; idx<oldDim; idx++){
+                            // edited from this->data to copy_tensor.data
+                            double elem = copy_tensor.data[v + idx * offset_new_shape + s];
+                            switch (op) {
+                                case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
+                                    val += elem;
+                                    break;
+                                case reductions::ReductionOps::PROD:
+                                    val *= elem;
+                                    break;
+                                case reductions::ReductionOps::MAX:
+                                    val = std::max(val, elem);
+                                    break;
+                                case reductions::ReductionOps::MIN:
+                                    val = std::min(val, elem);
+                                    break;
+                                default:
+                                    throw std::runtime_error("Unsupported reduction op");
+
+                            }
+                        }
+                        if (op == reductions::ReductionOps::MEAN) val /= oldDim; // only for mean
+                        flat_data[dest_idx]= val;
+                        dest_idx++;
+                    }
+                }
+                if (keepdims) {
+                    new_t.to_(this->device);
+                    return new_t;
+                }
+                new_t.flatten_inplace((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
+                new_t.to_(this->device);
+                return new_t;
+            }
+
+            // Tensor argmax(int dim, bool keepdims = false);
+            // Tensor argmin(int dim, bool keepdims = false);
+
 
             //----------------------------------------Exponential------------------------------------------------------
             static Tensor exp(Tensor& t){
@@ -1246,62 +1329,6 @@ namespace simplenet{
             void flatten_inplace(int start_dim =0, int end_dim = -1, bool keepdims=false){
                 this->shape = Tensor::flatten_(start_dim, end_dim, keepdims);
                 computeStrides();
-            }
-
-            // TODO: refactor for CUDA
-            // in place summation across a dimension - works like torch.sum()
-            Tensor sum(int dim, bool keepdims = false){
-                if (dim<0 || dim>=shape.size()){
-                    throw std::invalid_argument("DIM not in the correct range!");
-                }
-
-                // edge cases to consider - when we only have a vector then sum will give a scalar
-                if (shape.size()==1 && dim ==0){
-                    // no need to check keep dims as if keepdims is false then it will be a scalar anyways
-                    Tensor new_t({1});
-                    for (size_t i =0; i < sizeOfTensor(); i++){
-                        new_t.data[0]+=data[i];
-                    }
-                    new_t.to_(this->device);
-                    return new_t;
-                }
-
-                std::vector<int> newShape = shape;
-                int oldDim = newShape[dim];
-                newShape[dim] = 1; // we will change the shape afterwards
-
-                ll offset_new_shape{1};
-                for (int d = dim+1; d <newShape.size(); d++){
-                    offset_new_shape*=newShape[d];
-                }
-
-                ll offset_old{offset_new_shape*oldDim};
-
-                Tensor new_t(newShape);
-                double* flat_data = new_t.data;
-
-                // gpu direct access not allowed, so we copy to CPU first
-                Tensor copy_tensor = *this;
-                copy_tensor.to_(Device(DeviceType::CPU, -1));
-
-                ll dest_idx = 0;
-                for (size_t v =0; v<sizeOfTensor(); v+=offset_old){
-                    for (size_t s = 0; s<offset_new_shape;s++){
-                        double val {};
-                        for (int idx = 0; idx<oldDim; idx++){
-                            val+= copy_tensor.data[v+idx*offset_new_shape+s]; // edited from this->data to copy_tensor.data
-                        }
-                        flat_data[dest_idx]= val;
-                        dest_idx++;
-                    }
-                }
-                if (keepdims) {
-                    new_t.to_(this->device);
-                    return new_t;
-                }
-                new_t.flatten_inplace((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
-                new_t.to_(this->device);
-                return new_t;
             }
 
 
