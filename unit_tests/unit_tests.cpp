@@ -702,6 +702,332 @@ TEST(SGDTest, ZeroGrad) {
 }
 
 
+// Reduction Tests
+
+// --- SUM ---
+
+TEST(ReductionTest, Sum1D) {
+    Tensor a({5});
+    a.set(1.0, {0}); a.set(2.0, {1}); a.set(3.0, {2}); a.set(4.0, {3}); a.set(5.0, {4});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::SUM);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 15.0);
+}
+
+TEST(ReductionTest, Sum2D_Dim0) {
+    // [[1, 2, 3],
+    //  [4, 5, 6]]
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::SUM, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 5.0);  // 1+4
+    EXPECT_DOUBLE_EQ(r.get({1}), 7.0);  // 2+5
+    EXPECT_DOUBLE_EQ(r.get({2}), 9.0);  // 3+6
+}
+
+TEST(ReductionTest, Sum2D_Dim1) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(1, reductions::ReductionOps::SUM, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 6.0);   // 1+2+3
+    EXPECT_DOUBLE_EQ(r.get({1}), 15.0);  // 4+5+6
+}
+
+TEST(ReductionTest, Sum2D_Dim0_KeepDims) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::SUM, true);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1, 3}));
+    EXPECT_DOUBLE_EQ(r.get({0, 0}), 5.0);
+    EXPECT_DOUBLE_EQ(r.get({0, 1}), 7.0);
+    EXPECT_DOUBLE_EQ(r.get({0, 2}), 9.0);
+}
+
+// --- MEAN ---
+
+TEST(ReductionTest, Mean1D) {
+    Tensor a({4});
+    a.set(2.0, {0}); a.set(4.0, {1}); a.set(6.0, {2}); a.set(8.0, {3});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::MEAN);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 5.0);
+}
+
+TEST(ReductionTest, Mean2D_Dim0) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::MEAN, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 2.5);  // (1+4)/2
+    EXPECT_DOUBLE_EQ(r.get({1}), 3.5);  // (2+5)/2
+    EXPECT_DOUBLE_EQ(r.get({2}), 4.5);  // (3+6)/2
+}
+
+TEST(ReductionTest, Mean2D_Dim1) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(1, reductions::ReductionOps::MEAN, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 2.0);  // (1+2+3)/3
+    EXPECT_DOUBLE_EQ(r.get({1}), 5.0);  // (4+5+6)/3
+}
+
+TEST(ReductionTest, Mean2D_Dim1_KeepDims) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(1, reductions::ReductionOps::MEAN, true);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2, 1}));
+    EXPECT_DOUBLE_EQ(r.get({0, 0}), 2.0);
+    EXPECT_DOUBLE_EQ(r.get({1, 0}), 5.0);
+}
+
+// --- MAX ---
+
+TEST(ReductionTest, Max1D) {
+    Tensor a({5});
+    a.set(3.0, {0}); a.set(1.0, {1}); a.set(7.0, {2}); a.set(2.0, {3}); a.set(5.0, {4});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::MAX);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 7.0);
+}
+
+TEST(ReductionTest, Max2D_Dim0) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(5.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(2.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::MAX, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 4.0);  // max(1,4)
+    EXPECT_DOUBLE_EQ(r.get({1}), 5.0);  // max(5,2)
+    EXPECT_DOUBLE_EQ(r.get({2}), 6.0);  // max(3,6)
+}
+
+TEST(ReductionTest, Max2D_Dim1) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(5.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(2.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(1, reductions::ReductionOps::MAX, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 5.0);  // max(1,5,3)
+    EXPECT_DOUBLE_EQ(r.get({1}), 6.0);  // max(4,2,6)
+}
+
+TEST(ReductionTest, Max1D_Negative) {
+    Tensor a({3});
+    a.set(-5.0, {0}); a.set(-1.0, {1}); a.set(-3.0, {2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::MAX);
+    EXPECT_DOUBLE_EQ(r.get({0}), -1.0);
+}
+
+// --- MIN ---
+
+TEST(ReductionTest, Min1D) {
+    Tensor a({5});
+    a.set(3.0, {0}); a.set(1.0, {1}); a.set(7.0, {2}); a.set(2.0, {3}); a.set(5.0, {4});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::MIN);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 1.0);
+}
+
+TEST(ReductionTest, Min2D_Dim0) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(5.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(2.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::MIN, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 1.0);  // min(1,4)
+    EXPECT_DOUBLE_EQ(r.get({1}), 2.0);  // min(5,2)
+    EXPECT_DOUBLE_EQ(r.get({2}), 3.0);  // min(3,6)
+}
+
+TEST(ReductionTest, Min2D_Dim1) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(5.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(2.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(1, reductions::ReductionOps::MIN, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 1.0);  // min(1,5,3)
+    EXPECT_DOUBLE_EQ(r.get({1}), 2.0);  // min(4,2,6)
+}
+
+TEST(ReductionTest, Min1D_Negative) {
+    Tensor a({3});
+    a.set(-5.0, {0}); a.set(-1.0, {1}); a.set(-3.0, {2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::MIN);
+    EXPECT_DOUBLE_EQ(r.get({0}), -5.0);
+}
+
+// --- PROD ---
+
+TEST(ReductionTest, Prod1D) {
+    Tensor a({4});
+    a.set(1.0, {0}); a.set(2.0, {1}); a.set(3.0, {2}); a.set(4.0, {3});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::PROD);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 24.0);  // 1*2*3*4
+}
+
+TEST(ReductionTest, Prod2D_Dim0) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::PROD, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 4.0);   // 1*4
+    EXPECT_DOUBLE_EQ(r.get({1}), 10.0);  // 2*5
+    EXPECT_DOUBLE_EQ(r.get({2}), 18.0);  // 3*6
+}
+
+TEST(ReductionTest, Prod2D_Dim1) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(1, reductions::ReductionOps::PROD, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 6.0);    // 1*2*3
+    EXPECT_DOUBLE_EQ(r.get({1}), 120.0);  // 4*5*6
+}
+
+TEST(ReductionTest, Prod1D_WithZero) {
+    Tensor a({3});
+    a.set(5.0, {0}); a.set(0.0, {1}); a.set(3.0, {2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::PROD);
+    EXPECT_DOUBLE_EQ(r.get({0}), 0.0);
+}
+
+TEST(ReductionTest, Prod2D_Dim0_KeepDims) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::PROD, true);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1, 3}));
+    EXPECT_DOUBLE_EQ(r.get({0, 0}), 4.0);
+    EXPECT_DOUBLE_EQ(r.get({0, 1}), 10.0);
+    EXPECT_DOUBLE_EQ(r.get({0, 2}), 18.0);
+}
+
+// --- ARG_MAX ---
+
+TEST(ReductionTest, ArgMax1D) {
+    Tensor a({5});
+    a.set(3.0, {0}); a.set(1.0, {1}); a.set(7.0, {2}); a.set(2.0, {3}); a.set(5.0, {4});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::ARG_MAX);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 2.0);  // index of 7.0
+}
+
+TEST(ReductionTest, ArgMax2D_Dim0) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(5.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(2.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::ARG_MAX, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 1.0);  // row 1 has 4 > 1
+    EXPECT_DOUBLE_EQ(r.get({1}), 0.0);  // row 0 has 5 > 2
+    EXPECT_DOUBLE_EQ(r.get({2}), 1.0);  // row 1 has 6 > 3
+}
+
+TEST(ReductionTest, ArgMax2D_Dim1) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(5.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(2.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(1, reductions::ReductionOps::ARG_MAX, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 1.0);  // col 1 has max 5
+    EXPECT_DOUBLE_EQ(r.get({1}), 2.0);  // col 2 has max 6
+}
+
+// --- ARG_MIN ---
+
+TEST(ReductionTest, ArgMin1D) {
+    Tensor a({5});
+    a.set(3.0, {0}); a.set(1.0, {1}); a.set(7.0, {2}); a.set(2.0, {3}); a.set(5.0, {4});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::ARG_MIN);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 1.0);  // index of 1.0
+}
+
+TEST(ReductionTest, ArgMin2D_Dim0) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(5.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(2.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::ARG_MIN, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 0.0);  // row 0 has 1 < 4
+    EXPECT_DOUBLE_EQ(r.get({1}), 1.0);  // row 1 has 2 < 5
+    EXPECT_DOUBLE_EQ(r.get({2}), 0.0);  // row 0 has 3 < 6
+}
+
+TEST(ReductionTest, ArgMin2D_Dim1) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(5.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(2.0, {1, 1}); a.set(6.0, {1, 2});
+    Tensor r = a.accumulate(1, reductions::ReductionOps::ARG_MIN, false);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 0.0);  // col 0 has min 1
+    EXPECT_DOUBLE_EQ(r.get({1}), 1.0);  // col 1 has min 2
+}
+
+// --- Edge cases ---
+
+TEST(ReductionTest, SingleElementTensor) {
+    Tensor a({1});
+    a.set(42.0, {0});
+    EXPECT_DOUBLE_EQ(a.accumulate(0, reductions::ReductionOps::SUM).get({0}), 42.0);
+    EXPECT_DOUBLE_EQ(a.accumulate(0, reductions::ReductionOps::MEAN).get({0}), 42.0);
+    EXPECT_DOUBLE_EQ(a.accumulate(0, reductions::ReductionOps::MAX).get({0}), 42.0);
+    EXPECT_DOUBLE_EQ(a.accumulate(0, reductions::ReductionOps::MIN).get({0}), 42.0);
+    EXPECT_DOUBLE_EQ(a.accumulate(0, reductions::ReductionOps::PROD).get({0}), 42.0);
+    EXPECT_DOUBLE_EQ(a.accumulate(0, reductions::ReductionOps::ARG_MAX).get({0}), 0.0);
+    EXPECT_DOUBLE_EQ(a.accumulate(0, reductions::ReductionOps::ARG_MIN).get({0}), 0.0);
+}
+
+TEST(ReductionTest, InvalidDimThrows) {
+    Tensor a({2, 3});
+    EXPECT_THROW(a.accumulate(2, reductions::ReductionOps::SUM), std::invalid_argument);
+    EXPECT_THROW(a.accumulate(-1, reductions::ReductionOps::SUM), std::invalid_argument);
+}
+
+TEST(ReductionTest, Reduce3D_SumDim0) {
+    // shape [2, 2, 3]
+    Tensor a({2, 2, 3});
+    // layer 0: [[1,2,3],[4,5,6]]
+    a.set(1.0, {0, 0, 0}); a.set(2.0, {0, 0, 1}); a.set(3.0, {0, 0, 2});
+    a.set(4.0, {0, 1, 0}); a.set(5.0, {0, 1, 1}); a.set(6.0, {0, 1, 2});
+    // layer 1: [[7,8,9],[10,11,12]]
+    a.set(7.0, {1, 0, 0}); a.set(8.0, {1, 0, 1}); a.set(9.0, {1, 0, 2});
+    a.set(10.0, {1, 1, 0}); a.set(11.0, {1, 1, 1}); a.set(12.0, {1, 1, 2});
+    Tensor r = a.accumulate(0, reductions::ReductionOps::SUM, false);
+    // result shape [2, 3]: [[1+7, 2+8, 3+9], [4+10, 5+11, 6+12]]
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2, 3}));
+    EXPECT_DOUBLE_EQ(r.get({0, 0}), 8.0);
+    EXPECT_DOUBLE_EQ(r.get({0, 1}), 10.0);
+    EXPECT_DOUBLE_EQ(r.get({0, 2}), 12.0);
+    EXPECT_DOUBLE_EQ(r.get({1, 0}), 14.0);
+    EXPECT_DOUBLE_EQ(r.get({1, 1}), 16.0);
+    EXPECT_DOUBLE_EQ(r.get({1, 2}), 18.0);
+}
+
+TEST(ReductionTest, ReduceViaLinalgReduce) {
+    Tensor a({2, 3});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {0, 2});
+    a.set(4.0, {1, 0}); a.set(5.0, {1, 1}); a.set(6.0, {1, 2});
+    // reduce to shape {1, 1} (full reduction via SUM)
+    std::vector<int> targetShape = {1, 1};
+    Tensor r = linear_algebra::reduce(a, targetShape, reductions::ReductionOps::SUM);
+    EXPECT_EQ(r.getShape(), (std::vector<int>{1, 1}));
+    EXPECT_DOUBLE_EQ(r.get({0, 0}), 21.0);  // 1+2+3+4+5+6
+}
+
+
 // main to run all the tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

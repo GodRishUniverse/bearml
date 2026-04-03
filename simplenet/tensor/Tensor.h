@@ -1071,6 +1071,7 @@ namespace simplenet{
             friend Tensor linear_algebra::sign(const Tensor& a);
 
             // TODO: refactor for native CUDA support
+            //----------------------------------------ACCUMULATORs (used in reduce)------------------------------------------------------
             Tensor accumulate(int dim, reductions::ReductionOps op, bool keepdims = false){
                 if (dim<0 || dim>=shape.size()){
                     throw std::invalid_argument("DIM not in the correct range!");
@@ -1080,8 +1081,44 @@ namespace simplenet{
                 if (shape.size()==1 && dim ==0){
                     // no need to check keep dims as if keepdims is false then it will be a scalar anyways
                     Tensor new_t({1});
+                    new_t.data[0] = (op == reductions::ReductionOps::PROD) ? 1.0
+                                             : (op == reductions::ReductionOps::MAX)  ? -std::numeric_limits<double>::infinity()
+                                             : (op == reductions::ReductionOps::MIN)  ?  std::numeric_limits<double>::infinity()
+                                             : 0.0; // even for argmin/argmax initial value is 0
+                    double value = new_t.data[0]; // for argmin/argmax
                     for (size_t i =0; i < sizeOfTensor(); i++){
-                        new_t.data[0]+=data[i];
+                        switch (op) {
+                            case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
+                                new_t.data[0] += data[i];
+                                break;
+                            case reductions::ReductionOps::PROD:
+                                new_t.data[0] *= data[i];
+                                break;
+                            case reductions::ReductionOps::MAX:
+                                new_t.data[0] = std::max(new_t.data[0] , data[i]);
+                                break;
+                            case reductions::ReductionOps::MIN:
+                                new_t.data[0] = std::min(new_t.data[0] , data[i]);
+                                break;
+                            case reductions::ReductionOps::ARG_MAX:
+                                if (data[i] > value) {
+                                    new_t.data[0] = i;
+                                    value = data[i];
+                                }
+                                break;
+                            case reductions::ReductionOps::ARG_MIN:
+                                if (data[i] < value) {
+                                    new_t.data[0] = i;
+                                    value = data[i];
+                                }
+                                break;
+                            default:
+                                throw std::runtime_error("Unsupported reduction op");
+                        }
+                    }
+                    // for mean, divide by the number of elements (get scalar value)
+                    if (op == reductions::ReductionOps::MEAN) {
+                        new_t.data[0] /= sizeOfTensor();
                     }
                     new_t.to_(this->device);
                     return new_t;
@@ -1110,9 +1147,11 @@ namespace simplenet{
                     for (size_t s = 0; s<offset_new_shape;s++){
                         // accumulate initial value based on reduction op
                         double val = (op == reductions::ReductionOps::PROD) ? 1.0
-                                                 : (op == reductions::ReductionOps::MAX)  ? -std::numeric_limits<double>::infinity()
-                                                 : (op == reductions::ReductionOps::MIN)  ?  std::numeric_limits<double>::infinity()
+                                                 : (op == reductions::ReductionOps::MAX || op == reductions::ReductionOps::ARG_MAX)  ? -std::numeric_limits<double>::infinity()
+                                                 : (op == reductions::ReductionOps::MIN || op == reductions::ReductionOps::ARG_MIN)  ?  std::numeric_limits<double>::infinity()
                                                  : 0.0;
+                        double arg_idx = 0.0;
+
                         for (int idx = 0; idx<oldDim; idx++){
                             // edited from this->data to copy_tensor.data
                             double elem = copy_tensor.data[v + idx * offset_new_shape + s];
@@ -1129,13 +1168,29 @@ namespace simplenet{
                                 case reductions::ReductionOps::MIN:
                                     val = std::min(val, elem);
                                     break;
+                                case reductions::ReductionOps::ARG_MAX:
+                                    if (elem > val) {
+                                        val = elem;
+                                        arg_idx = idx;
+                                    }
+                                    break;
+                                case reductions::ReductionOps::ARG_MIN:
+                                    if (elem < val) {
+                                        val = elem;
+                                        arg_idx = idx;
+                                    }
+                                    break;
                                 default:
                                     throw std::runtime_error("Unsupported reduction op");
 
                             }
                         }
-                        if (op == reductions::ReductionOps::MEAN) val /= oldDim; // only for mean
-                        flat_data[dest_idx]= val;
+                        if (op == reductions::ReductionOps::ARG_MAX || op == reductions::ReductionOps::ARG_MIN) {
+                            flat_data[dest_idx] = arg_idx;  // store the index, not the value
+                        } else {
+                            if (op == reductions::ReductionOps::MEAN) val /= oldDim; // only for mean
+                            flat_data[dest_idx]= val;
+                        }
                         dest_idx++;
                     }
                 }
