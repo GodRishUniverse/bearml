@@ -274,42 +274,42 @@ int main() {
 
     simplenet::Device dev = simplenet::Device(simplenet::DeviceType::CUDA,  0);
 
-    // Model testmodel = Model(2, 5, dev);
+    Model testmodel = Model(2, 5, dev);
 
-    // simplenet::Tensor tester2({1,2});
-    // tester2.linspace(1,2);
-    // tester2.to_(dev);
+    simplenet::Tensor tester2({1,2});
+    tester2.linspace(1,2);
+    tester2.to_(dev);
 
-    // // so PyTorch uses its custom random number generator for initialization and so our initialization does not match and so for testing this what can be done is we basically get pytorch weights and see if the numbers match
-    // auto pred = testmodel.forward({tester2});
-    // pred->val.to_(dev);
+    // so PyTorch uses its custom random number generator for initialization and so our initialization does not match and so for testing this what can be done is we basically get pytorch weights and see if the numbers match
+    auto pred = testmodel.forward({tester2});
+    pred->val.to_(dev);
 
-    // // cout << pred->val << endl;
-    // // cout << "Pred grad: " << pred->grad << endl;
-
-
-    // simplenet::Tensor actual({1,5});
-    // actual.linspace(1,5);
-    // actual.to_(dev);
-    // simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.1);
-
-    // // Sample - works gets closer to the ideal values
-    // for (int i =0;i <1000; i++){
-    //     optim.zero_grad();
-    //     auto ac = simplenet::Node<simplenet::Tensor>::make_node(actual);
-
-    //     auto loss = simplenet::neural_network::loss_functions::l1_loss(ac, pred);
-    //     simplenet::autogradient::backward(loss);
-
-    //     optim.step();
-
-    //     cout << "Loss value: " << loss->val << endl;
-
-    //     pred = testmodel.forward({tester2});
-    //     cout << "Pred value: " << pred->val << endl;
-    // }
+    // cout << pred->val << endl;
     // cout << "Pred grad: " << pred->grad << endl;
-    //
+
+
+    simplenet::Tensor actual({1,5});
+    actual.linspace(1,5);
+    actual.to_(dev);
+    simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.1);
+
+    // Sample - works gets closer to the ideal values
+    for (int i =0;i <10; i++){
+        optim.zero_grad();
+        auto ac = simplenet::Node<simplenet::Tensor>::make_node(actual);
+
+        auto loss = simplenet::neural_network::loss_functions::l1_loss(ac, pred);
+        simplenet::autogradient::backward(loss);
+
+        optim.step();
+
+        cout << "Loss value: " << loss->val << endl;
+
+        pred = testmodel.forward({tester2});
+        cout << "Pred value: " << pred->val << endl;
+    }
+    cout << "Pred grad: " << pred->grad << endl;
+
 
 
     // simplenet::Tensor a ({5});
@@ -336,17 +336,17 @@ int main() {
      // auto leaky_relu_node = simplenet::Node<simplenet::Tensor>::make_node(mat_inv);
      // auto leaky_relu_out = leaky_relu.forward(leaky_relu_node);
      // cout << leaky_relu_out->val << endl;
-     mat_inv.fill(1.0);
-     simplenet::Tensor mat_inv_2 ({5,2});
+     // mat_inv.fill(1.0);
+     // simplenet::Tensor mat_inv_2 ({5,2});
 
 
 
-     auto concat_out = simplenet::Tensor::concat({mat_inv, mat_inv_2}, 1);
-     cout << concat_out << endl;
+     // auto concat_out = simplenet::Tensor::concat({mat_inv, mat_inv_2}, 1);
+     // cout << concat_out << endl;
 
 
-     // we need to use simplenet ops (shouldn't these be in linalg?)
-     cout << simplenet::Tensor::tan(mat_inv) << endl;
+     // // we need to use simplenet ops (shouldn't these be in linalg?)
+     // cout << simplenet::Tensor::tan(mat_inv) << endl;
 
 
 }

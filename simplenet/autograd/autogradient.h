@@ -12,6 +12,7 @@
 
 
 #include "tensor/Tensor.h"
+// #include "../cuda/includes/ops.h" //TODO: this Ops should be moved to a separate folder as Ops.h used in Tensor.h as well
 
 
 using ll = long long; // can also use int_fast64_t
@@ -56,7 +57,7 @@ namespace simplenet{
     */
 
 
-
+   // TODO refactor with ops
    template<typename T> class  Node;
    // TODO: fix for MATRIX AND TENSOR Types - probably will need to provide template specializations
    // TODO: add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads
@@ -109,46 +110,90 @@ namespace simplenet{
             }
         }
 
-        friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-                std::shared_ptr<Node<T>> node  = make_node(a->val+b->val);
+        // refactoring
+        friend std::shared_ptr<Node<T>> elementwise_binary_node_operators(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b, OP_Code op){
+            std::shared_ptr<Node<T>> node;
+            switch(op) {
+                case OP_Code::OP_ADD: node = make_node(a->val + b->val); break;
                 // node->grad = a->grad + b->grad;  // c = a + b     =>    dc = da + db
+                case OP_Code::OP_SUB: node = make_node(a->val - b->val); break;
+                // node->grad = a->grad - b->grad;  // c = a - b     =>    dc = da - db
+                case OP_Code::OP_MUL: node  = make_node(a->val*b->val); break;
+                // node->grad = b->val*a->grad + b->grad*a->val;  //  dc = a * b     =>    dc = b * da + a * db
 
-                node->inputs = {a,b};
+                default:
+                    throw std::invalid_argument("Autograd: OP Code does not exist - in elementwise_binary.");
+            }
 
-                a->outputs.push_back(node);
-                b->outputs.push_back(node);
+            node->inputs = {a,b};
 
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_b = b;
-                std::weak_ptr<Node<T>> weak_node = node;
+            a->outputs.push_back(node);
+            b->outputs.push_back(node);
 
-                node->backward_fn = [weak_a, weak_b, weak_node](){
+            std::weak_ptr<Node<T>> weak_a = a;
+            std::weak_ptr<Node<T>> weak_b = b;
+            std::weak_ptr<Node<T>> weak_node = node;
 
-                    auto a_locked = weak_a.lock();
-                    auto b_locked = weak_b.lock();
-                    auto node_locked = weak_node.lock();
+            node->backward_fn = [weak_a, weak_b, weak_node, op](){
 
-                    if (!a_locked || !b_locked || !node_locked) {
-                        return; // One of the nodes was destroyed
+                auto a_locked = weak_a.lock();
+                auto b_locked = weak_b.lock();
+                auto node_locked = weak_node.lock();
+
+                if (!a_locked || !b_locked || !node_locked) {
+                    return; // One of the nodes was destroyed
+                }
+                if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                    std::vector<int> temp_a =  a_locked->grad.getShape();
+                    std::vector<int> temp_b = b_locked->grad.getShape();
+
+                    switch (op) {
+                        case OP_Code::OP_ADD:
+                            a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_a, reduction_op);  // dc/da = b
+                            b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_b, reduction_op);  // dc/db = a
+                            break;
+                        case OP_Code::OP_SUB:
+                            a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad,temp_a, reduction_op);  // dc/da = 1
+                            b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * -1.0,temp_b, reduction_op);  // dc/db = -1
+                            break;
+                        case OP_Code::OP_MUL:
+                            a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * b_locked->val.transpose(),temp_a, reduction_op); // grad_a = grad * b^T
+                            b_locked->grad += simplenet::linear_algebra::reduce(a_locked->val.transpose() * node_locked->grad, temp_b, reduction_op); // grad_b = a^T * grad
+                            break;
+                        default:
+                            throw std::invalid_argument("Autograd: OP Code does not exist - in elementwise_binary.");
                     }
-                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
-                        std::vector<int> temp_a =  a_locked->grad.getShape();
-                        std::vector<int> temp_b = b_locked->grad.getShape();
-                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_a, reduction_op);  // dc/da = b
-                        b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad, temp_b, reduction_op);  // dc/db = a
-                    }else{
-                        // case for doubles
-                        a_locked->grad += node_locked->grad;  // dc/da = b
-                        b_locked->grad += node_locked->grad;  // dc/db = a
+                }else{
+
+                    switch (op) {
+                        case OP_Code::OP_ADD:
+                            // case for doubles
+                            a_locked->grad += node_locked->grad;  // dc/da = b
+                            b_locked->grad += node_locked->grad;  // dc/db = a
+                            break;
+                        case OP_Code::OP_SUB:
+                            a_locked->grad += node_locked->grad;  // dc/da = 1
+                            b_locked->grad += node_locked->grad*-1.0;  // dc/db = -1
+                            break;
+                        case OP_Code::OP_MUL:
+                            a_locked->grad += node_locked->grad * b_locked->val; // grad_a = grad * b^T
+                            b_locked->grad += a_locked->val * node_locked->grad; // grad_b = a^T * grad
+                            break;
+                        default:
+                            throw std::invalid_argument("Autograd: OP Code does not exist - in elementwise_binary.");
                     }
+                }
+            };
 
-                };
+            return node;
+        }
 
-                return node;
+        friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+               return elementwise_binary_node_operators(a, b, OP_Code::OP_ADD);
         }
 
         friend std::shared_ptr<Node<T>> operator+(double scalar, std::shared_ptr<Node<T>> b){
-            simplenet::Tensor scalar_tensor({1});
+            simplenet::Tensor scalar_tensor({1}, b->val.getDevice());
             scalar_tensor.fill(scalar);
 
             auto scalar_node = constant(scalar_tensor);
@@ -156,7 +201,7 @@ namespace simplenet{
         }
 
         friend std::shared_ptr<Node<T>> operator+( std::shared_ptr<Node<T>> b, double scalar){
-            simplenet::Tensor scalar_tensor({1});
+            simplenet::Tensor scalar_tensor({1}, b->val.getDevice());
             scalar_tensor.fill(scalar);
 
             auto scalar_node = constant(scalar_tensor);
@@ -165,47 +210,11 @@ namespace simplenet{
 
 
         friend std::shared_ptr<Node<T>> operator-(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-                std::shared_ptr<Node<T>> node  = make_node(a->val-b->val);
-                // node->grad = a->grad - b->grad;  // c = a - b     =>    dc = da - db
-
-                node->inputs = {a,b};
-
-                a->outputs.push_back(node);
-                b->outputs.push_back(node);
-
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_b = b;
-                std::weak_ptr<Node<T>> weak_node = node;
-
-
-                node->backward_fn = [weak_a, weak_b, weak_node](){
-                    auto a_locked = weak_a.lock();
-                    auto b_locked = weak_b.lock();
-                    auto node_locked = weak_node.lock();
-
-                    if (!a_locked || !b_locked || !node_locked) {
-                        return; // One of the nodes was destroyed
-                    }
-
-                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
-                        std::vector<int> temp_a =  a_locked->grad.getShape();
-                        std::vector<int> temp_b = b_locked->grad.getShape();
-
-                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad,temp_a, reduction_op);  // dc/da = 1
-                        b_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * -1.0,temp_b, reduction_op);  // dc/db = -1
-                    }else{
-                        // case for doubles
-                        a_locked->grad += node_locked->grad*1.0;  // dc/da = 1
-                        b_locked->grad += node_locked->grad*-1.0;  // dc/db = -1
-                    }
-                };
-
-                return node;
+            return elementwise_binary_node_operators(a, b, OP_Code::OP_SUB);
         }
 
         friend std::shared_ptr<Node<T>> operator-(double scalar, std::shared_ptr<Node<T>> b){
-            simplenet::Tensor scalar_tensor({1});
+            simplenet::Tensor scalar_tensor({1},  b->val.getDevice());
             scalar_tensor.fill(scalar);
 
             auto scalar_node = constant(scalar_tensor);
@@ -213,7 +222,7 @@ namespace simplenet{
         }
 
         friend std::shared_ptr<Node<T>> operator-( std::shared_ptr<Node<T>> b, double scalar){
-            simplenet::Tensor scalar_tensor({1});
+            simplenet::Tensor scalar_tensor({1},  b->val.getDevice());
             scalar_tensor.fill(scalar);
 
             auto scalar_node = constant(scalar_tensor);
@@ -222,42 +231,7 @@ namespace simplenet{
 
 
         friend std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-
-                std::shared_ptr<Node<T>> node  = make_node(a->val*b->val);
-                // node->grad = b->val*a->grad + b->grad*a->val;  //  dc = a * b     =>    dc = b * da + a * db
-
-                node->inputs = {a,b};
-
-                a->outputs.push_back(node);
-                b->outputs.push_back(node);
-
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_b = b;
-                std::weak_ptr<Node<T>> weak_node = node;
-
-                node->backward_fn = [weak_a, weak_b, weak_node](){
-
-                    auto a_locked = weak_a.lock();
-                    auto b_locked = weak_b.lock();
-                    auto node_locked = weak_node.lock();
-
-                    if (!a_locked || !b_locked || !node_locked) {
-                        return; // One of the nodes was destroyed
-                    }
-
-                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
-                        std::vector<int> temp_a =  a_locked->grad.getShape();
-                        std::vector<int> temp_b = b_locked->grad.getShape();
-                        a_locked->grad += simplenet::linear_algebra::reduce(node_locked->grad * b_locked->val.transpose(),temp_a, reduction_op); // grad_a = grad * b^T
-                        b_locked->grad += simplenet::linear_algebra::reduce(a_locked->val.transpose() * node_locked->grad, temp_b, reduction_op); // grad_b = a^T * grad
-                    }else{
-                        // case for doubles
-                        a_locked->grad += node_locked->grad * b_locked->val; // grad_a = grad * b^T
-                        b_locked->grad += a_locked->val * node_locked->grad; // grad_b = a^T * grad
-                    }
-                };
-                return node;
+            return elementwise_binary_node_operators(a, b, OP_Code::OP_MUL);
         }
 
         friend std::shared_ptr<Node<T>> operator*(double scalar, std::shared_ptr<Node<T>> b){
