@@ -144,11 +144,7 @@ namespace simplenet {
                         x->val = x->val.to(this->device); // move to device if not already on it
                     }
 
-                    std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1.0*x);
-                    std::shared_ptr<simplenet::Node<Tensor>> exp_plus = exp(x);
-
-                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // should work now - hadamard division is supported
-                    return tanh;
+                    return tanh(x);
                 }
 
                 std::shared_ptr<simplenet::Node<Tensor>> forward(Tensor& x) override{
@@ -157,11 +153,11 @@ namespace simplenet {
                     }
 
                     std::shared_ptr<simplenet::Node<Tensor>> node_x = simplenet::Node<simplenet::Tensor>::make_node(x);
-                    std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1.0*node_x);
-                    std::shared_ptr<simplenet::Node<Tensor>> exp_plus = exp(node_x);
+                    // std::shared_ptr<simplenet::Node<Tensor>> exp_minus = exp(-1.0*node_x);
+                    // std::shared_ptr<simplenet::Node<Tensor>> exp_plus = exp(node_x);
 
-                    auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // should work now - hadamard division is supported
-                    return tanh;
+                    // auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // should work now - hadamard division is supported
+                    return tanh(node_x);
                 }
 
                 Tensor get_detached_value(Tensor& t)override {

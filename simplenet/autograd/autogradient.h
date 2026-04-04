@@ -303,7 +303,7 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
                     std::vector<int> a_shape = a_locked->grad.getShape();
-                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * node_locked->val, a_shape, reduction_op);  //  dc/da = exp(a)
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(simplenet::linear_algebra::hadamard(node_locked->grad, node_locked->val), a_shape, reduction_op);  //  dc/da = exp(a)
                 };
 
                 return node;
@@ -357,13 +357,13 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
                     std::vector<int> a_shape = a_locked->grad.getShape();
-                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * simplenet::Tensor::cos(a_locked->val), a_shape, reduction_op);  //  dc/da = cos(a)
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(simplenet::linear_algebra::hadamard(node_locked->grad, simplenet::Tensor::cos(a_locked->val)), a_shape, reduction_op);  //  dc/da = cos(a)
                 };
 
                 return node;
             }else{
                 std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
-                std::shared_ptr<Node<T>> node  = make_node(sin(a->val));
+                std::shared_ptr<Node<T>> node  = make_node(std::sin(a->val));
                 //  c = sin(a)     =>    dc/da = cos(a)
 
                 node->inputs = {a};
@@ -411,13 +411,13 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
                     std::vector<int> a_shape = a_locked->grad.getShape();
-                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * (-1.0 * simplenet::Tensor::sin(a_locked->val)), a_shape, reduction_op);  //  dc/da = -sin(a)
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(simplenet::linear_algebra::hadamard(node_locked->grad, (-1.0 * simplenet::Tensor::sin(a_locked->val))), a_shape, reduction_op);  //  dc/da = -sin(a)
                 };
 
                 return node;
             }else{
                 std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
-                std::shared_ptr<Node<T>> node  = make_node(cos(a->val));
+                std::shared_ptr<Node<T>> node  = make_node(std::cos(a->val));
                 //  c = cos(a)     =>    dc/da = -sin(a)
 
                 node->inputs = {a};
@@ -465,13 +465,13 @@ namespace simplenet{
                     }
                     std::vector<int> a_shape = a_locked->grad.getShape();
                     auto tan_val = simplenet::Tensor::tan(a_locked->val);
-                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * (1.0 + simplenet::linear_algebra::hadamard(tan_val, tan_val)), a_shape, reduction_op);  //  dc/da = sec^2(a) = 1 + tan^2(a)
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(simplenet::linear_algebra::hadamard(node_locked->grad, (1.0 + simplenet::linear_algebra::hadamard(tan_val, tan_val))), a_shape, reduction_op);  //  dc/da = sec^2(a) = 1 + tan^2(a)
                 };
 
                 return node;
             }else{
                 std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
-                std::shared_ptr<Node<T>> node  = make_node(tan(a->val));
+                std::shared_ptr<Node<T>> node  = make_node(std::tan(a->val));
                 //  c = tan(a)     =>    dc/da = sec^2(a) = 1 + tan^2(a)
 
                 node->inputs = {a};
@@ -520,13 +520,13 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
                     std::vector<int> a_shape = a_locked->grad.getShape();
-                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * simplenet::Tensor::cosh(a_locked->val), a_shape, reduction_op);  //  dc/da = cos(a)
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(simplenet::linear_algebra::hadamard(node_locked->grad, simplenet::Tensor::cosh(a_locked->val)), a_shape, reduction_op);  //  dc/da = cosh(a)
                 };
 
                 return node;
             }else{
                 std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
-                std::shared_ptr<Node<T>> node  = make_node(sinh(a->val));
+                std::shared_ptr<Node<T>> node  = make_node(std::sinh(a->val));
                 //  c = sinh(a)     =>    dc/da = cosh(a)
 
                 node->inputs = {a};
@@ -574,13 +574,13 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
                     std::vector<int> a_shape = a_locked->grad.getShape();
-                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * simplenet::Tensor::sinh(a_locked->val), a_shape, reduction_op);  //  dc/da = sinh(a)
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(simplenet::linear_algebra::hadamard(node_locked->grad, simplenet::Tensor::sinh(a_locked->val)), a_shape, reduction_op);  //  dc/da = sinh(a)
                 };
 
                 return node;
             }else{
                 std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
-                std::shared_ptr<Node<T>> node  = make_node(cosh(a->val));
+                std::shared_ptr<Node<T>> node  = make_node(std::cosh(a->val));
                 //  c = cosh(a)     =>    dc/da = sinh(a)
 
                 node->inputs = {a};
@@ -627,14 +627,13 @@ namespace simplenet{
                         return; // One of the nodes was destroyed
                     }
                     std::vector<int> a_shape = a_locked->grad.getShape();
-                    auto tanh_val = simplenet::Tensor::tanh(a_locked->val);
-                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * (1.0 - simplenet::linear_algebra::hadamard(tanh_val, tanh_val)), a_shape, reduction_op);  //  dc/da = sech^2(a) = 1 - tanh^2(a)
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(simplenet::linear_algebra::hadamard(node_locked->grad, (1.0 - simplenet::linear_algebra::hadamard(node_locked->val, node_locked->val))), a_shape, reduction_op);  //  dc/da = sech^2(a) = 1 - tanh^2(a)
                 };
 
                 return node;
             }else{
                 std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
-                std::shared_ptr<Node<T>> node  = make_node(tanh(a->val));
+                std::shared_ptr<Node<T>> node  = make_node(std::tanh(a->val));
                 //  c = tanh(a)     =>    dc/da = sech^2(a) = 1 - tanh^2(a)
 
                 node->inputs = {a};
@@ -651,8 +650,7 @@ namespace simplenet{
                     if(!a_locked || !node_locked){
                         return; // One of the nodes was destroyed
                     }
-                    auto tanh_val = tanh(a_locked->val);
-                    a_locked->grad += node_locked->grad * (1.0 - tanh_val * tanh_val);  //  dc/da = sech^2(a) = 1 - tanh^2(a)
+                    a_locked->grad += node_locked->grad * (1.0 - node_locked->val * node_locked->val);  //  dc/da = sech^2(a) = 1 - tanh^2(a)
                 };
 
                 return node;
