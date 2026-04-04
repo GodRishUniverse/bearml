@@ -14,6 +14,7 @@ enum class OP_Code : uint16_t {
     OP_DIV,
     OP_MAX,
     OP_MIN,
+    OP_HADAMARD,
     // unary operations
     OP_EXP,
     OP_LOG,

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../includes/cuda_helper.h"
-#include "../includes/ops.h"
+// #include "../includes/ops.h"
 #include <vector>
 #include <cstddef>
 

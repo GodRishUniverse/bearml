@@ -13,3 +13,4 @@
 #include "cuda_consts.h" // we will have all our constants here
 
 #include "device_atomic_functions.h"
+#include "../../operators/ops.h"

@@ -110,6 +110,17 @@ namespace simplenet{
             }
         }
 
+        // TODO: use this for accumulating gradients (instead of having double and Tensor branches)
+        static void accumulate_grad(T& target_grad, const T& grad_contribution,
+                                    const T& target_val) {
+            if constexpr (std::is_same_v<T, simplenet::Tensor>) {
+                target_grad += simplenet::linear_algebra::reduce(
+                    grad_contribution, target_val.getShape(), reduction_op);
+            } else {
+                target_grad += grad_contribution;
+            }
+        }
+
         // refactoring
         friend std::shared_ptr<Node<T>> elementwise_binary_node_operators(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b, OP_Code op){
             std::shared_ptr<Node<T>> node;
