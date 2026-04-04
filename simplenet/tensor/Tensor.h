@@ -761,6 +761,12 @@ namespace simplenet{
                     case OP_Code::OP_LOG: return elementwise_unary_cpu(A, [](double a){ return std::log(a); });
                     case OP_Code::OP_SQRT: return elementwise_unary_cpu(A, [](double a){ return std::sqrt(a); });
                     case OP_Code::OP_ABS: return elementwise_unary_cpu(A, [](double a){ return std::abs(a); });
+                    case OP_Code::OP_SIN: return elementwise_unary_cpu(A, [](double a){ return std::sin(a); });
+                    case OP_Code::OP_COS: return elementwise_unary_cpu(A, [](double a){ return std::cos(a); });
+                    case OP_Code::OP_TAN: return elementwise_unary_cpu(A, [](double a){ return std::tan(a); });
+                    case OP_Code::OP_SINH: return elementwise_unary_cpu(A, [](double a){ return std::sinh(a); });
+                    case OP_Code::OP_COSH: return elementwise_unary_cpu(A, [](double a){ return std::cosh(a); });
+                    case OP_Code::OP_TANH: return elementwise_unary_cpu(A, [](double a){ return std::tanh(a); });
                     default:
                         throw std::invalid_argument("OP Code does not exist - in elementwise_unary.");
                 }
@@ -1212,6 +1218,41 @@ namespace simplenet{
                 // std::cout <<"EXPONENTIATED" <<std::endl;
                 return elementwise_unary(t, OP_Code::OP_EXP);
             }
+
+            //----------------------------------------Sin------------------------------------------------------
+            static Tensor sin(Tensor& t){
+                // std::cout <<"SIN" <<std::endl;
+                return elementwise_unary(t, OP_Code::OP_SIN);
+            }
+
+            //----------------------------------------Cos------------------------------------------------------
+            static Tensor cos(Tensor& t){
+                // std::cout <<"COS" <<std::endl;
+                return elementwise_unary(t, OP_Code::OP_COS);
+            }
+
+            //----------------------------------------Tan------------------------------------------------------
+            static Tensor tan(Tensor& t){
+                // std::cout <<"TAN" <<std::endl;
+                return elementwise_unary(t, OP_Code::OP_TAN);
+            }
+
+            //----------------------------------------Hyperbolic------------------------------------------------------
+            static Tensor sinh(Tensor& t){
+                // std::cout <<"SINH" <<std::endl;
+                return elementwise_unary(t, OP_Code::OP_SINH);
+            }
+
+            static Tensor cosh(Tensor& t){
+                // std::cout <<"COSH" <<std::endl;
+                return elementwise_unary(t, OP_Code::OP_COSH);
+            }
+
+            static Tensor tanh(Tensor& t){
+                // std::cout <<"TANH" <<std::endl;
+                return elementwise_unary(t, OP_Code::OP_TANH);
+            }
+
 
 
             //----------------------------------------Max------------------------------------------------------

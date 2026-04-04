@@ -349,6 +349,334 @@ namespace simplenet{
 
         }
 
+
+        // unary operator: sin(x)
+        friend std::shared_ptr<Node<T>> sin(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                // std::cout <<"SIN TENSOR NODE" <<std::endl;
+
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::sin(a->val));
+                //  c = sin(a)     =>    dc/da = cos(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    std::vector<int> a_shape = a_locked->grad.getShape();
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * simplenet::Tensor::cos(a_locked->val), a_shape, reduction_op);  //  dc/da = cos(a)
+                };
+
+                return node;
+            }else{
+                std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
+                std::shared_ptr<Node<T>> node  = make_node(sin(a->val));
+                //  c = sin(a)     =>    dc/da = cos(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    a_locked->grad += node_locked->grad * cos(a_locked->val);  //  dc/da = cos(a)
+                };
+
+                return node;
+            }
+
+        }
+
+
+        // unary operator: cos(x)
+        friend std::shared_ptr<Node<T>> cos(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                // std::cout <<"COS TENSOR NODE" <<std::endl;
+
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::cos(a->val));
+                //  c = cos(a)     =>    dc/da = -sin(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    std::vector<int> a_shape = a_locked->grad.getShape();
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * (-1.0 * simplenet::Tensor::sin(a_locked->val)), a_shape, reduction_op);  //  dc/da = -sin(a)
+                };
+
+                return node;
+            }else{
+                std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
+                std::shared_ptr<Node<T>> node  = make_node(cos(a->val));
+                //  c = cos(a)     =>    dc/da = -sin(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    a_locked->grad += node_locked->grad * -1.0 * sin(a_locked->val);  //  dc/da = sin(a)
+                };
+
+                return node;
+            }
+
+        }
+
+        // unary operator: tan(x)
+        friend std::shared_ptr<Node<T>> tan(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                // std::cout <<"COS TENSOR NODE" <<std::endl;
+
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::tan(a->val));
+                //  c = tan(a)     =>    dc/da = sec^2(a) = 1 + tan^2(a) [which is what we will use]
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    std::vector<int> a_shape = a_locked->grad.getShape();
+                    auto tan_val = simplenet::Tensor::tan(a_locked->val);
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * (1.0 + simplenet::linear_algebra::hadamard(tan_val, tan_val)), a_shape, reduction_op);  //  dc/da = sec^2(a) = 1 + tan^2(a)
+                };
+
+                return node;
+            }else{
+                std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
+                std::shared_ptr<Node<T>> node  = make_node(tan(a->val));
+                //  c = tan(a)     =>    dc/da = sec^2(a) = 1 + tan^2(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    auto tan_val = tan(a_locked->val);
+                    a_locked->grad += node_locked->grad * (1.0 + tan_val * tan_val);  //  dc/da = sec^2(a) = 1 + tan^2(a)
+                };
+
+                return node;
+            }
+
+        }
+
+
+        // unary operator: sinh(x)
+        friend std::shared_ptr<Node<T>> sinh(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                // std::cout <<"SINH TENSOR NODE" <<std::endl;
+
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::sinh(a->val));
+                //  c = sinh(a)     =>    dc/da = cosh(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    std::vector<int> a_shape = a_locked->grad.getShape();
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * simplenet::Tensor::cosh(a_locked->val), a_shape, reduction_op);  //  dc/da = cos(a)
+                };
+
+                return node;
+            }else{
+                std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
+                std::shared_ptr<Node<T>> node  = make_node(sinh(a->val));
+                //  c = sinh(a)     =>    dc/da = cosh(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    a_locked->grad += node_locked->grad * cosh(a_locked->val);  //  dc/da = cosh(a)
+                };
+
+                return node;
+            }
+
+        }
+
+
+        // unary operator: cosh(x)
+        friend std::shared_ptr<Node<T>> cosh(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                // std::cout <<"COSH TENSOR NODE" <<std::endl;
+
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::cosh(a->val));
+                //  c = cosh(a)     =>    dc/da = sinh(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    std::vector<int> a_shape = a_locked->grad.getShape();
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * simplenet::Tensor::sinh(a_locked->val), a_shape, reduction_op);  //  dc/da = sinh(a)
+                };
+
+                return node;
+            }else{
+                std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
+                std::shared_ptr<Node<T>> node  = make_node(cosh(a->val));
+                //  c = cosh(a)     =>    dc/da = sinh(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    a_locked->grad += node_locked->grad * sinh(a_locked->val);  //  dc/da = sinh(a)
+                };
+
+                return node;
+            }
+
+        }
+
+        // unary operator: tanh(x)
+        friend std::shared_ptr<Node<T>> tanh(std::shared_ptr<Node<T>> a){
+            if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                // std::cout <<"TANH TENSOR NODE" <<std::endl;
+
+                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::tanh(a->val));
+                //  c = tanh(a)     =>    dc/da = sech^2(a) = 1 - tanh^2(a) [which is what we will use]
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    std::vector<int> a_shape = a_locked->grad.getShape();
+                    auto tanh_val = simplenet::Tensor::tanh(a_locked->val);
+                    a_locked->grad +=  simplenet::linear_algebra::reduce(node_locked->grad * (1.0 - simplenet::linear_algebra::hadamard(tanh_val, tanh_val)), a_shape, reduction_op);  //  dc/da = sech^2(a) = 1 - tanh^2(a)
+                };
+
+                return node;
+            }else{
+                std::cout << "TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
+                std::shared_ptr<Node<T>> node  = make_node(tanh(a->val));
+                //  c = tanh(a)     =>    dc/da = sech^2(a) = 1 - tanh^2(a)
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+
+                node->backward_fn = [weak_a, weak_node]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if(!a_locked || !node_locked){
+                        return; // One of the nodes was destroyed
+                    }
+                    auto tanh_val = tanh(a_locked->val);
+                    a_locked->grad += node_locked->grad * (1.0 - tanh_val * tanh_val);  //  dc/da = sech^2(a) = 1 - tanh^2(a)
+                };
+
+                return node;
+            }
+
+        }
+
+
+
         // unary operator: transpose
         friend std::shared_ptr<Node<T>> transpose(std::shared_ptr<Node<T>> a){
             if constexpr (std::is_same<T, simplenet::Tensor>::value){

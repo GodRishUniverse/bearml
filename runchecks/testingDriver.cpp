@@ -345,4 +345,8 @@ int main() {
      cout << concat_out << endl;
 
 
+     // we need to use simplenet ops (shouldn't these be in linalg?)
+     cout << simplenet::Tensor::tan(mat_inv) << endl;
+
+
 }

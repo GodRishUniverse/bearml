@@ -18,7 +18,15 @@ enum class OP_Code : uint16_t {
     OP_EXP,
     OP_LOG,
     OP_ABS,
-    OP_SQRT
+    OP_SQRT,
+    // trigonometric operations (unary)
+    OP_SIN,
+    OP_COS,
+    OP_TAN,
+    // hyperbolic operations (unary)
+    OP_SINH,
+    OP_COSH,
+    OP_TANH
 };
 #endif
 

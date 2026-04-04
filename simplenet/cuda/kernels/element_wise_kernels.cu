@@ -72,7 +72,6 @@ namespace simplenet {
             }
         }
 
-        //TODO : fix kernel for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
         // CASE: NO BROADCASTING NEEDED
         template <typename T>
         __global__
@@ -302,6 +301,56 @@ namespace simplenet {
                         }
                         break;
                     }
+                    case OP_Code::OP_SIN: {
+                        if constexpr (std::is_same_v<T, double>) {
+                            result = ::sin(a[thread_idx]);
+                        } else {
+                            result = static_cast<T>(::sinf(static_cast<float>(a[thread_idx])));
+                        }
+                        break;
+                    }
+                    case OP_Code::OP_COS: {
+                        if constexpr (std::is_same_v<T, double>) {
+                            result = ::cos(a[thread_idx]);
+                        } else {
+                            result = static_cast<T>(::cosf(static_cast<float>(a[thread_idx])));
+                        }
+                        break;
+                    }
+                    case OP_Code::OP_TAN: {
+                        if constexpr (std::is_same_v<T, double>) {
+                            result = ::tan(a[thread_idx]);
+                        } else {
+                            result = static_cast<T>(::tanf(static_cast<float>(a[thread_idx])));
+                        }
+                        break;
+                    }
+
+                    case OP_Code::OP_SINH: {
+                        if constexpr (std::is_same_v<T, double>) {
+                            result = ::sinh(a[thread_idx]);
+                        } else {
+                            result = static_cast<T>(::sinhf(static_cast<float>(a[thread_idx])));
+                        }
+                        break;
+                    }
+                    case OP_Code::OP_COSH: {
+                        if constexpr (std::is_same_v<T, double>) {
+                            result = ::cosh(a[thread_idx]);
+                        } else {
+                            result = static_cast<T>(::coshf(static_cast<float>(a[thread_idx])));
+                        }
+                        break;
+                    }
+                    case OP_Code::OP_TANH: {
+                        if constexpr (std::is_same_v<T, double>) {
+                            result = ::tanh(a[thread_idx]);
+                        } else {
+                            result = static_cast<T>(::tanhf(static_cast<float>(a[thread_idx])));
+                        }
+                        break;
+                    }
+
                     // default operation -> since we cannot throw an error inside the kernel
                     default:
                         result = T{};
