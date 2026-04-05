@@ -16,7 +16,7 @@ using namespace std;
 class Model : public simplenet::neural_network::Model_Construct{
     public:
     simplenet::neural_network::Linear layer1;
-    simplenet::neural_network::ReLU nonlinearity;
+    simplenet::neural_network::Tanh nonlinearity;
     simplenet::neural_network::Linear layer2;
 
     Model(int in_shape, int out_shape, simplenet::Device dev = simplenet::Device(simplenet::DeviceType::CPU, 0)):  layer1(in_shape, out_shape, "Xavier", dev), nonlinearity(42, dev), layer2(out_shape, out_shape, "Xavier", dev) {
