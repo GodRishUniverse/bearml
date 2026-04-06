@@ -181,7 +181,7 @@ namespace simplenet{
             return node;
         }
 
-
+        // Our primary elementwise unary node operator function (called in every unary node operator)
         friend std::shared_ptr<Node<T>> elementwise_unary_node_operators(std::shared_ptr<Node<T>> a, OP_Code op){
             std::shared_ptr<Node<T>> node;
 
@@ -215,6 +215,26 @@ namespace simplenet{
                 case OP_Code::OP_TANH:
                     if constexpr (std::is_same<T, simplenet::Tensor>::value)   node =  make_node(simplenet::Tensor::tanh(a->val));
                     else node = make_node(tanh(a->val));
+                    break;
+                case OP_Code::OP_TRANSPOSE:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value)   node =  make_node(a->val.transpose());
+                    else node = make_node(a->val); // same as input for non-Tensor types
+                    break;
+                case OP_Code::OP_ABS:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value)   node =  make_node(simplenet::Tensor::abs(a->val));
+                    else node = make_node(abs(a->val));
+                    break;
+                case OP_Code::OP_LOG:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value)  node  = make_node(simplenet::Tensor::log(a->val));
+                    else node = make_node(std::log(a->val));
+                    break;
+                case OP_Code::OP_MEAN_FOR_GRAD:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value)  node  = make_node(simplenet::Tensor::mean(a->val));
+                    else node = make_node(a->val);
+                    break;
+                case OP_Code::OP_SQRT:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value)  node  = make_node(simplenet::Tensor::sqrt(a->val));
+                    else node = make_node(std::sqrt(a->val));
                     break;
                 default:
                     throw std::invalid_argument("Autograd: OP Code does not exist - in elementwise_unary.");
@@ -252,7 +272,7 @@ namespace simplenet{
                         if constexpr (std::is_same<T, simplenet::Tensor>::value) {
                             accumulate_grad(a_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, (-1.0 *  simplenet::Tensor::sin(a_locked->val))), a_locked->grad);  //  dc/da = -sin(a)
                         } else {
-                            a_locked->grad += node_locked->grad * -1.0 * sin(node_locked->val);  //  dc/da = -sin(a)
+                            a_locked->grad += node_locked->grad * T(-1.0) * sin(node_locked->val);  //  dc/da = -sin(a)
                         }
                         break;
                     case OP_Code::OP_TAN:
@@ -262,7 +282,7 @@ namespace simplenet{
                             accumulate_grad(a_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, (1.0 + simplenet::linear_algebra::hadamard(tan_val, tan_val)))), a_locked->grad);
                         } else {
                             auto tan_val = tan(a_locked->val);
-                            a_locked->grad += node_locked->grad * (1.0 + tan_val * tan_val);  //  dc/da = sec^2(a) = 1 + tan^2(a)
+                            a_locked->grad += node_locked->grad * (T(1.0) + tan_val * tan_val);  //  dc/da = sec^2(a) = 1 + tan^2(a)
                         }
                         break;
                     case OP_Code::OP_SINH:
@@ -283,7 +303,53 @@ namespace simplenet{
                         if constexpr (std::is_same<T,simplenet::Tensor>::value) {
                             accumulate_grad(a_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, (1.0 - simplenet::linear_algebra::hadamard(node_locked->val, node_locked->val))), a_locked->grad); //  dc/da = 1 - tanh^2(a)
                         } else {
-                            a_locked->grad += node_locked->grad * (1.0 - node_locked->val * node_locked->val);  //  dc/da = 1 - tanh^2(a)
+                            a_locked->grad += node_locked->grad * (T(1.0) - node_locked->val * node_locked->val);  //  dc/da = 1 - tanh^2(a)
+                        }
+                        break;
+                    case OP_Code::OP_TRANSPOSE:
+                        // here reduce will not be applied - shapes are the same (handled by accumulate_grad)
+                        if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                            accumulate_grad(a_locked->grad, node_locked->grad.transpose(), a_locked->val);
+                        }
+                        break;
+                    case OP_Code::OP_ABS:
+                        if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                            simplenet::Tensor sign_mat = simplenet::linear_algebra::sign(a_locked->val);
+                            accumulate_grad(a_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, sign_mat), a_locked->val);
+                        } else {
+                            a_locked->grad += node_locked->grad * (std::signbit(a_locked->val) ? T(-1.0) : (a_locked->val == T(0.0) ? T(0.0) : T(1.0)));
+                        }
+                        break;
+                    case OP_Code::OP_LOG:
+                        // d/da log(a) = 1/a
+                        if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                            accumulate_grad(a_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, 1.0/a_locked->val), a_locked->val);
+                        } else {
+                            a_locked->grad += node_locked->grad * (T(1.0) / a_locked->val);
+                        }
+                        break;
+                    case OP_Code::OP_MEAN_FOR_GRAD:
+                        // c = mean(a)
+                        // c = 1/n * sum(a)
+                        // dL/da = dL/dc * dc/da (sum has gradient as 1 so only 1/n remains)
+                        if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                            ll n = a_locked->val.sizeOfTensor();
+                            simplenet::Tensor grad_broadcast(a_locked->val.getShape(), a_locked->val.getDevice());
+                            simplenet::Tensor grad_cpu = node_locked->grad.to(simplenet::Device::cpu());
+                            double scalar_grad = grad_cpu.get({0}); // we shift to the cpu because GPU direct access is not supported
+                            grad_broadcast.fill(scalar_grad / static_cast<double>(n));
+                            accumulate_grad(a_locked->grad, grad_broadcast, a_locked->val);
+                        }else{
+                            a_locked->grad += node_locked->grad;
+                        }
+                       break;
+                    case OP_Code::OP_SQRT:
+                        // c = sqrt(a)
+                        // dc/da = 1/(2*sqrt(a))
+                        if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                            accumulate_grad(a_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, 1.0 / (2.0 * simplenet::Tensor::sqrt(a_locked->val))), a_locked->val);
+                        }else{
+                            a_locked->grad += node_locked->grad / (2.0 * std::sqrt(a_locked->val));
                         }
                         break;
                     default:
@@ -291,8 +357,6 @@ namespace simplenet{
                 }
 
             };
-
-
             return node;
         }
 
@@ -627,27 +691,7 @@ namespace simplenet{
 
         // unary operator: transpose
         friend std::shared_ptr<Node<T>> transpose(std::shared_ptr<Node<T>> a){
-            if constexpr (std::is_same<T, simplenet::Tensor>::value){
-                std::shared_ptr<Node<T>> node  = make_node(a->val.transpose());
-
-                node->inputs = {a};
-                a->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-
-
-                node->backward_fn = [weak_a, weak_node]() {
-                    auto a_locked = weak_a.lock();
-                    auto node_locked = weak_node.lock();
-                    a_locked->grad +=  node_locked->grad.transpose();
-                };
-
-                return node;
-            }
-
-            // we dont do anything for the doubles
-            return a; // unchanged
+            return elementwise_unary_node_operators(a, OP_Code::OP_TRANSPOSE);
         }
 
 
@@ -655,85 +699,24 @@ namespace simplenet{
         // unary operator
         // d|f(x)|/dx = sign(f(x))
         friend std::shared_ptr<Node<T>> abs(std::shared_ptr<Node<T>> a){
-            if constexpr (std::is_same<T, simplenet::Tensor>::value){
-                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::abs(a->val));
-                node->inputs = {a};
-                a->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-
-                node->backward_fn = [weak_a , weak_node]() {
-                    auto a_locked = weak_a.lock();
-                    auto node_locked = weak_node.lock();
-                    simplenet::Tensor sign_mat = simplenet::linear_algebra::sign(a_locked->val);
-                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, sign_mat);
-                };
-
-                return node;
-            }else{
-              // To Implement
-            }
+            return elementwise_unary_node_operators(a, OP_Code::OP_ABS);
         }
 
 
         static std::shared_ptr<Node<T>> log(std::shared_ptr<Node<T>> a){
-            if constexpr (std::is_same<T, simplenet::Tensor>::value){
-                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::log(a->val));
-                node->inputs = {a};
-                a->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-
-                node->backward_fn = [weak_a , weak_node]() {
-                    auto a_locked = weak_a.lock();
-                    auto node_locked = weak_node.lock();
-                    // d/da log(a) = 1/a
-                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, 1.0/a_locked->val);
-                };
-
-                return node;
-            }else{
-              // To Implement
-            }
+            return elementwise_unary_node_operators(a, OP_Code::OP_LOG);
         }
 
 
         // unary operator
         friend std::shared_ptr<Node<T>> mean(std::shared_ptr<Node<T>> a){
-            if constexpr (std::is_same<T, simplenet::Tensor>::value){
-                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::mean(a->val));
-                node->inputs = {a};
-                a->outputs.push_back(node);
-
-                // c = mean(a)
-                // c = 1/n * sum(a)
-                // dL/da = dL/dc * dc/da (sum has gradient as 1 so only 1/n remains)
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-
-                node->backward_fn = [weak_a , weak_node]() {
-                    auto a_locked = weak_a.lock();
-                    auto node_locked = weak_node.lock();
-                    ll n = a_locked->val.sizeOfTensor();
-                    simplenet::Tensor grad_broadcast(a_locked->val.getShape(), a_locked->val.getDevice());
-                    simplenet::Tensor grad_cpu = node_locked->grad.to(simplenet::Device::cpu());
-                    double scalar_grad = grad_cpu.get({0}); // we shift to the cpu because GPU direct access is not supported
-                    grad_broadcast.fill(scalar_grad / static_cast<double>(n));
-
-                    a_locked->grad+= grad_broadcast;
-                };
-
-                return node;
-            }else{
-              // To Implement
-            }
+            return elementwise_unary_node_operators(a, OP_Code::OP_MEAN_FOR_GRAD);
         }
 
-
-
+        // unary operator
+        friend std::shared_ptr<Node<T>> sqrt(std::shared_ptr<Node<T>> a){
+            return elementwise_unary_node_operators(a, OP_Code::OP_SQRT);
+        }
 
     };
 

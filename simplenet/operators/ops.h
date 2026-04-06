@@ -17,9 +17,11 @@ enum class OP_Code : uint16_t {
     OP_HADAMARD,
     // unary operations
     OP_EXP,
+    OP_TRANSPOSE,
     OP_LOG,
     OP_ABS,
-    OP_SQRT,
+    OP_SQRT, // TODO: Implement
+    OP_MEAN_FOR_GRAD,
     // trigonometric operations (unary)
     OP_SIN,
     OP_COS,
