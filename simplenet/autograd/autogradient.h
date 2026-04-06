@@ -56,11 +56,9 @@ namespace simplenet{
         return adjoint of input v_input(s) - this is the gradient of the function (network) with respect to all the inputs
     */
 
-
-   // TODO refactor with ops
    template<typename T> class  Node;
-   // TODO: fix for MATRIX AND TENSOR Types - probably will need to provide template specializations
-   // TODO: add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads
+   // NOTE: Check if  we need to ->  add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads
+   //
    template <typename T>
    class Node {
         // C++17 inline static variable - only one copy shared across all instances of the class
@@ -129,7 +127,51 @@ namespace simplenet{
                 // node->grad = a->grad - b->grad;  // c = a - b     =>    dc = da - db
                 case OP_Code::OP_MUL: node  = make_node(a->val*b->val); break;
                 // node->grad = b->val*a->grad + b->grad*a->val;  //  dc = a * b     =>    dc = b * da + a * db
+                case OP_Code::OP_DIV:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                        // SHAPES HAVE TO BE THE SAME - hadamard operation
+                        if (a->val.getShape() != b->val.getShape()){
+                            throw std::invalid_argument("Shapes incompatible for Division (hadamard) operation to be backpropagated");
+                        }
+                    }
+                    node = make_node(a->val / b->val);
+                    break;
 
+                case OP_Code::OP_MAX:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                        // SHAPES HAVE TO BE THE SAME
+                        if (a->val.getShape() != b->val.getShape()){
+                            throw std::invalid_argument("Shapes incompatible for max operation to be backpropagated");
+                        }
+
+                        node  = make_node(simplenet::Tensor::max(a->val, b->val));
+                    } else {
+                        node = make_node(std::max(a->val, b->val));
+                    }
+                    break;
+                case OP_Code::OP_MIN:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                        // SHAPES HAVE TO BE THE SAME
+                        if (a->val.getShape() != b->val.getShape()){
+                            throw std::invalid_argument("Shapes incompatible for min operation to be backpropagated");
+                        }
+
+                        node  = make_node(simplenet::Tensor::min(a->val, b->val));
+                    } else {
+                        node = make_node(std::min(a->val, b->val));
+                    }
+                    break;
+                case OP_Code::OP_HADAMARD:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                        // SHAPES HAVE TO BE THE SAME
+                        if (a->val.getShape() != b->val.getShape()){
+                            throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
+                        }
+                        node  = make_node(simplenet::linear_algebra::hadamard(a->val, b->val));
+                    } else {
+                        node = make_node(a->val * b->val);
+                    }
+                    break;
                 default:
                     throw std::invalid_argument("Autograd: OP Code does not exist - in elementwise_binary.");
             }
@@ -172,6 +214,54 @@ namespace simplenet{
                             b_locked->grad += a_locked->val * node_locked->grad; // grad_b = a^T * grad
                         }
                         break;
+                    case OP_Code::OP_DIV:
+                        // c = a/b
+                        // dc/da = grad * (1/b)
+                        // dc/db = grad * (-a/b^2)
+                        if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                            accumulate_grad(a_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, 1.0/b_locked->val), a_locked->grad);
+                            accumulate_grad(b_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, -1.0 * a_locked->val/ simplenet::linear_algebra::hadamard(b_locked->val, b_locked->val)), b_locked->grad);
+                        } else {
+                            a_locked->grad += node_locked->grad / b_locked->val;
+                            b_locked->grad += T(-1.0) * (a_locked->val * node_locked->grad / (b_locked->val * b_locked->val));
+                        }
+                        break;
+                    case OP_Code::OP_MAX:
+                        if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                            simplenet::Tensor a_mask = simplenet::linear_algebra::mask_of_greater_than_equal_to(a_locked->val,b_locked->val);
+                            simplenet::Tensor b_mask = simplenet::linear_algebra::mask_of_greater_than_equal_to(b_locked->val,a_locked->val);
+
+                            accumulate_grad(a_locked->grad,simplenet::linear_algebra::hadamard(node_locked->grad, a_mask), a_locked->val);
+                            accumulate_grad(b_locked->grad,simplenet::linear_algebra::hadamard(node_locked->grad, b_mask), b_locked->val);
+                        } else {
+                            a_locked->grad += node_locked->grad * ((a_locked->val >= b_locked->val) ? T(1.0) : T(0.0));
+                            b_locked->grad += node_locked->grad * ((b_locked->val >= a_locked->val) ? T(1.0) : T(0.0));
+                        }
+                        break;
+                    case OP_Code::OP_MIN:
+                        if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                            simplenet::Tensor a_mask = simplenet::linear_algebra::mask_of_less_than_equal_to(a_locked->val,b_locked->val);
+                            simplenet::Tensor b_mask = simplenet::linear_algebra::mask_of_less_than_equal_to(b_locked->val,a_locked->val);
+
+                            accumulate_grad(a_locked->grad,simplenet::linear_algebra::hadamard(node_locked->grad, a_mask), a_locked->val);
+                            accumulate_grad(b_locked->grad,simplenet::linear_algebra::hadamard(node_locked->grad, b_mask), b_locked->val);
+                        } else {
+                            a_locked->grad += node_locked->grad * ((a_locked->val <= b_locked->val) ? T(1.0) : T(0.0));
+                            b_locked->grad += node_locked->grad * ((b_locked->val <= a_locked->val) ? T(1.0) : T(0.0));
+                        }
+                        break;
+                    case OP_Code::OP_HADAMARD:
+                        // hadamard product differentiation is just product rule -
+                        // d(a*b)/dx = a * db/dx + b * da/dx
+                        if constexpr (std::is_same<T, simplenet::Tensor>::value) {
+                            accumulate_grad(a_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, b_locked->val), a_locked->val);
+                            accumulate_grad(b_locked->grad, simplenet::linear_algebra::hadamard(node_locked->grad, a_locked->val), b_locked->val);
+                        } else {
+                            // same as multiplication
+                            a_locked->grad += node_locked->grad * b_locked->val;
+                            b_locked->grad += node_locked->grad * a_locked->val;
+                        }
+                        break;
                     default:
                         throw std::invalid_argument("Autograd: OP Code does not exist - in elementwise_binary.");
                 }
@@ -180,6 +270,152 @@ namespace simplenet{
 
             return node;
         }
+
+        friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+               return elementwise_binary_node_operators(a, b, OP_Code::OP_ADD);
+        }
+
+        friend std::shared_ptr<Node<T>> operator+(double scalar, std::shared_ptr<Node<T>> b){
+            simplenet::Tensor scalar_tensor({1}, b->val.getDevice());
+            scalar_tensor.fill(scalar);
+
+            auto scalar_node = constant(scalar_tensor);
+            return scalar_node + b;
+        }
+
+        friend std::shared_ptr<Node<T>> operator+( std::shared_ptr<Node<T>> b, double scalar){
+            simplenet::Tensor scalar_tensor({1}, b->val.getDevice());
+            scalar_tensor.fill(scalar);
+
+            auto scalar_node = constant(scalar_tensor);
+            return b + scalar_node;
+        }
+
+
+        friend std::shared_ptr<Node<T>> operator-(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            return elementwise_binary_node_operators(a, b, OP_Code::OP_SUB);
+        }
+
+        friend std::shared_ptr<Node<T>> operator-(double scalar, std::shared_ptr<Node<T>> b){
+            simplenet::Tensor scalar_tensor({1},  b->val.getDevice());
+            scalar_tensor.fill(scalar);
+
+            auto scalar_node = constant(scalar_tensor);
+            return scalar_node - b;
+        }
+
+        friend std::shared_ptr<Node<T>> operator-( std::shared_ptr<Node<T>> b, double scalar){
+            simplenet::Tensor scalar_tensor({1},  b->val.getDevice());
+            scalar_tensor.fill(scalar);
+
+            auto scalar_node = constant(scalar_tensor);
+            return b - scalar_node;
+        }
+
+
+        friend std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            return elementwise_binary_node_operators(a, b, OP_Code::OP_MUL);
+        }
+
+        friend std::shared_ptr<Node<T>> operator*(double scalar, std::shared_ptr<Node<T>> b){
+
+                std::shared_ptr<Node<T>> node  = make_node(scalar*b->val);
+                // node->grad = b->val*a->grad + b->grad*a->val;  //  dc = a * b     =>    dc = b * da + a * db
+
+                node->inputs = {b};
+
+                b->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_b = b;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [scalar, weak_b, weak_node](){
+
+                    auto b_locked = weak_b.lock();
+                    auto node_locked = weak_node.lock();
+
+                    if (!b_locked || !node_locked) {
+                        return; // One of the nodes was destroyed
+                    }
+
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                        std::vector<int> temp_b = b_locked->grad.getShape();
+                        b_locked->grad += simplenet::linear_algebra::reduce(scalar * node_locked->grad, temp_b, reduction_op); // grad_b = scalar * grad
+                    }else{
+                       // TODO
+                    }
+                };
+                return node;
+        }
+
+        friend std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> b, double scalar){
+               return scalar * b; // functionality is the same - doesnt matter if the scalar is on the left or right
+        }
+
+        // TODO: add ops for when the max is double values
+        friend std::shared_ptr<Node<T>> max(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            return elementwise_binary_node_operators(a, b, OP_Code::OP_MAX);
+        }
+
+
+        // TODO: add ops for when the min is double values
+        friend std::shared_ptr<Node<T>> min(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            return elementwise_binary_node_operators(a, b, OP_Code::OP_MIN);
+        }
+
+
+        static std::shared_ptr<Node<T>> hadamard(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            return elementwise_binary_node_operators(a, b, OP_Code::OP_HADAMARD);
+        }
+
+        // DIVISION uses hadamard product
+        friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
+                std::shared_ptr<Node<T>> node  = make_node(a->val/divisor);
+                // node = a / b
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node,  divisor]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+                    a_locked->grad += node_locked->grad / divisor; // dL/da = dL/dc × dc/da
+                };
+                return node;
+        }
+
+        friend std::shared_ptr<Node<T>> operator/(double divisor, std::shared_ptr<Node<T>> a){
+                std::shared_ptr<Node<T>> node  = make_node(divisor/a->val);
+                // node = a / b
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                node->backward_fn = [weak_a, weak_node,  divisor]() {
+                    auto a_locked = weak_a.lock();
+                    auto node_locked = weak_node.lock();
+
+                    // dc/da = grad * (-divisor / (a^2))
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
+                        a_locked->grad += simplenet::linear_algebra::hadamard(node_locked->grad,
+                            -divisor / simplenet::linear_algebra::hadamard(a_locked->val, a_locked->val));
+                    } else {
+                        a_locked->grad += node_locked->grad * (-divisor / (a_locked->val * a_locked->val));
+                    }
+
+                };
+                return node;
+        }
+
+        friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
+            return reductions_node_operators(a, b, OP_Code::OP_DIV);
+        };
+
+        // ------------------------------------------------- UNARY Operators -------------------------------------------------
 
         // Our primary elementwise unary node operator function (called in every unary node operator)
         friend std::shared_ptr<Node<T>> elementwise_unary_node_operators(std::shared_ptr<Node<T>> a, OP_Code op){
@@ -360,293 +596,6 @@ namespace simplenet{
             return node;
         }
 
-        friend std::shared_ptr<Node<T>> operator+(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-               return elementwise_binary_node_operators(a, b, OP_Code::OP_ADD);
-        }
-
-        friend std::shared_ptr<Node<T>> operator+(double scalar, std::shared_ptr<Node<T>> b){
-            simplenet::Tensor scalar_tensor({1}, b->val.getDevice());
-            scalar_tensor.fill(scalar);
-
-            auto scalar_node = constant(scalar_tensor);
-            return scalar_node + b;
-        }
-
-        friend std::shared_ptr<Node<T>> operator+( std::shared_ptr<Node<T>> b, double scalar){
-            simplenet::Tensor scalar_tensor({1}, b->val.getDevice());
-            scalar_tensor.fill(scalar);
-
-            auto scalar_node = constant(scalar_tensor);
-            return b + scalar_node;
-        }
-
-
-        friend std::shared_ptr<Node<T>> operator-(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-            return elementwise_binary_node_operators(a, b, OP_Code::OP_SUB);
-        }
-
-        friend std::shared_ptr<Node<T>> operator-(double scalar, std::shared_ptr<Node<T>> b){
-            simplenet::Tensor scalar_tensor({1},  b->val.getDevice());
-            scalar_tensor.fill(scalar);
-
-            auto scalar_node = constant(scalar_tensor);
-            return scalar_node - b;
-        }
-
-        friend std::shared_ptr<Node<T>> operator-( std::shared_ptr<Node<T>> b, double scalar){
-            simplenet::Tensor scalar_tensor({1},  b->val.getDevice());
-            scalar_tensor.fill(scalar);
-
-            auto scalar_node = constant(scalar_tensor);
-            return b - scalar_node;
-        }
-
-
-        friend std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-            return elementwise_binary_node_operators(a, b, OP_Code::OP_MUL);
-        }
-
-        friend std::shared_ptr<Node<T>> operator*(double scalar, std::shared_ptr<Node<T>> b){
-
-                std::shared_ptr<Node<T>> node  = make_node(scalar*b->val);
-                // node->grad = b->val*a->grad + b->grad*a->val;  //  dc = a * b     =>    dc = b * da + a * db
-
-                node->inputs = {b};
-
-                b->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_b = b;
-                std::weak_ptr<Node<T>> weak_node = node;
-
-                node->backward_fn = [scalar, weak_b, weak_node](){
-
-                    auto b_locked = weak_b.lock();
-                    auto node_locked = weak_node.lock();
-
-                    if (!b_locked || !node_locked) {
-                        return; // One of the nodes was destroyed
-                    }
-
-                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
-                        std::vector<int> temp_b = b_locked->grad.getShape();
-                        b_locked->grad += simplenet::linear_algebra::reduce(scalar * node_locked->grad, temp_b, reduction_op); // grad_b = scalar * grad
-                    }else{
-                       // TODO
-                    }
-                };
-                return node;
-        }
-
-        friend std::shared_ptr<Node<T>> operator*(std::shared_ptr<Node<T>> b, double scalar){
-               return scalar * b; // functionality is the same - doesnt matter if the scalar is on the left or right
-        }
-
-        // TODO: test and also add ops for when the max is double values
-        friend std::shared_ptr<Node<T>> max(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-            if constexpr (std::is_same<T, simplenet::Tensor>::value){
-
-                // SHAPES HAVE TO BE THE SAME
-                if (a->val.getShape() != b->val.getShape()){
-                    throw std::invalid_argument("Shapes incompatible for max operation to be backpropagated");
-                }
-
-                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::max(a->val, b->val));
-                node->inputs = {a,b};
-                a->outputs.push_back(node);
-                b->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-                std::weak_ptr<Node<T>> weak_b = b;
-
-                node->backward_fn = [weak_a ,weak_b, weak_node]() {
-
-                    auto a_locked = weak_a.lock();
-                    auto b_locked = weak_b.lock();
-                    auto node_locked = weak_node.lock();
-
-                    // Create masks for a and b
-                    // like ->
-                    //  Tensor a_mask = (a->val >= b->val).cast<double>(); // 1 where a >= b, 0 elsewhere
-                    //  Tensor b_mask = (b->val >= a->val).cast<double>();  // 1 where b >= a, 0 elsewhere
-                    simplenet::Tensor a_mask = simplenet::linear_algebra::mask_of_greater_than_equal_to(a_locked->val,b_locked->val);
-                    simplenet::Tensor b_mask = simplenet::linear_algebra::mask_of_greater_than_equal_to(b_locked->val,a_locked->val);
-
-                    // Need to figure out how the multiplication of masks will be done - most probably hadamard
-                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, a_mask);
-                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, b_mask);
-
-                };
-
-                return node;
-            }else{
-              // To Implement
-            }
-
-        }
-
-
-        // TODO: test and also add ops for when the min is double values
-        friend std::shared_ptr<Node<T>> min(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-            if constexpr (std::is_same<T, simplenet::Tensor>::value){
-
-                // SHAPES HAVE TO BE THE SAME
-                if (a->val.getShape() != b->val.getShape()){
-                    throw std::invalid_argument("Shapes incompatible for min operation to be backpropagated");
-                }
-
-                std::shared_ptr<Node<T>> node  = make_node(simplenet::Tensor::min(a->val, b->val));
-                node->inputs = {a,b};
-                a->outputs.push_back(node);
-                b->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-                std::weak_ptr<Node<T>> weak_b = b;
-
-                node->backward_fn = [weak_a ,weak_b, weak_node]() {
-
-                    auto a_locked = weak_a.lock();
-                    auto b_locked = weak_b.lock();
-                    auto node_locked = weak_node.lock();
-
-                    // Create masks for a and b
-                    // like ->
-                    //  Tensor a_mask = (a->val <= b->val).cast<double>(); // 1 where a <= b, 0 elsewhere
-                    //  Tensor b_mask = (b->val <= a->val).cast<double>();  // 1 where b <= a, 0 elsewhere
-                    simplenet::Tensor a_mask = simplenet::linear_algebra::mask_of_less_than_equal_to(a_locked->val,b_locked->val);
-                    simplenet::Tensor b_mask = simplenet::linear_algebra::mask_of_less_than_equal_to(b_locked->val,a_locked->val);
-
-                    // Need to figure out how the multiplication of masks will be done - most probably hadamard
-                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, a_mask);
-                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, b_mask);
-
-                };
-
-                return node;
-            }else{
-              // To Implement
-            }
-        }
-
-        // hadamard product differentiation is just product rule -
-        // d(a*b)/dx = a * db/dx + b * da/dx
-        static std::shared_ptr<Node<T>> hadamard(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-
-            if constexpr (std::is_same<T, simplenet::Tensor>::value){
-
-                // SHAPES HAVE TO BE THE SAME
-                if (a->val.getShape() != b->val.getShape()){
-                    throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
-                }
-
-                std::shared_ptr<Node<T>> node  = make_node(simplenet::linear_algebra::hadamard(a->val, b->val));
-                node->inputs = {a,b};
-                a->outputs.push_back(node);
-                b->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-                std::weak_ptr<Node<T>> weak_b = b;
-
-                node->backward_fn = [weak_a ,weak_b, weak_node]() {
-
-                    auto a_locked = weak_a.lock();
-                    auto b_locked = weak_b.lock();
-                    auto node_locked = weak_node.lock();
-
-                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, b_locked->val);
-                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, a_locked->val);
-
-                };
-
-                return node;
-            }else{
-              // To Implement
-            }
-        }
-
-        // DIVISION uses hadamard product
-        friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, double divisor){
-                std::shared_ptr<Node<T>> node  = make_node(a->val/divisor);
-                // node = a / b
-                node->inputs = {a};
-                a->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-
-                node->backward_fn = [weak_a, weak_node,  divisor]() {
-                    auto a_locked = weak_a.lock();
-                    auto node_locked = weak_node.lock();
-                    a_locked->grad += node_locked->grad / divisor; // dL/da = dL/dc × dc/da
-                };
-                return node;
-        }
-
-        friend std::shared_ptr<Node<T>> operator/(double divisor, std::shared_ptr<Node<T>> a){
-                std::shared_ptr<Node<T>> node  = make_node(divisor/a->val);
-                // node = a / b
-                node->inputs = {a};
-                a->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-
-                node->backward_fn = [weak_a, weak_node,  divisor]() {
-                    auto a_locked = weak_a.lock();
-                    auto node_locked = weak_node.lock();
-
-                    // dc/da = grad * (-divisor / (a^2))
-                    if constexpr (std::is_same<T, simplenet::Tensor>::value){
-                        a_locked->grad += simplenet::linear_algebra::hadamard(node_locked->grad,
-                            -divisor / simplenet::linear_algebra::hadamard(a_locked->val, a_locked->val));
-                    } else {
-                        a_locked->grad += node_locked->grad * (-divisor / (a_locked->val * a_locked->val));
-                    }
-
-                };
-                return node;
-        }
-
-        friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-
-            if constexpr (std::is_same<T, simplenet::Tensor>::value){
-
-                // SHAPES HAVE TO BE THE SAME - hadamard operation
-                if (a->val.getShape() != b->val.getShape()){
-                    throw std::invalid_argument("Shapes incompatible for hadamard operation to be backpropagated");
-                }
-
-                std::shared_ptr<Node<T>> node  = make_node(a->val/ b->val);
-                node->inputs = {a,b};
-                a->outputs.push_back(node);
-                b->outputs.push_back(node);
-
-                std::weak_ptr<Node<T>> weak_a = a;
-                std::weak_ptr<Node<T>> weak_node = node;
-                std::weak_ptr<Node<T>> weak_b = b;
-
-                node->backward_fn = [weak_a ,weak_b, weak_node]() {
-
-                    auto a_locked = weak_a.lock();
-                    auto b_locked = weak_b.lock();
-                    auto node_locked = weak_node.lock();
-                    // c = a/b
-                    // dc/da = grad * (1/b)
-                    // dc/db = grad * (-a/b^2)
-                    a_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, 1.0/b_locked->val);
-                    b_locked->grad +=  simplenet::linear_algebra::hadamard(node_locked->grad, -1.0 * a_locked->val/ simplenet::linear_algebra::hadamard(b_locked->val, b_locked->val));
-
-                };
-
-                return node;
-            }else{
-              // To Implement
-            }
-        };
-
-        // UNARY Operators:
 
         // unary operator: e^x
         friend std::shared_ptr<Node<T>> exp(std::shared_ptr<Node<T>> a){
