@@ -18,6 +18,7 @@ namespace simplenet {
 
     namespace neural_network {
 
+        // TODO: need to figure out how interleaving works for padding before I can implement convolution layers (and pooling)
         // template copied from pytorch doc - https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
         // class Conv1D : public Module {
         // private:

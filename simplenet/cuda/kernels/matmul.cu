@@ -9,6 +9,7 @@ namespace simplenet {
         // TODO: this needs to fixed a lot more and tested
         // TODO: Optimize - using memory coalescing, warp level parallelism, and shared memory, and tiling - check blog above and also look more into this
         //TODO: write broadcasting done on the gpu matmul code
+        // TODO: remove % sign as it is very slow
         template <typename T>
         __global__
         void gemm_kernel_broadcast(
