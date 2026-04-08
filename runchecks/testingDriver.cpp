@@ -332,6 +332,10 @@ int main() {
      mat_inv.set(1.0, {3,3});
      mat_inv.set(-1.0, {4,4});
 
+     mat_inv.to_(dev);
+     cout << "PADDING " << endl;
+     cout << simplenet::neural_network::padding<double>(mat_inv, 1,Padding_Op_Code::PAD_CONSTANT, 2.0 ) << endl;
+
      // simplenet::neural_network::LeakyReLU leaky_relu(0.1);
      // auto leaky_relu_node = simplenet::Node<simplenet::Tensor>::make_node(mat_inv);
      // auto leaky_relu_out = leaky_relu.forward(leaky_relu_node);

@@ -80,8 +80,8 @@ namespace simplenet{
     }
 
     namespace neural_network {
-
-        Tensor padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode);
+        template <typename T>
+        Tensor padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode = Padding_Op_Code::PAD_CONSTANT, T constant_value = T(0));
     }
 
     class Tensor {
@@ -1083,7 +1083,8 @@ namespace simplenet{
 
 
             // padding (in convolution_layers.h file)
-            friend Tensor neural_network::padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode);
+            template <typename T>
+            friend Tensor neural_network::padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode, T constant_value);
 
             // TODO: refactor for native CUDA support
             //----------------------------------------ACCUMULATORs (used in reduce)------------------------------------------------------

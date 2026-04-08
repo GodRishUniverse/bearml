@@ -1,4 +1,5 @@
 #include "padding.cuh"
+#include "fill.cuh"
 #include <cstddef>
 
 
@@ -6,7 +7,7 @@ namespace simplenet {
     namespace cuda {
 
         template<typename T>
-        __global__ void padd_with_zeroes_kernel(
+        __global__ void padd_with_constant_kernel(
             const T* __restrict__ d_in,
             T* __restrict__ d_out,
             int batch_size,
@@ -34,13 +35,14 @@ namespace simplenet {
 
 
         template<typename T>
-        void launch_padd_with_zeroes(
+        void launch_padd_with_constant(
             T* d_in,
             T* d_out,
             int batch_size,
             int in_rows,
             int in_cols,
             int padding,
+            T constant,
             cudaStream_t stream
         ) {
             bool own_stream = (stream == nullptr);
@@ -48,9 +50,14 @@ namespace simplenet {
                 CUDA_CHECK(cudaStreamCreate(&stream));
             }
 
+            // we fill first with constant value (use our fill kernel)
+            std::vector<int> res_shape = {batch_size, in_rows + 2 * padding, in_cols + 2 * padding};
+            launch_fill<T>(d_out, constant, res_shape, stream);
+
+
             dim3 block(THREAD_COUNT); // Threads per block
             dim3 grid = get_blocks((size_t)batch_size * in_rows * in_cols, THREAD_COUNT); // Number of blocks
-            padd_with_zeroes_kernel<T><<<grid, block, 0, stream>>>(d_in, d_out, batch_size, in_rows, in_cols, padding);
+            padd_with_constant_kernel<T><<<grid, block, 0, stream>>>(d_in, d_out, batch_size, in_rows, in_cols, padding);
 
             CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
 

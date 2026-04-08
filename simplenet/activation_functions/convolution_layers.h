@@ -21,7 +21,9 @@ namespace simplenet {
 
     namespace neural_network {
 
-        simplenet::Tensor padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode = Padding_Op_Code::PAD_ZERO){
+        // TODO: test this out
+        template <typename T>
+        simplenet::Tensor padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode, T constant_value){
             // now we need to change the shape
             std::vector<int> output_shape = input.getShape();
             std::vector<int> input_shape = input.getShape();
@@ -38,11 +40,16 @@ namespace simplenet {
             long long int batch_size = input.sizeOfTensor() / (input_shape[input_shape.size() - 2] * input_shape[input_shape.size() - 1]);
 
             switch (padding_mode) {
-                case Padding_Op_Code::PAD_ZERO:
+                case Padding_Op_Code::PAD_CONSTANT:
                     // NOTE: aparrantly variable declaration inside the switch statement needs case (cond): {} rather than case (cond): only
                     // now if we have padding_mode as zeros then we can just need to copy the input values appropriately
                     // n*m matrix becomes (n+2p) * (m+2p) matrix
                     if (input.getDevice().is_cpu()) {
+                        // first fill the output tensor with the constant value
+                        for (int i = 0; i < output.sizeOfTensor(); i++) {
+                            output.data[i] = constant_value;
+                        }
+                        // then copy the input values into the padded region
                         for (int batch = 0; batch < batch_size; batch++) {
                             for (int r = 0; r < input_shape[input_shape.size() - 2]; r++) {
                                 for (int c = 0; c < input_shape[input_shape.size() - 1]; c++) {
@@ -52,7 +59,7 @@ namespace simplenet {
                         }
                     } else {
                         // CUDA
-                        simplenet::cuda::launch_padd_with_zeroes<double>(input.data, output.data, batch_size, input_shape[input_shape.size() - 2], input_shape[input_shape.size() - 1], pad_amount);
+                        simplenet::cuda::launch_padd_with_constant<T>(input.data, output.data, batch_size, input_shape[input_shape.size() - 2], input_shape[input_shape.size() - 1], pad_amount, constant_value);
                     }
                     break;
                 default:
