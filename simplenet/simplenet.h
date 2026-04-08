@@ -15,4 +15,5 @@
 #include "optimizers/optimizers.h"
 #include "devices/device_type.h"
 #include "operators/ops.h"
+#include "operators/padding_ops.h"
 // #include "cuda/includes/"

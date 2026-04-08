@@ -79,6 +79,11 @@ namespace simplenet{
        Tensor inverse(const Tensor& a);
     }
 
+    namespace neural_network {
+
+        Tensor padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode);
+    }
+
     class Tensor {
 
         // ==============================PRIVATE========================================
@@ -1075,6 +1080,10 @@ namespace simplenet{
 
             // sign matrix
             friend Tensor linear_algebra::sign(const Tensor& a);
+
+
+            // padding (in convolution_layers.h file)
+            friend Tensor neural_network::padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode);
 
             // TODO: refactor for native CUDA support
             //----------------------------------------ACCUMULATORs (used in reduce)------------------------------------------------------

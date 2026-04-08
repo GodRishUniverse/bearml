@@ -8,3 +8,4 @@
 #include "../kernels/checks.cuh"
 #include "../kernels/transpose.cuh"
 #include "../kernels/compares.cuh"
+#include "../kernels/padding.cuh"

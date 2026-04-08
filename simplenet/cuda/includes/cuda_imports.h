@@ -14,3 +14,4 @@
 
 #include "device_atomic_functions.h"
 #include "../../operators/ops.h"
+#include "../../operators/padding_ops.h"
