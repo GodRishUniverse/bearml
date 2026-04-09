@@ -21,7 +21,6 @@ namespace simplenet {
 
     namespace neural_network {
 
-        // TODO: test this out
         template <typename T>
         simplenet::Tensor padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode, T constant_value){
             // now we need to change the shape
@@ -68,27 +67,27 @@ namespace simplenet {
             return output;
         }
 
-        // TODO: need to figure out how interleaving works for padding before I can implement convolution layers (and pooling)
+        // TODO: need to figure out how I can implement convolution layers (and pooling)
         // template copied from pytorch doc - https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
-        // class Conv1D : public Module {
-        // private:
-        //     int in_channels_;
-        //     int out_channels_;
-        //     int kernel_size_;
-        //     int stride_;
-        //     int padding_;
-        //     int dilation_;
-        //     int groups_;
-        //     bool bias_;
-        //     std::string padding_mode_;
+        class Conv2D : public Module {
+        private:
+            int in_channels_;
+            int out_channels_;
+            int kernel_size_;
+            int stride_;
+            int padding_;
+            int dilation_;
+            int groups_;
+            bool bias_;
+            Padding_Op_Code padding_mode_;
+            int constant_pad_;
 
+        public:
+            Conv2D(int in_channels, int out_channels, int kernel_size, int stride = 1, int padding = 0, int dilation =1, int groups = 1, bool bias = true, Padding_Op_Code padding_mode = Padding_Op_Code::PAD_CONSTANT, int seed = 42, simplenet::Device dev = simplenet::Device::cpu(), int constant_pad = 0)
+                : Module(seed, dev), in_channels_(in_channels), out_channels_(out_channels), kernel_size_(kernel_size), stride_(stride), padding_(padding), dilation_(dilation), groups_(groups), bias_(bias), padding_mode_(padding_mode), constant_pad_(constant_pad) {
 
-        // public:
-        //     Conv1D(int in_channels, int out_channels, int kernel_size, int stride = 1, int padding = 0, int dilation =1, int groups = 1, bool bias = true, std::string padding_mode = "zeros", int seed = 42, simplenet::Device dev = simplenet::Device::cpu())
-        //         : Module(seed, dev), in_channels_(in_channels), out_channels_(out_channels), kernel_size_(kernel_size), stride_(stride), padding_(padding), dilation_(dilation), groups_(groups), bias_(bias), padding_mode_(padding_mode) {
-
-        //     }
-        // };
+            }
+        };
 
     }
 }
