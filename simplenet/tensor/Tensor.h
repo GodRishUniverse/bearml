@@ -520,6 +520,11 @@ namespace simplenet{
                 return result;
             }
 
+            // baseline
+            static Tensor zeros_like(const Tensor& t) {
+                return Tensor(t.shape, t.device);
+            }
+
 
 
             // TODO:CHANGE to not print extra stuff after the boradcast is applied as stride is set to 0 after broadcast is done
