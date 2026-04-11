@@ -1586,8 +1586,10 @@ namespace simplenet{
 
             // TODO: implement slice operation (we slice the Tensor)
             // dim tells us what kind of slice we are doing (1D, 2D, 3D, etc.)
-            static Tensor slice(const Tensor& t, int start, int end, int dim) {
+            static Tensor slice(const Tensor& t, utils::Slice slice) {
                 // We will have to compute a new shape and a new stride as well
+                // [start0:end0, start1:end1, ...]
+                // is there a way a custom slice can be defined using all dims and all start/end indices? (in our Slice Type)
                 return Tensor({1}, Device::cpu()); // TODO: remove this line - boilerplate
             }
 
