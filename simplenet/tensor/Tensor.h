@@ -507,6 +507,20 @@ namespace simplenet{
                 }
             }
 
+            // utility functions
+            static Tensor ones(const std::vector<int>& shape, const Device& device = Device::cpu()) {
+                Tensor t(shape, device);
+                t.fill(1.0); // use fill for better performance
+                return t;
+            }
+
+            static Tensor ones_like(const Tensor& t) {
+                Tensor result(t.shape, t.device);
+                result.fill(1.0); // use fill for better performance
+                return result;
+            }
+
+
 
             // TODO:CHANGE to not print extra stuff after the boradcast is applied as stride is set to 0 after broadcast is done
             friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
@@ -1531,8 +1545,8 @@ namespace simplenet{
 
 
             // unsqueeze
-            // Finalized
-            void unsqueeze(int dim){
+            // Finalized (default dim = 0   )
+            void unsqueeze(int dim = 0){
                 std::vector<int> temp = this->shape;
                 temp.insert(temp.begin() + dim, 1);
                 this->shape = temp;
@@ -1566,6 +1580,7 @@ namespace simplenet{
 
 
             // TODO: implement slice operation (we slice the Tensor)
+            // dim tells us what kind of slice we are doing (1D, 2D, 3D, etc.)
             static Tensor slice(const Tensor& t, int start, int end, int dim) {
                 // We will have to compute a new shape and a new stride as well
                 return Tensor({1}, Device::cpu()); // TODO: remove this line - boilerplate
