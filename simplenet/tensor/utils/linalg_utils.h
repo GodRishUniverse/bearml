@@ -49,6 +49,7 @@ namespace simplenet {
         // inverse matrix
         Tensor inverse(const Tensor& a);
 
+
         // // Opposite of broadcasting - NOT A VIEW OPERATION
         // Tensor reduce(const Tensor &t, const std::vector<int>& targetShape);
 

@@ -29,7 +29,10 @@ enum class OP_Code : uint16_t {
     // hyperbolic operations (unary)
     OP_SINH,
     OP_COSH,
-    OP_TANH
+    OP_TANH,
+
+    // ARB
+    OP_PAD
 };
 #endif
 

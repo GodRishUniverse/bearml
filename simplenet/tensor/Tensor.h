@@ -21,6 +21,7 @@
 #include "utils/debug_utils.h"
 #include "utils/linalg_utils.h"
 #include "utils/device_utils.h"
+#include "utils/slice.h"
 
 #include "reductions/reduction_ops.h"
 
@@ -1561,6 +1562,13 @@ namespace simplenet{
                     this->shape = temp;
                     computeStrides();
                 }
+            }
+
+
+            // TODO: implement slice operation (we slice the Tensor)
+            static Tensor slice(const Tensor& t, int start, int end, int dim) {
+                // We will have to compute a new shape and a new stride as well
+                return Tensor({1}, Device::cpu()); // TODO: remove this line - boilerplate
             }
 
             // TODO: CUDA support

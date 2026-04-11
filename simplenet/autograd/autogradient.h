@@ -418,7 +418,7 @@ namespace simplenet{
         // ------------------------------------------------- UNARY Operators -------------------------------------------------
 
         // Our primary elementwise unary node operator function (called in every unary node operator)
-        friend std::shared_ptr<Node<T>> elementwise_unary_node_operators(std::shared_ptr<Node<T>> a, OP_Code op){
+        friend std::shared_ptr<Node<T>> elementwise_unary_node_operators(std::shared_ptr<Node<T>> a, OP_Code op, int pad_amount = 0, Padding_Op_Code padding_mode = Padding_Op_Code::PAD_CONSTANT, double constant_value = 0){
             std::shared_ptr<Node<T>> node;
 
             // std::cerr << "DEBUGGING: TYPE HERE IS - > " << typeid(T).name() << std:: endl; // debugging snippet
@@ -471,6 +471,12 @@ namespace simplenet{
                 case OP_Code::OP_SQRT:
                     if constexpr (std::is_same<T, simplenet::Tensor>::value)  node  = make_node(simplenet::Tensor::sqrt(a->val));
                     else node = make_node(std::sqrt(a->val));
+                    break;
+
+                // TODO - implement this below(need slicing operation)
+                case OP_Code::OP_PAD:
+                    if constexpr (std::is_same<T, simplenet::Tensor>::value)  node  = make_node(simplenet::neural_network::padding(a->val, pad_amount, padding_mode, constant_value));
+                    else throw std::invalid_argument("Autograd: OP_PAD cannot be applied to a non-Tensor type - in elementwise_unary.");
                     break;
                 default:
                     throw std::invalid_argument("Autograd: OP Code does not exist - in elementwise_unary.");
@@ -588,6 +594,9 @@ namespace simplenet{
                             a_locked->grad += node_locked->grad / (2.0 * std::sqrt(a_locked->val));
                         }
                         break;
+                    // TODO - implement this below(need slicing operation)
+                    case OP_Code::OP_PAD:
+                        throw std::invalid_argument("Autograd: OP_PAD NOT IMPLEMENTED YET AS WE NEED SLICING OPERATION.");
                     default:
                         throw std::invalid_argument("Autograd: OP Code does not exist - in elementwise_unary.");
                 }
@@ -666,6 +675,13 @@ namespace simplenet{
         friend std::shared_ptr<Node<T>> sqrt(std::shared_ptr<Node<T>> a){
             return elementwise_unary_node_operators(a, OP_Code::OP_SQRT);
         }
+
+
+        // Padding
+        friend std::shared_ptr<Node<T>> padding(std::shared_ptr<Node<T>> a, int pad_amount, Padding_Op_Code padding_mode, double constant_value) {
+            return elementwise_unary_node_operators(a, OP_Code::OP_PAD, pad_amount, padding_mode, constant_value);
+        }
+
 
     };
 
