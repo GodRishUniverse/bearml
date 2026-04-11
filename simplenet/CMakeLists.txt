@@ -1,5 +1,5 @@
 # simplenet/CMakeLists.txt
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.30)
 
 # Create a library target from all source files in subdirectories
 file(GLOB_RECURSE SRC_FILES
@@ -22,9 +22,18 @@ target_include_directories(simplenet PUBLIC
     ${PROJECT_SOURCE_DIR}/third_party/eigen-3.4.0
 )
 
+
+# if(POLICY CMP0167)
+#   cmake_policy(SET CMP0167 NEW)
+# endif()
+
+
+find_package(Boost REQUIRED)
+
 target_link_libraries(simplenet PUBLIC
     CUDA::cudart
     CUDA::cuda_driver
+    Boost::boost
 )
 
 set_target_properties(simplenet PROPERTIES

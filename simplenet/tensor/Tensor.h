@@ -17,6 +17,8 @@
 #include "Eigen/Dense" // IMPORTING eigen for BLAS functions
 #include "Eigen/src/Core/Matrix.h"
 
+#include <boost/algorithm/string.hpp> // for string manipulation
+
 #include "utils/shape_utils.h"
 #include "utils/debug_utils.h"
 #include "utils/linalg_utils.h"
@@ -1586,9 +1588,73 @@ namespace simplenet{
 
             // TODO: implement slice operation (we slice the Tensor)
             // dim tells us what kind of slice we are doing (1D, 2D, 3D, etc.)
-            static Tensor slice(const Tensor& t, utils::Slice slice) {
+            static Tensor slice(const Tensor& t, std::string parse) {
                 // We will have to compute a new shape and a new stride as well
                 // [start0:end0, start1:end1, ...]
+
+                // use python-like slice syntax
+                // parse is a string that represents the slice operation
+                // e.g. "0:10, 5:15" means slice the first 10 elements of the first dimension and the next 10 elements of the second dimension
+                // parse the slice operation
+                std::vector<std::string> sliceOps;
+                boost::split(sliceOps, parse, boost::is_any_of(","));
+                // check if the number of slice operations matches the number of dimensions
+                if (sliceOps.size() != t.getShape().size()) {
+                    throw std::invalid_argument("Number of slice operations does not match number of dimensions.");
+                }
+
+                // parse the slice operations into start and end indices for each dimension
+                std::vector<utils::Slice> sliceIndices;
+                for (const auto& op : sliceOps) {
+                    std::string cleaned = op;
+                    std::erase(cleaned, ' ');
+                    // TODO need to parse before and after the colon to get the start and end indices
+                    std::vector<std::string> indices;
+                    boost::split(indices, cleaned, boost::is_any_of(":"));
+
+
+                    // check if the slice operation is valid
+                    if (indices.size() > 2 || cleaned.find(":") == std::string::npos) {
+                        throw std::invalid_argument("Invalid slice operation: " + cleaned);
+                    }
+                    if (indices.size() == 0){
+                        // we will do a full slice here
+                        sliceIndices.emplace_back(utils::Slice(0, t.getShape()[sliceIndices.size()], 1, utils::SliceMode::FULL));
+                    } else if (indices.size() == 1) {
+                        // acts as a trim
+                        bool isFirst = (cleaned.find(":") == cleaned.length() - 1) ? true : false;
+                        if (isFirst) {
+                            int start = std::stoi(indices.at(0));
+                            if (start < 0 || start >= t.getShape()[sliceIndices.size()]) {
+                                throw std::invalid_argument("Invalid slice operation: " + cleaned);
+                            }
+                            sliceIndices.emplace_back(utils::Slice(start, t.getShape()[sliceIndices.size()], 1, utils::SliceMode::RANGE));
+                        } else {
+                            int end = std::stoi(indices.at(1)); // boost::split will give something like ["", "5"]
+                            if (end < 0 || end + 1 > t.getShape()[sliceIndices.size()]) {
+                                throw std::invalid_argument("Invalid slice operation: " + cleaned);
+                            }
+                            sliceIndices.emplace_back(utils::Slice(0, end - 1, 1, utils::SliceMode::RANGE));
+                        }
+                    }else {
+                        int index_0 = std::stoi(indices[0]);
+                        int index_1 = std::stoi(indices[1]);
+                        if (index_0 < 0 || index_0 >= t.getShape()[sliceIndices.size()]) {
+                            throw std::invalid_argument("Invalid slice operation: " + cleaned);
+                        }
+                        if (index_1 < 0 || index_1 >= t.getShape()[sliceIndices.size()]) {
+                            throw std::invalid_argument("Invalid slice operation: " + cleaned);
+                        }
+                        sliceIndices.emplace_back(utils::Slice(index_0, index_1, 1, utils::SliceMode::RANGE));
+                    }
+                }
+
+
+
+                // we have our slice computed now, we can use it to slice the tensor (compute a new shape and strides and offsets)
+                // TODO: compute this
+
+
                 // is there a way a custom slice can be defined using all dims and all start/end indices? (in our Slice Type)
                 return Tensor({1}, Device::cpu()); // TODO: remove this line - boilerplate
             }

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.30)
 
 set(CMAKE_CUDA_HOST_COMPILER /usr/bin/gcc-14)
 set(CMAKE_C_COMPILER /usr/bin/gcc-14)
@@ -12,10 +12,10 @@ set(CMAKE_CUDA_STANDARD 17)
 include(CheckLanguage)
 check_language(CUDA)
 if(CMAKE_CUDA_COMPILER)
-    enable_language(CUDA)
-    find_package(CUDAToolkit REQUIRED)
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
 else()
-    message(STATUS "No CUDA compiler found")
+  message(STATUS "No CUDA compiler found")
 endif()
 
 # Add subdirectories

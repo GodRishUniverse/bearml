@@ -15,7 +15,7 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 ### Prerequisites
 **Only tested on Fedora Linux at the moment**
 - C++20 or higher [Check NVCC compatibility]
-- CMake 3.20+
+- CMake 3.30+
 - CUDA Toolkit 13.0 [will have to make optional]
 
 ### Building
@@ -82,6 +82,10 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
     * Call kernels in the `Tensor` class when devices match (CUDA). **DOING alongside CUDA support**
     * Implement **Lazy Copy** operation.
     * **Memory Management:** Address CPU/GPU memory usage. (Decision needed: Single memory space vs. syncing to avoid expensive copy operations).
+* **Refactoring for Slice Support** - thinking about it 
+    * All ops will have to become slice aware and a `::contiguous` static function will be needed 
+    * This will allow easy implementation of convolution operations (i think) - but also nice way to have slicing support
+  
 * **Dependency Management:** Fix `#includes` for the repo to remove cyclical dependencies and repeated includes. — **Priority After Kernels**
 * **Templatify**
   * **Templatify Tensor:** Implement template specialization for `Tensor` class to support different data types. **IMPORTANT (Priority)**
