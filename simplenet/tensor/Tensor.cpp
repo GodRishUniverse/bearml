@@ -2,6 +2,8 @@
 
 namespace simplenet{
 
+    size_t Tensor::print_precision = 14;
+
     // flatten
     Tensor Tensor::flatten(int start_dim, int end_dim, bool keepdims) {
         Tensor result = *this; // copy the tensor

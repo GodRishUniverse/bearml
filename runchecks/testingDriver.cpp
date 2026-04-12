@@ -334,7 +334,8 @@ int main() {
 
      mat_inv.to_(dev);
      cout << "PADDING " << endl;
-     cout << simplenet::neural_network::padding<double>(mat_inv, 1,Padding_Op_Code::PAD_CONSTANT, 2.0 ) << endl;
+     auto padded = simplenet::neural_network::padding<double>(mat_inv, 1,Padding_Op_Code::PAD_CONSTANT, 2.0 );
+     cout << padded << endl;
 
      // simplenet::neural_network::LeakyReLU leaky_relu(0.1);
      // auto leaky_relu_node = simplenet::Node<simplenet::Tensor>::make_node(mat_inv);
@@ -342,6 +343,12 @@ int main() {
      // cout << leaky_relu_out->val << endl;
      // mat_inv.fill(1.0);
      // simplenet::Tensor mat_inv_2 ({5,2});
+     //
+
+     padded.to_(simplenet::Device::cpu());
+     simplenet::Tensor::setPrintPrecision(1);
+     cout << padded.slice("1, 1:4") << endl;
+
 
 
 

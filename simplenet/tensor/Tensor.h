@@ -91,26 +91,45 @@ namespace simplenet{
 
         // ==============================PRIVATE========================================
         private:
+            static size_t print_precision;
             static constexpr double MIN_DIFF = 1e-12;
+
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
             double * data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
             bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
             Device device;
             std::unique_ptr<DeviceAllocator> allocator_; // the device allocator we will be using for moving -> we only want a unique allocator
-
+            size_t data_offset;
+            bool is_sliced_view;
 
             // default constructor - added for edge cases - private ONLY -> cpu only allocation
-            Tensor() : data(nullptr), owns_data(false), device(Device(DeviceType::CPU, -1)) , allocator_(nullptr){};
+            Tensor() : data(nullptr), owns_data(false), device(Device(DeviceType::CPU, -1)) , allocator_(nullptr), data_offset(0), is_sliced_view(false){};
 
             static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
                 Tensor v;            // default-constructed
                 v.device = t.device; // same device (broadcasting)
                 v.data    = t.data;
                 v.shape   = newShape;
+                v.data_offset = t.data_offset;
                 v.strides = utils::computeBroadcastStrides(t.shape, t.strides, newShape); // no need to change this
                 v.owns_data = false; // we do not want the broadcasted tensors to own the data that it points - so we do not double delete
                 v.allocator_ = nullptr; // we do not have an allocator for the views
+                v.is_sliced_view = t.is_sliced_view;
+                return v;
+            }
+
+            static Tensor makeSliceView(const Tensor& t,
+                utils::SliceReturn sliceResult) {
+                Tensor v;
+                v.device     = t.device;
+                v.data       = t.data;
+                v.data_offset = sliceResult.offset;
+                v.shape      = sliceResult.shape;
+                v.strides    = t.strides; // use same strides as the original tensor
+                v.owns_data  = false;       // parent owns the storage
+                v.allocator_ = nullptr;
+                v.is_sliced_view = true;
                 return v;
             }
 
@@ -190,7 +209,7 @@ namespace simplenet{
         public:
 
             // constructor when size and data are provided -> copies on same device as I want to ensure the programmer has explicit knowledge of where the tensor is and should use .to before doing "cross-devices" copies
-            Tensor(std::vector<int> sizePassed, const Device& device = Device::cpu()) :shape(sizePassed),  owns_data(true), device(device){ // we own the data here
+            Tensor(std::vector<int> sizePassed, const Device& device = Device::cpu()) :shape(sizePassed),  owns_data(true), device(device), data_offset(0), is_sliced_view(false){ // we own the data here
                 // shape cannot have 0 or negatives in it
                 if (utils::negOrZeroInSizeCheck(this->shape)){
                     throw std::invalid_argument("Size cannot have a negative or zero");
@@ -229,21 +248,30 @@ namespace simplenet{
 
 
             // copy constructor
-            Tensor(const Tensor& other) : owns_data(true), shape(other.shape), device(other.device), strides(other.strides){ // we own the data when we copy;
-                this->allocator_.reset(get_allocator(device));
-                size_t bytes = sizeOfTensor() * sizeof(double);
+            Tensor(const Tensor& other) : owns_data(true), shape(other.shape), data_offset(0), is_sliced_view(false){ // we own the data when we copy;
+                computeStrides();
+                this->allocator_.reset(get_allocator(other.device));
+                size_t full_size = sizeOfTensor();
+                size_t bytes = full_size * sizeof(double);
                 this->data =static_cast<double*>(allocator_->allocate(bytes));
-                if (this->device == other.device) {
-                    // cpu to cpu or gpu to gpu
-                    allocator_->copy_device_to_device(this->data, other.data, bytes);
-                } else {
-                    if (this->device.is_cpu()) {
-                        // from device to cpu
-                        other.allocator_->copy_to_host(this->data, other.data, bytes);
+
+                if (other.is_contiguous()) {
+                    if (this->device == other.device) {
+                        // cpu to cpu or gpu to gpu
+                        allocator_->copy_device_to_device(this->data, other.data + other.data_offset, bytes);
                     } else {
-                        // from cpu to device
-                        this->allocator_->copy_to_device(this->data, other.data, bytes);
+                        if (this->device.is_cpu()) {
+                            // from device to cpu
+                            other.allocator_->copy_to_host(this->data, other.data + other.data_offset, bytes);
+                        } else {
+                            // from cpu to device
+                            this->allocator_->copy_to_device(this->data, other.data + other.data_offset, bytes);
+                        }
                     }
+                    this->device = other.device;
+                } else {
+                    // TODO:
+                    throw std::runtime_error("Cannot copy non-contiguous tensor - make it contiguous first");
                 }
                 // std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
             }
@@ -258,6 +286,8 @@ namespace simplenet{
                     this->device = other.device;
                     this->strides = other.strides;
                     this->owns_data = true;  // Copy always owns its data
+                    this->data_offset = other.data_offset;
+                    this->is_sliced_view = other.is_sliced_view;
 
                     this->allocator_.reset(get_allocator(device));
                     size_t bytes = sizeOfTensor() * sizeof(double);
@@ -279,13 +309,14 @@ namespace simplenet{
             }
 
             // move constructor
-            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), device(other.device), data(other.data), allocator_(std::move(other.allocator_)){
+            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), device(other.device), data(other.data), allocator_(std::move(other.allocator_)), data_offset(other.data_offset){
                 // this->shape = other.shape;
                 // this->data = other.data;
                 // this->device = other.device;
                 // this->strides = other.strides;
                 other.data = nullptr;
                 other.owns_data = false;
+                other.is_sliced_view = false;
             }
 
             // move assignment operator
@@ -302,8 +333,10 @@ namespace simplenet{
                     this->strides = std::move(other.strides);
                     this->allocator_ = std::move(other.allocator_);
                     this->owns_data = other.owns_data;
+                    this->data_offset = other.data_offset;
                     other.data = nullptr;
                     other.owns_data = false;
+                    other.is_sliced_view = false;
                 }
                 return *this;
             }
@@ -359,8 +392,27 @@ namespace simplenet{
                 owns_data = true;
             }
 
+            // checks if the tensor is contiguous or not
+            bool is_contiguous() const {
+                  size_t s = 1;
+                  for (int d = (int)shape.size() - 1; d >= 0; --d) {
+                      if ((size_t)strides[d] != s) return false;
+                      s *= shape[d];
+                  }
+                  return data_offset == 0;
+            }
+
             Device getDevice() const {
                 return this->device;
+            }
+
+
+            static size_t getPrintPrecision() {
+                return print_precision;
+            }
+
+            static void setPrintPrecision(size_t new_precision) {
+                print_precision = new_precision;
             }
 
 
@@ -379,7 +431,7 @@ namespace simplenet{
                 size_t off = 0;
                 for (size_t d = 0; d < shape.size(); ++d)
                     off += index[d] * this->strides[d];
-                return data[off];
+                return data[this->data_offset+ off];
             }
 
 
@@ -455,7 +507,7 @@ namespace simplenet{
                 for (size_t d = 0; d < shape.size(); ++d)
                     off += index[d] * strides[d];
 
-                data[off] = val;
+                data[this->data_offset+ off] = val;
             }
 
             // TODO: refactor
@@ -500,6 +552,11 @@ namespace simplenet{
                 return this->strides;
             }
 
+            // helper function
+            size_t getDataOffset() const {
+                return this->data_offset;
+            }
+
             void computeStrides() {
                 strides.resize(shape.size());
                 size_t s = 1;
@@ -527,18 +584,34 @@ namespace simplenet{
                 return Tensor(t.shape, t.device);
             }
 
+            // helper function for recursive printing
+            static void print_recursive(std::ostream& os, const Tensor& t, size_t dim, size_t offset,int indent) {
+                  if (dim == t.shape.size() - 1) {
+                      os << "[";
+                      for (size_t i = 0; i < t.shape[dim]; ++i) {
+                          os << std::setw(9) << std::setprecision(print_precision)
+                             << t.data[offset + i * t.strides[dim]];
+                          if (i + 1 < t.shape[dim]) os << ", ";
+                      }
+                      os << "]";
+                      return;
+                  }
+                  os << "[";
+                  for (size_t i = 0; i < t.shape[dim]; ++i) {
+                      if (i > 0) {
+                          os << ",\n";
+                          // one blank line between 2-D "chunks" when there are >2 outer dims
+                          if (dim < t.shape.size() - 2) os << "\n";
+                          os << std::string(indent + 1, ' ');
+                      }
+                      print_recursive(os, t, dim + 1, offset + i * t.strides[dim], indent + 1);
+                  }
+                  os << "]";
+              }
 
 
-            // TODO:CHANGE to not print extra stuff after the boradcast is applied as stride is set to 0 after broadcast is done
             friend std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
 
-                Tensor cpu_tensor_view = tensor.to(Device::cpu());
-
-
-                size_t total_elements = 1;
-                for (int dim : tensor.shape) {
-                    total_elements *= dim;
-                }
 
                 os << "Tensor with shape: [";
                 for (size_t i = 0; i < tensor.shape.size(); ++i) {
@@ -550,13 +623,27 @@ namespace simplenet{
                 os << "Tensor on device: ";
                 os << tensor.device.to_string() << "\n";
 
-                os << "Tensor data: \n";
-                for (size_t i = 0; i < total_elements; ++i) {
-                    os << std::setprecision(14) << cpu_tensor_view.data[i] << " ";
+                os << "Tensor data:\n";
+                if (tensor.device.is_cpu()) {
+                    // No copy: walk the view in place.
+                    if (tensor.shape.empty()) {
+                        os << tensor.data[tensor.data_offset];
+                    } else {
+                        print_recursive(os, tensor, 0, tensor.data_offset, 0);
+                    }
+                } else {
+                    // copy constructor used here
+                    Tensor host = tensor.to(Device::cpu());
+                    if (host.shape.empty()) {
+                        os << host.data[host.data_offset];
+                    } else {
+                        print_recursive(os, host, 0, host.data_offset, 0);
+                    }
                 }
                 os << "\n";
 
                 os << "OWNERSHIP: " << ((tensor.owns_data) ? "TRUE" : "FALSE") << std::endl;
+                os << "SLICED VIEW: " << ((tensor.getDataOffset() != 0) ? "TRUE" : "FALSE") << std::endl;
 
                 return os;
             }
@@ -1604,51 +1691,38 @@ namespace simplenet{
                 }
 
                 // parse the slice operations into start and end indices for each dimension
+                size_t dim = 0;
                 std::vector<utils::Slice> sliceIndices;
                 for (const auto& op : sliceOps) {
                     std::string cleaned = op;
                     std::erase(cleaned, ' ');
-                    // TODO need to parse before and after the colon to get the start and end indices
-                    std::vector<std::string> indices;
-                    boost::split(indices, cleaned, boost::is_any_of(":"));
-
+                    size_t dim_size = t.getShape()[dim];
 
                     // check if the slice operation is valid
-                    if (indices.size() > 2 || cleaned.find(":") == std::string::npos) {
-                        throw std::invalid_argument("Invalid slice operation: " + cleaned);
+                    if (cleaned ==":") {
+                        sliceIndices.emplace_back(0, dim_size, 1, utils::SliceMode::FULL);
+                    }else if (cleaned.find(':') == std::string::npos) {
+                        int idx = std::stoi(cleaned);
+                        sliceIndices.emplace_back(idx, idx + 1, 1, utils::SliceMode::RANGE);
+                    } else {
+                        std::vector<std::string> indices;
+                        boost::split(indices, cleaned, boost::is_any_of(":"));
+                        if (indices.size() > 2) throw std::invalid_argument("Invalid slice: " + cleaned);
+                        int start = indices[0].empty() ? 0       : std::stoi(indices[0]);
+                        int end   = indices[1].empty() ? dim_size : std::stoi(indices[1]);
+                        if (start < 0 || start >= dim_size || end < start || end > dim_size)
+                            throw std::invalid_argument("Invalid slice: " + cleaned);
+                        sliceIndices.emplace_back(start, end, 1, utils::SliceMode::RANGE);
                     }
-                    if (indices.size() == 0){
-                        // we will do a full slice here
-                        sliceIndices.emplace_back(utils::Slice(0, t.getShape()[sliceIndices.size()], 1, utils::SliceMode::FULL));
-                    } else if (indices.size() == 1) {
-                        // acts as a trim
-                        bool isFirst = (cleaned.find(":") == cleaned.length() - 1) ? true : false;
-                        if (isFirst) {
-                            int start = std::stoi(indices.at(0));
-                            if (start < 0 || start >= t.getShape()[sliceIndices.size()]) {
-                                throw std::invalid_argument("Invalid slice operation: " + cleaned);
-                            }
-                            sliceIndices.emplace_back(utils::Slice(start, t.getShape()[sliceIndices.size()], 1, utils::SliceMode::RANGE));
-                        } else {
-                            int end = std::stoi(indices.at(1)); // boost::split will give something like ["", "5"]
-                            if (end < 0 || end + 1 > t.getShape()[sliceIndices.size()]) {
-                                throw std::invalid_argument("Invalid slice operation: " + cleaned);
-                            }
-                            sliceIndices.emplace_back(utils::Slice(0, end - 1, 1, utils::SliceMode::RANGE));
-                        }
-                    }else {
-                        int index_0 = std::stoi(indices[0]);
-                        int index_1 = std::stoi(indices[1]);
-                        if (index_0 < 0 || index_0 >= t.getShape()[sliceIndices.size()]) {
-                            throw std::invalid_argument("Invalid slice operation: " + cleaned);
-                        }
-                        if (index_1 < 0 || index_1 >= t.getShape()[sliceIndices.size()]) {
-                            throw std::invalid_argument("Invalid slice operation: " + cleaned);
-                        }
-                        sliceIndices.emplace_back(utils::Slice(index_0, index_1, 1, utils::SliceMode::RANGE));
-                    }
+                    ++dim;
+
                 }
 
+                auto sliced_result = utils::computing_slice_parameters(t.getShape(), t.getStrides(), sliceIndices);
+
+                Tensor slicedView = Tensor::makeSliceView(t, sliced_result);
+
+                return slicedView;
 
 
                 // we have our slice computed now, we can use it to slice the tensor (compute a new shape and strides and offsets)
@@ -1656,7 +1730,12 @@ namespace simplenet{
 
 
                 // is there a way a custom slice can be defined using all dims and all start/end indices? (in our Slice Type)
-                return Tensor({1}, Device::cpu()); // TODO: remove this line - boilerplate
+
+            }
+
+            // non-static variant of slice
+            Tensor slice(std::string parse) {
+                return Tensor::slice(*this, parse);
             }
 
             // TODO: CUDA support
