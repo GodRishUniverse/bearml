@@ -347,7 +347,7 @@ int main() {
 
      padded.to_(simplenet::Device::cpu());
      simplenet::Tensor::setPrintPrecision(1);
-     cout << padded.slice("1, 1:4") << endl;
+     cout << padded.slice("1, 1:5:2") << endl;
 
 
 

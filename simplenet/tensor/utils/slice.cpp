@@ -1,5 +1,4 @@
 #include "slice.h"
-#include <vector>
 
 namespace simplenet {
     namespace utils {
@@ -10,14 +9,17 @@ namespace simplenet {
             // TODO: step is not used right now - NEED TO ADD SUPPORT FOR STEP
             int offset = 0;
             std::vector<int> new_shape(shape.size());
+            std::vector<int> new_strides(strides.size());
             for (size_t i = 0; i < slices.size(); i++) {
                 int start = slices[i].get_set_start();
                 int end = slices[i].get_set_end();
+                int step = slices[i].get_set_step();
                 offset += strides[i] * start;
-                new_shape[i] = end - start;
+                new_shape[i] = static_cast<int>(ceil((end - start) / (double)step));
+                new_strides[i] = strides[i] * step;
             }
 
-            return SliceReturn(new_shape, offset);
+            return SliceReturn(new_shape, new_strides, offset);
             // TODO: One thing I learned is that for n-dim slicing to function offset is needed but also makeSliceView and other operations are needed especially - slice aware OPs
             // TODO: like in (i,j,k,l) tensor slicing, offset + new_stride[0]*i + new_stride[1]*(i+1) + ... + new_stride[n-1]*(i+n-1) will be required to view the slice data values and the same is needed for their ops
             // TODO: Interesting to figure out how ops would work

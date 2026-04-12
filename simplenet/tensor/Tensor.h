@@ -126,7 +126,7 @@ namespace simplenet{
                 v.data       = t.data;
                 v.data_offset = sliceResult.offset;
                 v.shape      = sliceResult.shape;
-                v.strides    = t.strides; // use same strides as the original tensor
+                v.strides    = sliceResult.strides;
                 v.owns_data  = false;       // parent owns the storage
                 v.allocator_ = nullptr;
                 v.is_sliced_view = true;
@@ -1673,8 +1673,6 @@ namespace simplenet{
             }
 
 
-            // TODO: implement slice operation (we slice the Tensor)
-            // dim tells us what kind of slice we are doing (1D, 2D, 3D, etc.)
             static Tensor slice(const Tensor& t, std::string parse) {
                 // We will have to compute a new shape and a new stride as well
                 // [start0:end0, start1:end1, ...]
@@ -1707,12 +1705,14 @@ namespace simplenet{
                     } else {
                         std::vector<std::string> indices;
                         boost::split(indices, cleaned, boost::is_any_of(":"));
-                        if (indices.size() > 2) throw std::invalid_argument("Invalid slice: " + cleaned);
+                        if (indices.size() > 3) throw std::invalid_argument("Invalid slice: " + cleaned);
                         int start = indices[0].empty() ? 0       : std::stoi(indices[0]);
                         int end   = indices[1].empty() ? dim_size : std::stoi(indices[1]);
-                        if (start < 0 || start >= dim_size || end < start || end > dim_size)
+                        int step  = 1;
+                        if (indices.size() > 2 && !indices[2].empty()) step = std::stoi(indices[2]);
+                        if (start < 0 || start >= dim_size || end < start || end > dim_size || step <= 0)
                             throw std::invalid_argument("Invalid slice: " + cleaned);
-                        sliceIndices.emplace_back(start, end, 1, utils::SliceMode::RANGE);
+                        sliceIndices.emplace_back(start, end, step, utils::SliceMode::RANGE);
                     }
                     ++dim;
 

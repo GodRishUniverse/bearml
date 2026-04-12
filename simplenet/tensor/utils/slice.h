@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <cmath>
 
 namespace simplenet {
     namespace utils {
@@ -8,8 +9,10 @@ namespace simplenet {
         class SliceReturn {
             public:
                 std::vector<int> shape;
+                std::vector<int> strides;
                 int offset;
-                SliceReturn(std::vector<int> shape, int offset) : shape(shape), offset(offset) {}
+                SliceReturn(std::vector<int> shape, std::vector<int> strides, int offset) : shape(shape), strides(strides), offset(offset) {}
+
         };
 
         enum class SliceMode {
