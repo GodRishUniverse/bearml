@@ -682,6 +682,9 @@ namespace simplenet{
             // Tensor-Tensor operator: uses device types to choose the path - uses OpCode for choosing the operator
             static Tensor elementwise_binary(const Tensor& A, const Tensor& B, OP_Code op) {
                 utils::errorCheckSameDevice(A, B);
+                if (A.is_sliced_view || B.is_sliced_view) {
+                    throw std::runtime_error("Element-wise binary operation requires both tensors to be contiguous - slice aware operations are not supported");
+                }
                 if (A.device.type == DeviceType::CUDA) {
                     if (A.shape == B.shape) {
                         Tensor C(A.shape, A.device);
@@ -717,6 +720,9 @@ namespace simplenet{
 
             // Tensor-scalar operator: handles Tensor op scalar and scalar op Tensor
             static Tensor elementwise_scalar(const Tensor& A, double b, OP_Code op, LHS_RHS_Code side) {
+                if (A.is_sliced_view) {
+                    throw std::runtime_error("Element-wise binary operation with SCALAR requires both tensors to be contiguous - slice aware operations are not supported");
+                }
                 Tensor C(A.shape, A.device);
                 if (A.device.type == DeviceType::CUDA) {
                     cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, op, side);
@@ -1673,6 +1679,29 @@ namespace simplenet{
             }
 
 
+            static Tensor contiguous(const Tensor& t, const Device& device = Device::cpu()) {
+                if (t.is_contiguous()) return t;
+
+                if (device.type == DeviceType::CUDA || t.device.type == DeviceType::CUDA) {
+                    throw std::runtime_error("Contiguous operation is not supported on CUDA tensors");
+                }
+
+                Tensor result(t.shape, t.device);
+
+                for (size_t i = 0; i < t.sizeOfTensor();  ++i) {
+                    result.data[i] = t.data[i+t.data_offset];
+                }
+                // std::cout << "contiguous: " << (result.is_contiguous() ? "yes" : "no") << std::endl;
+                return result;
+            }
+
+            // non static variation
+            Tensor contiguous(const Device& device = Device::cpu()) {
+                if (is_contiguous()) return *this;
+                return Tensor::contiguous(*this, device);
+            }
+
+
             static Tensor slice(const Tensor& t, std::string parse) {
                 // We will have to compute a new shape and a new stride as well
                 // [start0:end0, start1:end1, ...]
@@ -1723,14 +1752,6 @@ namespace simplenet{
                 Tensor slicedView = Tensor::makeSliceView(t, sliced_result);
 
                 return slicedView;
-
-
-                // we have our slice computed now, we can use it to slice the tensor (compute a new shape and strides and offsets)
-                // TODO: compute this
-
-
-                // is there a way a custom slice can be defined using all dims and all start/end indices? (in our Slice Type)
-
             }
 
             // non-static variant of slice
