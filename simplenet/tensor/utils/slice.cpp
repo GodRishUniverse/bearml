@@ -6,7 +6,6 @@ namespace simplenet {
 
         SliceReturn computing_slice_parameters(std::vector<int> shape, std::vector<int> strides, std::vector<utils::Slice> slices) {
             // we will have to traverse in reverse order to compute the offsets and end per dimension
-            // TODO: step is not used right now - NEED TO ADD SUPPORT FOR STEP
             int offset = 0;
             std::vector<int> new_shape(shape.size());
             std::vector<int> new_strides(strides.size());
@@ -20,10 +19,10 @@ namespace simplenet {
             }
 
             return SliceReturn(new_shape, new_strides, offset);
-            // TODO: One thing I learned is that for n-dim slicing to function offset is needed but also makeSliceView and other operations are needed especially - slice aware OPs
-            // TODO: like in (i,j,k,l) tensor slicing, offset + new_stride[0]*i + new_stride[1]*(i+1) + ... + new_stride[n-1]*(i+n-1) will be required to view the slice data values and the same is needed for their ops
-            // TODO: Interesting to figure out how ops would work
-            // TODO: complete this as this can be used by the slice function inside the Tensor class to compute the slice
+            // One thing I learned is that for n-dim slicing to function offset is needed but also makeSliceView and other operations are needed especially - slice aware OPs
+            // like in (i,j,k,l) tensor slicing, offset + new_stride[0]*i + new_stride[1]*(i+1) + ... + new_stride[n-1]*(i+n-1) will be required to view the slice data values and the same is needed for their ops
+            // Interesting to figure out how ops would work
+            // complete this as this can be used by the slice function inside the Tensor class to compute the slice
         }
     }
 }

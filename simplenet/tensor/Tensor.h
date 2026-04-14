@@ -682,9 +682,6 @@ namespace simplenet{
             // Tensor-Tensor operator: uses device types to choose the path - uses OpCode for choosing the operator
             static Tensor elementwise_binary(const Tensor& A, const Tensor& B, OP_Code op) {
                 utils::errorCheckSameDevice(A, B);
-                if (A.is_sliced_view || B.is_sliced_view) {
-                    throw std::runtime_error("Element-wise binary operation requires both tensors to be contiguous - slice aware operations are not supported");
-                }
                 if (A.device.type == DeviceType::CUDA) {
                     if (A.shape == B.shape) {
                         Tensor C(A.shape, A.device);
@@ -720,9 +717,6 @@ namespace simplenet{
 
             // Tensor-scalar operator: handles Tensor op scalar and scalar op Tensor
             static Tensor elementwise_scalar(const Tensor& A, double b, OP_Code op, LHS_RHS_Code side) {
-                if (A.is_sliced_view) {
-                    throw std::runtime_error("Element-wise binary operation with SCALAR requires both tensors to be contiguous - slice aware operations are not supported");
-                }
                 Tensor C(A.shape, A.device);
                 if (A.device.type == DeviceType::CUDA) {
                     cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, op, side);
@@ -1146,10 +1140,12 @@ namespace simplenet{
 
             // --------------------------------EQUALITY--------------------------------------------------------------------------
 
-            // TODO: write a CUDA check kernel
             // will change as float precision is added
             friend bool operator==(const Tensor &a, const Tensor &b){
                 if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
+                    if (a.getDevice().type == DeviceType::CUDA && b.getDevice().type == DeviceType::CUDA){
+                        return cuda::launch_check_equal_kernel<double>(a.data, b.data, a.sizeOfTensor()); // need to test this
+                    }
                     // NOTE: std::abs is better for doubles
                     for (size_t i = 0; i<a.sizeOfTensor(); i++){
                         if ((std::abs(a.data[i]-b.data[i])) >= Tensor::MIN_DIFF){ // check if the error is greater than 10^-15
