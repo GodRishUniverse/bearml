@@ -9,3 +9,4 @@
 #include "../kernels/transpose.cuh"
 #include "../kernels/compares.cuh"
 #include "../kernels/padding.cuh"
+#include "../kernels/accumulate.cuh"

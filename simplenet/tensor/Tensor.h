@@ -1207,7 +1207,7 @@ namespace simplenet{
                 // edge cases to consider - when we only have a vector then sum will give a scalar
                 if (shape.size()==1 && dim ==0){
                     // no need to check keep dims as if keepdims is false then it will be a scalar anyways
-                    Tensor new_t({1});
+                    Tensor new_t({1}, this->device);
                     new_t.data[0] = (op == reductions::ReductionOps::PROD) ? 1.0
                                              : (op == reductions::ReductionOps::MAX)  ? -std::numeric_limits<double>::infinity()
                                              : (op == reductions::ReductionOps::MIN)  ?  std::numeric_limits<double>::infinity()
@@ -1252,7 +1252,7 @@ namespace simplenet{
                 }
 
                 std::vector<int> newShape = shape;
-                int oldDim = newShape[dim];
+                int oldDim = newShape[dim]; // same as dim width
                 newShape[dim] = 1; // we will change the shape afterwards
 
                 ll offset_new_shape{1};
@@ -1262,71 +1262,79 @@ namespace simplenet{
 
                 ll offset_old{offset_new_shape*oldDim};
 
-                Tensor new_t(newShape);
+                Tensor new_t(newShape, this->device);
                 double* flat_data = new_t.data;
 
-                // gpu direct access not allowed, so we copy to CPU first
-                Tensor copy_tensor = *this;
-                copy_tensor.to_(Device(DeviceType::CPU, -1));
+                if (this->device.type == DeviceType::CUDA) {
+                    cuda::launch_accumulate_kernel<double>(this->data, flat_data, this->shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
 
-                ll dest_idx = 0;
-                for (size_t v =0; v<sizeOfTensor(); v+=offset_old){
-                    for (size_t s = 0; s<offset_new_shape;s++){
-                        // accumulate initial value based on reduction op
-                        double val = (op == reductions::ReductionOps::PROD) ? 1.0
-                                                 : (op == reductions::ReductionOps::MAX || op == reductions::ReductionOps::ARG_MAX)  ? -std::numeric_limits<double>::infinity()
-                                                 : (op == reductions::ReductionOps::MIN || op == reductions::ReductionOps::ARG_MIN)  ?  std::numeric_limits<double>::infinity()
-                                                 : 0.0;
-                        double arg_idx = 0.0;
+                } else {
 
-                        for (int idx = 0; idx<oldDim; idx++){
-                            // edited from this->data to copy_tensor.data
-                            double elem = copy_tensor.data[v + idx * offset_new_shape + s];
-                            switch (op) {
-                                case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
-                                    val += elem;
-                                    break;
-                                case reductions::ReductionOps::PROD:
-                                    val *= elem;
-                                    break;
-                                case reductions::ReductionOps::MAX:
-                                    val = std::max(val, elem);
-                                    break;
-                                case reductions::ReductionOps::MIN:
-                                    val = std::min(val, elem);
-                                    break;
-                                case reductions::ReductionOps::ARG_MAX:
-                                    if (elem > val) {
-                                        val = elem;
-                                        arg_idx = idx;
-                                    }
-                                    break;
-                                case reductions::ReductionOps::ARG_MIN:
-                                    if (elem < val) {
-                                        val = elem;
-                                        arg_idx = idx;
-                                    }
-                                    break;
-                                default:
-                                    throw std::runtime_error("Unsupported reduction op");
+                    // gpu direct access not allowed, so we copy to CPU first
+                    Tensor copy_tensor = *this;
+                    copy_tensor.to_(Device(DeviceType::CPU, -1));
 
+                    ll dest_idx = 0;
+                    for (size_t v =0; v<sizeOfTensor(); v+=offset_old){
+                        for (size_t s = 0; s<offset_new_shape;s++){
+                            // accumulate initial value based on reduction op
+                            double val = (op == reductions::ReductionOps::PROD) ? 1.0
+                                                     : (op == reductions::ReductionOps::MAX || op == reductions::ReductionOps::ARG_MAX)  ? -std::numeric_limits<double>::infinity()
+                                                     : (op == reductions::ReductionOps::MIN || op == reductions::ReductionOps::ARG_MIN)  ?  std::numeric_limits<double>::infinity()
+                                                     : 0.0;
+                            int64_t arg_idx = 0;
+
+                            for (int idx = 0; idx<oldDim; idx++){
+                                // edited from this->data to copy_tensor.data
+                                double elem = copy_tensor.data[v + idx * offset_new_shape + s];
+                                switch (op) {
+                                    case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
+                                        val += elem;
+                                        break;
+                                    case reductions::ReductionOps::PROD:
+                                        val *= elem;
+                                        break;
+                                    case reductions::ReductionOps::MAX:
+                                        val = std::max(val, elem);
+                                        break;
+                                    case reductions::ReductionOps::MIN:
+                                        val = std::min(val, elem);
+                                        break;
+                                    case reductions::ReductionOps::ARG_MAX:
+                                        if (elem > val) {
+                                            val = elem;
+                                            arg_idx = idx;
+                                        }
+                                        break;
+                                    case reductions::ReductionOps::ARG_MIN:
+                                        if (elem < val) {
+                                            val = elem;
+                                            arg_idx = idx;
+                                        }
+                                        break;
+                                    default:
+                                        throw std::runtime_error("Unsupported reduction op");
+
+                                }
                             }
+                            if (op == reductions::ReductionOps::ARG_MAX || op == reductions::ReductionOps::ARG_MIN) {
+                                flat_data[dest_idx] = arg_idx;  // store the index, not the value
+                            } else {
+                                if (op == reductions::ReductionOps::MEAN) val /= oldDim; // only for mean
+                                flat_data[dest_idx]= val;
+                            }
+                            dest_idx++;
                         }
-                        if (op == reductions::ReductionOps::ARG_MAX || op == reductions::ReductionOps::ARG_MIN) {
-                            flat_data[dest_idx] = arg_idx;  // store the index, not the value
-                        } else {
-                            if (op == reductions::ReductionOps::MEAN) val /= oldDim; // only for mean
-                            flat_data[dest_idx]= val;
-                        }
-                        dest_idx++;
                     }
                 }
+
+
                 if (keepdims) {
-                    new_t.to_(this->device);
+                    // new_t.to_(this->device);
                     return new_t;
                 }
                 new_t.flatten_inplace((dim<shape.size()-1)? dim : (dim-1),  (dim<shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
-                new_t.to_(this->device);
+                // new_t.to_(this->device);
                 return new_t;
             }
 

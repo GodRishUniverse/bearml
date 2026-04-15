@@ -1,3 +1,5 @@
+#pragma once
+
 #include "../includes/cuda_helper.h"
 #include <cstdint>
 #include "../../tensor/utils/compare_ops.h"

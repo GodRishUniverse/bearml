@@ -1,3 +1,5 @@
+#pragma once
+
 #include "../includes/cuda_helper.h"
 
 namespace simplenet {
