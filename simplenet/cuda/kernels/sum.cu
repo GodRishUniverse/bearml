@@ -36,9 +36,9 @@ namespace simplenet {
         template<typename T>
         __global__ void sum_acc_kernel(const T* d_data,T* d_out, int64_t offset_new_shape, int64_t offset_old, int64_t size) {
             for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x;  idx < size; idx += blockDim.x * gridDim.x) {
-                int64_t outer = idx / offset_old;
-                int64_t s     = idx % offset_new_shape;
-                int64_t out_idx = outer * offset_new_shape + s;
+                int64_t outer = idx / offset_old; // gets the outer index from the old shape
+                int64_t actual_offset     = idx % offset_new_shape; // mods to only get the inner index of the new_shape - actual offset
+                int64_t out_idx = outer * offset_new_shape + actual_offset; // flat data representation with the outer "batch" index and the actual offset
                 atomicAdd(&d_out[out_idx], d_data[idx]);
             }
         }
