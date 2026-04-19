@@ -14,42 +14,563 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 
 ### Prerequisites
 **Only tested on Fedora Linux at the moment**
-- C++20 or higher [Check NVCC compatibility]
+- C++20 or higher (check NVCC compatibility)
 - CMake 3.30+
-- CUDA Toolkit 13.0 [will have to make optional]
+- CUDA Toolkit 13.0 (will have to make optional)
+- GCC 14 (configured as the default compiler)
+- Eigen (included as a third-party submodule, used for CPU BLAS)
+- Boost (for string manipulation utilities)
+- Google Test (included as a third-party submodule, used for unit tests)
 
 ### Building
 
 ```bash
-git clone https://github.com/GodRishUniverse/SimpleNet.git;
-cd SimpleNet;
-mkdir build && cd build;
-cmake ..;
-make;
-<edit your cmake for building the files>
+git clone --recursive https://github.com/GodRishUniverse/SimpleNet.git
+cd SimpleNet
+mkdir build && cd build
+cmake ..
+make
 ```
 
 Please edit the CMake files according to your liking.
 
+### Running
 
-## Implementation
+After building, the test driver is available at:
+```bash
+./runchecks/runchecks    # main testing driver
+```
 
-The implementation is currently trying to implement broadcasting tensors, GEMM, CUDA support (**Refactoring in Progress**).
+Unit tests can be run with:
+```bash
+./unit_tests.sh          # runs gtest-based unit tests
+```
 
-A simple reverse-mode autodifferentiation pipeline is set up. Need to work on applying that for the activation functions and verify on the Tensor operations.
+---
 
-The Autodiff works on  `double` and `Tensor` - cuda support needs to be added and checked
+## Project Structure
+
+```
+SimpleNet/
+├── CMakeLists.txt                  # Top-level CMake build configuration
+├── simplenet/                      # Core library source
+│   ├── simplenet.h                 # Single-header include for the entire framework
+│   ├── tensor/                     # Tensor class and utilities
+│   │   ├── Tensor.h / Tensor.cpp   # Main Tensor class (multi-dim, device-aware)
+│   │   ├── utils/                  # Shape, device, linalg, debug, slice utilities
+│   │   └── reductions/             # Reduction operations (sum, prod, etc.)
+│   ├── autograd/                   # Reverse-mode automatic differentiation engine
+│   │   ├── autogradient.h          # Node<T> template, computational graph, backward pass
+│   │   └── autogradient.cpp
+│   ├── activation_functions/       # Neural network layers and activation functions
+│   │   ├── modules.h               # Abstract Module base class, Linear, ReLU
+│   │   ├── activation_functions.h  # Sigmoid, LeakyReLU, Tanh
+│   │   ├── pooling_layers.h        # Pooling layers (stub)
+│   │   └── convolution_layers.h    # Convolution layers (stub)
+│   ├── loss_functions/
+│   │   └── loss.h                  # L1 (MAE), L2 (MSE), Log Loss (BCE)
+│   ├── optimizers/
+│   │   ├── optimizers.h            # SGD, Adam optimizer classes
+│   │   └── optimizers.cpp
+│   ├── model_construct/
+│   │   └── model_construct.h       # Model_Construct base class (like nn.Module)
+│   ├── devices/
+│   │   ├── device_type.h           # Device enum (CPU/CUDA), Device class, CUDA_CHECK macro
+│   │   └── device_allocator.h      # Memory allocation abstraction
+│   ├── operators/
+│   │   ├── ops.h                   # Element-wise operation codes (OP_Code enum)
+│   │   └── padding_ops.h           # Padding operation codes
+│   └── cuda/                       # CUDA backend
+│       ├── cuda_kernels.h / .cpp   # Host-side kernel dispatch
+│       ├── includes/               # CUDA headers and helpers
+│       │   ├── cuda_imports.h      # Central CUDA include (runtime, fp16, bf16, structs)
+│       │   ├── cuda_helper.h       # Grid/block calculation helpers
+│       │   ├── cuda_consts.h       # Constants (THREAD_COUNT, etc.)
+│       │   ├── cuda_structs.h      # CUDA-specific data structures
+│       │   ├── cuda_cas_traits.h   # CASTraits for atomicCAS type mapping
+│       │   └── kernel_links.h      # Forward declarations linking kernels to host code
+│       └── kernels/                # CUDA kernel implementations (.cu / .cuh)
+│           ├── element_wise_kernels.cu   # Element-wise ops (add, sub, mul, div, pow, etc.)
+│           ├── matmul.cu                 # Matrix multiplication kernel
+│           ├── reductions.cu             # Reduction kernels (prod via atomicMul/CAS)
+│           ├── accumulate.cu             # Accumulate/sum reduction kernel
+│           ├── sum.cu                    # Sum kernel
+│           ├── transpose.cu              # Transpose kernel
+│           ├── fill.cu                   # Fill kernel
+│           ├── checks.cu                 # Device-side validation checks
+│           ├── compares.cu               # Comparison kernels
+│           └── padding.cu               # Padding kernel
+├── runchecks/                      # Test driver with example usage
+│   └── testingDriver.cpp
+├── unit_tests/                     # Google Test unit tests
+│   └── unit_tests.cpp
+├── benchmarks/                     # Benchmarks (empty for now)
+├── third_party/                    # Third-party dependencies (Eigen, Google Test)
+├── Documentation/                  # Learning resources
+│   └── cuda_and_kernel_learning_resources.md
+├── run.sh                          # Build + run script
+├── debug.sh                        # Debug build script
+└── unit_tests.sh                   # Unit test runner script
+```
+
+---
+
+## Core Components
+
+### Tensor (`simplenet::Tensor`)
+
+The fundamental data structure. Multi-dimensional, device-aware (CPU/CUDA), and supports broadcasting.
+
+```cpp
+#include "simplenet.h"
+
+// Create tensors
+simplenet::Tensor a({2, 3, 4});          // 2x3x4 tensor, zeros on CPU
+simplenet::Tensor b({3, 4});             // 3x4 tensor
+
+// Fill with data
+a.linspace(1, 10);                       // fill with linearly spaced values
+b.fill(2.0);                             // fill with a constant
+
+// Element-wise operations (broadcasting supported)
+auto c = a + b;
+auto d = a * b;
+auto e = a - b;
+
+// Scalar operations
+auto f = 2.0 * a;
+auto g = a * 3.5;
+
+// Shape operations
+a.reshape({6, 4});
+auto t = simplenet::Tensor::transpose(a, 0, 1);
+auto flat = a.flatten(0, -1, true);      // flatten dimensions
+a.squeeze(0);                            // remove dimension of size 1
+
+// Reductions
+auto s = a.sum(1, false);               // sum along axis 1
+
+// Comparisons
+auto mask = simplenet::linear_algebra::mask_of_greater_than(a, b, 1.0, 0.0);
+
+// Slicing
+auto sliced = a.slice("1, 1:5:2");       // numpy-style slicing
+auto cont = simplenet::Tensor::contiguous(sliced);
+
+// Concatenation
+auto cat = simplenet::Tensor::concat({a, b}, 0);
+
+// Math functions
+auto t_out = simplenet::Tensor::tan(a);
+
+// Print
+std::cout << a << std::endl;
+a.printShape();
+simplenet::Tensor::setPrintPrecision(4);  // set decimal precision
+```
+
+### Device Management
+
+Tensors can be moved between CPU and CUDA devices.
+
+```cpp
+simplenet::Device cpu_dev = simplenet::Device::cpu();
+simplenet::Device gpu_dev = simplenet::Device::cuda(0);  // GPU 0
+
+simplenet::Tensor t({3, 4});
+t.to_(gpu_dev);              // move to GPU in-place
+auto t_cpu = t.to(cpu_dev);  // create a copy on CPU
+```
+
+### Autograd (`simplenet::Node<T>`)
+
+Reverse-mode automatic differentiation via a computational graph. Works on both `double` and `Tensor` types.
+
+```cpp
+// Scalar autodiff
+auto x = simplenet::Node<double>::make_node(4.0);
+auto y = simplenet::Node<double>::make_node(2.0);
+auto z = x * y + x;     // z = x*y + x
+// dz/dx = y + 1 = 3, dz/dy = x = 4
+
+simplenet::autogradient::backward(z);
+std::cout << x->grad << std::endl;  // 3.0
+std::cout << y->grad << std::endl;  // 4.0
+
+// Tensor autodiff
+simplenet::Tensor a({2, 3});
+a.linspace(1, 6);
+auto node_a = simplenet::Node<simplenet::Tensor>::make_node(a);
+auto result = node_a * node_a;  // element-wise square
+simplenet::autogradient::backward(result);
+// node_a->grad now contains 2*a
+```
+
+### Neural Network Modules
+
+PyTorch-style module system with polymorphism.
+
+**Base class:** `simplenet::neural_network::Module` (abstract)
+- `forward()` - forward pass (pure virtual)
+- `parameters()` - returns trainable parameters
+- Xavier and He initialization built in
+
+**Available layers:**
+- `Linear(in_features, out_features, init_method, device, seed)` - fully connected layer
+- `ReLU()` - rectified linear unit
+- `Sigmoid()` - sigmoid activation
+- `LeakyReLU(negative_slope)` - leaky ReLU
+- `Tanh()` - hyperbolic tangent
+
+```cpp
+simplenet::Device dev = simplenet::Device::cuda(0);
+
+// Create layers
+simplenet::neural_network::Linear fc1(784, 128, "Xavier", dev);
+simplenet::neural_network::ReLU relu;
+simplenet::neural_network::Linear fc2(128, 10, "He", dev);
+
+// Forward pass through layers
+auto x = simplenet::Node<simplenet::Tensor>::make_node(input);
+auto h = fc1(x);
+auto h_act = relu(h);
+auto out = fc2(h_act);
+```
+
+### Model Construction (`Model_Construct`)
+
+Base class for defining custom models (analogous to `torch.nn.Module`).
+
+```cpp
+class MyModel : public simplenet::neural_network::Model_Construct {
+public:
+    simplenet::neural_network::Linear layer1;
+    simplenet::neural_network::Tanh activation;
+    simplenet::neural_network::Linear layer2;
+
+    MyModel(int in_size, int out_size, simplenet::Device dev = simplenet::Device::cpu())
+        : layer1(in_size, 64, "Xavier", dev),
+          activation(42, dev),
+          layer2(64, out_size, "Xavier", dev) {}
+
+    std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(
+            std::vector<simplenet::Tensor> inputs) override {
+        auto x = simplenet::Node<simplenet::Tensor>::make_node(inputs[0]);
+        auto h = layer1(x);
+        auto h_act = activation(h);
+        return layer2(h_act);
+    }
+
+    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() override {
+        auto params = layer1.parameters();
+        auto l2_params = layer2.parameters();
+        params.insert(params.end(), l2_params.begin(), l2_params.end());
+        return params;
+    }
+};
+```
+
+### Loss Functions
+
+Located in `simplenet::neural_network::loss_functions`:
+
+| Function | Description |
+|----------|-------------|
+| `l1_loss(actual, predictions)` | Mean Absolute Error (MAE) |
+| `l2_loss(actual, predictions)` | Mean Squared Error (MSE) |
+| `log_loss(actual, predictions)` | Binary Cross-Entropy (Log Loss) |
+
+```cpp
+auto actual_node = simplenet::Node<simplenet::Tensor>::make_node(actual);
+auto loss = simplenet::neural_network::loss_functions::l1_loss(actual_node, predictions);
+```
+
+### Optimizers
+
+Located in `simplenet::neural_network::optimizers`:
+
+| Optimizer | Parameters |
+|-----------|------------|
+| `SGD(params, lr)` | Learning rate (default: 0.0001) |
+| `Adam(params, lr, beta1, beta2, eps)` | LR, momentum decay, RMSProp decay, epsilon |
+
+```cpp
+simplenet::neural_network::optimizers::SGD optim(model.parameters(), 0.01);
+// or
+simplenet::neural_network::optimizers::Adam optim(model.parameters(), 0.001);
+
+for (int epoch = 0; epoch < 100; epoch++) {
+    optim.zero_grad();
+
+    auto pred = model.forward({input});
+    auto actual_node = simplenet::Node<simplenet::Tensor>::make_node(target);
+    auto loss = simplenet::neural_network::loss_functions::l2_loss(actual_node, pred);
+
+    simplenet::autogradient::backward(loss);
+    optim.step();
+
+    std::cout << "Epoch " << epoch << " Loss: " << loss->val << std::endl;
+}
+```
+
+### CUDA Kernels
+
+The CUDA backend provides templated GPU kernels for all supported types:
+- **Floating point:** `float`, `double`, `__half` (fp16), `__nv_bfloat16` (bf16)
+- **Integer:** `int8_t`, `int16_t`, `int32_t`, `int64_t`
+
+**Available kernels:**
+- Element-wise operations (add, sub, mul, div, pow, etc.) with broadcasting support
+- Matrix multiplication (naive GEMM)
+- Reductions (sum, product via atomicCAS-based `atomicMul`)
+- Transpose
+- Fill
+- Padding (constant, reflect, replicate)
+- Comparison operations
+- Equality checks
+
+Kernels are dispatched automatically when tensors are on a CUDA device. The host-side dispatch logic lives in `cuda_kernels.h/.cpp` and the kernel implementations are in the `kernels/` directory.
+
+---
+
+## End-to-End Training Example
+
+```cpp
+#include "simplenet.h"
+#include <iostream>
+
+class Model : public simplenet::neural_network::Model_Construct {
+public:
+    simplenet::neural_network::Linear layer1;
+    simplenet::neural_network::Tanh nonlinearity;
+    simplenet::neural_network::Linear layer2;
+
+    Model(int in_shape, int out_shape, simplenet::Device dev = simplenet::Device::cpu())
+        : layer1(in_shape, out_shape, "Xavier", dev),
+          nonlinearity(42, dev),
+          layer2(out_shape, out_shape, "Xavier", dev) {}
+
+    std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(
+            std::vector<simplenet::Tensor> inputs) override {
+        auto x = simplenet::Node<simplenet::Tensor>::make_node(inputs[0]);
+        auto f1 = layer1(x);
+        auto f2 = nonlinearity(f1);
+        return layer2(f2);
+    }
+
+    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() override {
+        std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params;
+        auto l1 = layer1.parameters();
+        params.insert(params.end(), l1.begin(), l1.end());
+        auto l2 = layer2.parameters();
+        params.insert(params.end(), l2.begin(), l2.end());
+        return params;
+    }
+};
+
+int main() {
+    simplenet::Device dev = simplenet::Device::cuda(0);
+
+    Model model(2, 5, dev);
+
+    simplenet::Tensor input({1, 2});
+    input.linspace(1, 2);
+    input.to_(dev);
+
+    simplenet::Tensor target({1, 5});
+    target.linspace(1, 5);
+    target.to_(dev);
+
+    simplenet::neural_network::optimizers::SGD optim(model.parameters(), 0.1);
+
+    for (int i = 0; i < 10; i++) {
+        optim.zero_grad();
+
+        auto pred = model.forward({input});
+        auto actual_node = simplenet::Node<simplenet::Tensor>::make_node(target);
+        auto loss = simplenet::neural_network::loss_functions::l1_loss(actual_node, pred);
+
+        simplenet::autogradient::backward(loss);
+        optim.step();
+
+        std::cout << "Loss: " << loss->val << std::endl;
+    }
+
+    return 0;
+}
+```
+
+---
 
 ## What has been done
 
-* Simple (double) based automatic differentiation for: addition, subtraction, multiplication and division
-* A simple reverse-mode autodifferentiation pipeline is set up. Need to work on ap
-* added a sign function
-* added double and Tensor comparison masks
-* element wise divide is done
-* SGD is done
-* Can train a basic neural network on the CPU
+* Multi-dimensional Tensor class with broadcasting, slicing, and device awareness
+* Element-wise operations: add, subtract, multiply, divide, pow, exp, log, sign, abs, trig functions
+* Batched matrix multiplication (GEMM) on CPU (via Eigen) and GPU (naive CUDA kernel)
+* Multi-dimensional transpose
+* Tensor reductions: sum, product (with CUDA atomicCAS-based atomicMul)
+* Kahan summation for numerical stability
+* Reverse-mode automatic differentiation for `double` and `Tensor`
+* Neural network module system: Linear, ReLU, Sigmoid, LeakyReLU, Tanh
+* Model construction base class (`Model_Construct`)
+* Loss functions: L1 (MAE), L2 (MSE), Log Loss (BCE)
+* Optimizers: SGD, Adam (AdamW)
+* Xavier and He weight initialization
+* CUDA backend with templated kernels for all data types (fp16, bf16, float, double, int8-int64)
+* Tensor padding (constant, reflect, replicate)
+* Comparison masks (greater than, less than, equal, etc.)
+* Numpy-style tensor slicing
+* Tensor concatenation
+* CPU/GPU memory management with device transfer (`to_`, `to`)
+* Can train a basic neural network on both CPU and CUDA
 
+---
+
+## What we need to do
+
+### CUDA Support & Core Infrastructure
+* **Refactoring for CUDA Support (Major Overhaul)** -- **IN PROGRESS (Priority)**
+    * Write host code and kernels -- **Status: Kernels in progress**
+      * kernels need to be fixed for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
+    * Call kernels in the `Tensor` class when devices match (CUDA). **DOING alongside CUDA support**
+    * Implement **Lazy Copy** operation.
+    * **Memory Management:** Address CPU/GPU memory usage. (Decision needed: Single memory space vs. syncing to avoid expensive copy operations).
+* **Refactoring for Slice Support** - thinking about it
+    * All ops will have to become slice aware and a `::contiguous` static function will be needed
+    * This will allow easy implementation of convolution operations (i think) - but also nice way to have slicing support
+
+* **Dependency Management:** Fix `#includes` for the repo to remove cyclical dependencies and repeated includes. -- **Priority After Kernels**
+* **Templatify**
+  * **Templatify Tensor:** Implement template specialization for `Tensor` class to support different data types. **IMPORTANT (Priority)**
+  * **Templatify Autodiff:** Implement template specialization for `Autodiff` class to support different data types.
+  * **Templatify Kernel:** Implement template specialization for `Kernel` class to support different data types.
+    * Provide template specification for types
+* Change data types in Tensor class to use `int8, int16, int32, int64, float16, float32, float64, bfloat8, bfloat16, bfloat32, bfloat64` (Need to check types)
+  * Allow Mixed Precision
+* Add OpenMP support for CPU side
+* **Hardware Support:** Potential support for AMD HIP/ROCm. -- **Maybe**
+
+### Math Engine & Tensor Operations
+* **Matrix Multiplication (GEMM):** Use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) integration.
+    * Device-aware execution: Check device string to call CUDA kernel or standard Matmul.
+    * Use CUDA for GEMM and Matmul. **Naive kernel is made**
+* **Vector Operations:** Rectify `Transpose` for vector operations (column vs. row).
+    * Apply corresponding modifications to multiplication in `autogradient.h`.
+* **Caching:** Implement tensor caching to reduce memory usage.
+* **Convolution:** Implement tensor convolution support.
+
+### Autogradient/Autodiff & Neural Network Module
+* **Autodiff Engine:** Implement for activation functions (Unary and Binary ops).
+* **Sequential Class:** Create a wrapper to stack layers.
+* **Loss Functions:**
+    * Cross Entropy Loss
+    * Softmax Loss
+    * Cross Entropy Loss with Softmax
+    * Binary Cross Entropy Loss with Sigmoid
+* **Optimizers (Post-Loss Implementation):**
+    * **SGD:** Currently implemented but slow. Add Momentum.
+    * **Adam / AdamW:** Implement Eps, Betas, and Regularization.
+
+### Data & Pipeline
+* **Dataloading Pipeline:** Support for shuffling and batching.
+    * Modular design for different types (Images, CSV, etc.).
+* **Model Persistence:** Saving and loading pipelines.
+
+### Testing
+* Unit Tests using `gtest` (framework integrated, tests in progress)
+
+### Optimizations
+* **CPU Optimizations:**
+    * Vectorization using AVX/AVX2 intrinsics (e.g., `axpy` for SGD).
+    * Matrix Multiplication Tiling (Cache blocking).
+    * OpenMP parallelization (specifically for Matmul).
+* **Graph & Performance:**
+    * Lazy evaluation of the computational graph.
+    * Operator Fusing (e.g., ReLU + Linear).
+    * Strassen's algorithm for large matrices.
+* **Advanced Features:**
+    * Mixed precision training -- **High Importance**
+    * Dropout.
+    * He initialization (to supplement current Xavier default).
+* **Cleanup:** Removing Eigen operations **(Long-term)**.
+
+### Compatibility and Containerization
+* Provide a Dockerfile for building the project.
+* Add compatibility for `clang` and `msvc` compilers.
+
+---
+
+## Contributing
+
+This repository is open to contributions. Please make an issue before submitting a pull request.
+
+### Getting Started
+
+1. Fork and clone the repository (with submodules):
+   ```bash
+   git clone --recursive https://github.com/GodRishUniverse/SimpleNet.git
+   cd SimpleNet
+   ```
+
+2. Create a build directory and build:
+   ```bash
+   mkdir build && cd build
+   cmake ..
+   make
+   ```
+
+3. Run the test driver to verify your build:
+   ```bash
+   ./runchecks/runchecks
+   ```
+
+4. Run unit tests:
+   ```bash
+   cd .. && ./unit_tests.sh
+   ```
+
+### Making Changes
+
+**Adding a new CUDA kernel:**
+
+1. Create `your_kernel.cu` and `your_kernel.cuh` in `simplenet/cuda/kernels/`.
+2. In the `.cuh` file, declare the kernel function and the `launch_*` host wrapper. Use the existing pattern with `INSTANTIATE_*` macros for template instantiation.
+3. In the `.cu` file, implement the `__global__` kernel and the `launch_*` function. Follow the existing pattern for stream management (create a stream if `nullptr` is passed, synchronize and destroy if owned).
+4. Add forward declarations in `simplenet/cuda/includes/kernel_links.h` so host code can call your launcher.
+5. Add the `.cu` file to `simplenet/CMakeLists.txt` in the source list.
+
+**Adding a new layer/activation:**
+
+1. Create your class inheriting from `simplenet::neural_network::Module` in `simplenet/activation_functions/`.
+2. Implement `forward()`, `parameters()`, `get_detached_value()`, and the `operator()` overloads.
+3. Include it in `simplenet/simplenet.h` if it should be part of the public API.
+
+**Adding a new loss function:**
+
+1. Add your function in `simplenet/loss_functions/loss.h` following the existing pattern.
+2. It should take `shared_ptr<Node<Tensor>>` arguments and return the same. Use the autodiff operators (`+`, `-`, `*`, `/`, `hadamard`, etc.) so gradients flow through automatically.
+
+**Adding a new optimizer:**
+
+1. Inherit from `simplenet::neural_network::optimizers::Optimizer` in `simplenet/optimizers/optimizers.h`.
+2. Implement `step()` and `zero_grad()`.
+3. Add the implementation in `optimizers.cpp`.
+
+**Adding new Tensor operations:**
+
+1. If it's a host-side utility, add it to the appropriate file under `simplenet/tensor/utils/`.
+2. If it needs a CUDA kernel, follow the kernel instructions above and add the host dispatch in `cuda_kernels.h/.cpp`.
+3. Add the public method to `Tensor.h` / `Tensor.cpp`.
+
+### Build Configuration
+
+The project uses CMake with the following defaults (see top-level `CMakeLists.txt`):
+- C++ standard: C++20
+- CUDA standard: C++17
+- Compiler: GCC 14 (`/usr/bin/gcc-14`)
+- CUDA Toolkit: 13.0
+
+You may need to adjust the compiler paths and CUDA toolkit version for your system.
 
 ### NOTE and manual patch-work
 
@@ -73,185 +594,9 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 
 `__restrict__` keyword usage: https://developer.nvidia.com/blog/cuda-pro-tip-optimize-pointer-aliasing/
 
-# What we need to do
+---
 
-## CUDA Support & Core Infrastructure
-* **Refactoring for CUDA Support (Major Overhaul)** — **IN PROGRESS (Priority)** 
-    * Write host code and kernels — **Status: Kernels in progress**
-      * kernels need to be fixed for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
-    * Call kernels in the `Tensor` class when devices match (CUDA). **DOING alongside CUDA support**
-    * Implement **Lazy Copy** operation.
-    * **Memory Management:** Address CPU/GPU memory usage. (Decision needed: Single memory space vs. syncing to avoid expensive copy operations).
-* **Refactoring for Slice Support** - thinking about it 
-    * All ops will have to become slice aware and a `::contiguous` static function will be needed 
-    * This will allow easy implementation of convolution operations (i think) - but also nice way to have slicing support
-  
-* **Dependency Management:** Fix `#includes` for the repo to remove cyclical dependencies and repeated includes. — **Priority After Kernels**
-* **Templatify**
-  * **Templatify Tensor:** Implement template specialization for `Tensor` class to support different data types. **IMPORTANT (Priority)**
-  * **Templatify Autodiff:** Implement template specialization for `Autodiff` class to support different data types.
-  * **Templatify Kernel:** Implement template specialization for `Kernel` class to support different data types.
-    * Provide template specification for types
-* Change data types in Tensor class to use `int8, int16, int32, int64, float16, float32, float64, bfloat8, bfloat16, bfloat32, bfloat64` (Need to check types)
-  * Allow Mixed Precision
-* Add OpenMP support for CPU side
-* **Hardware Support:** Potential support for AMD HIP/ROCm. — **Maybe**
-
-## Math Engine & Tensor Operations
-* **Matrix Multiplication (GEMM):** Use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) integration.
-    * Device-aware execution: Check device string to call CUDA kernel or standard Matmul.
-    * Use CUDA for GEMM and Matmul.**Naive kernel is made**
-* **Vector Operations:** Rectify `Transpose` for vector operations (column vs. row).
-    * Apply corresponding modifications to multiplication in `autogradient.h`.
-* **Padding:** Implement tensor padding support.
-* **Caching:** Implement tensor caching to reduce memory usage.
-* **Convolution:** Implement tensor convolution support.
-* **Legacy/Completed Items:**
-    * ~~Implement broadcasting (Required for tensor multiplication).~~
-    * ~~**Problem:** Print code bug due to shape changes/data access.~~
-    * ~~**Plan:** Make `broadcast` a private function so the broadcasted tensor vanishes after computation.~~
-    * ~~Implement Tensor multiplication (GEMM and not Tensor Product).~~
-    * ~~[Multi-dim Transpose](https://www.iaeng.org/publication/WCE2010/WCE2010_pp1838-1841.pdf)~~
-    * ~~Use Kahman Summation.~~
-    * ~~Address Batched Matmul (e.g., `[2,3,4] * [2,4,5] -> [2,3,5]`).~~
-
-## Autogradient/Autodiff & Neural Network Module
-* **Autodiff Engine:** Implement for activation functions (Unary and Binary ops).
-* **Sequential Class:** Create a wrapper to stack layers.
-* **Loss Functions:**
-    * L1 Loss (MAE) — **Done**
-    * L2 Loss (MSE) - **Done**
-    * Log Loss/BCELossWithLogits - **Done**
-    * Cross Entropy Loss
-    * Softmax Loss
-    * Cross Entropy Loss with Softmax
-    * Binary Cross Entropy Loss with Sigmoid
-* **Optimizers (Post-Loss Implementation):**
-    * **SGD:** Currently implemented but slow. Add Momentum.
-    * **Adam / AdamW:** Implement Eps, Betas, and Regularization.
-
-## Data & Pipeline
-* [ ] **Dataloading Pipeline:** * Support for shuffling and batching. **Will make a `Rust` based project for this to also learn**
-    * Modular design for different types (Images, CSV, etc.).
-* **Model Persistence:** Saving and loading pipelines.
-* **Integration:** Integrate Caffe2 if needed. [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
-
-## Testing
-* [ ] Unit Tests using `gtest`
-
-# Documentation
-* [ ] Use Claude/LLM to make documentation for the repository - there are comments everywhere so should be trivial task for a LLM - although I would have to read it thoroughly
-
-## Optimizations
-* **CPU Optimizations:**
-    * Vectorization using AVX/AVX2 intrinsics (e.g., `axpy` for SGD).
-    * Matrix Multiplication Tiling (Cache blocking).
-    * OpenMP parallelization (specifically for Matmul).
-* **Graph & Performance:**
-    * Lazy evaluation of the computational graph.
-    * Operator Fusing (e.g., ReLU + Linear).
-    * Strassen's algorithm for large matrices.
-* **Advanced Features:**
-    * Mixed precision training — **High Importance**
-    * Dropout.
-    * He initialization (to supplement current Xavier default).
-* **Cleanup:** Removing Eigen operations **(Long-term)**.
-
-## Compatibility and Containerization
-
-* Provide a Dockerfile for building the project.[Although it should work across different platforms using `g++` and `cmake`]
-* Add compatibility for `clang` and `msvc` compilers.
-
-<!-- commented because this is the old todo - above is formatted 
-## What do we need to complete
-
-* Refactoring for cuda support - overhaul (2nd big refactor) -> - I am working on this first! **Important**
-  * Write host code and kernels **kernels in progress** 
-    * -> then call in the Tensor class when devices are the same and are both cuda
-  * Lazy copy operation 
-  * cpu and gpu memory both used -> need to think if we want to only use one (cause copy operation is expensive) -> we could use syncing though - **idk about this need to chek**
-
-Afterwards:
-  * fix the `#includes` for the repo so that cyclical dependencies and repeated includes are removed **Important**
-  * Support for AMD HIP/ROCm **maybe**
-  * A model saving and loading pipelines 
-  * Integrate Caffe2 IF NEEDED: [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
-  
-  * ~~Implement broadcasting properly as it is required for tensor multiplication - there is another bug in the print code because the tensor shape changes but not the data so it accesses beyond what is allocated - **PROBLEM**~~
-    * ~~Potential solution is to basically set a boolean to see if it is a broadcasted tensor or nott - PLAN IS TO MAKE BORADCAST A PRIVATE FUNCTION SO THE BROADCASTED TENSOR VANISHES AFTER COMPUTATION is APPLIED~~
-  
-  * Just use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) ~~Implement Tensor multiplication (GEMM and not Tensor Product - both are infact different)~~
-    * ~~[Multi dim Transpose](https://www.iaeng.org/publication/WCE2010/WCE2010_pp1838-1841.pdf)~~
-    * ~~Use Kahman Summation~~
-    * Check what device has been set - using a string to call a CUDA kernel or normal matmul for GEMM
-      * **TODO**: Use CUDA for GEMM and Matmul - use
-    * ~~The problem is not matmul or vector-mat mul or vector-vector mul - rather batched mat mul - what I now understand is how batched matmul works and I give an example here~~
-      ~~`When we multiply [2,3,4] with [2,4,5] -> [2,3,5] because the first is a 2-batch of [3,4] matrices and the next one is the 2-batch of [4,5] matrices`~~
-      ~~This is one reason why when doing batched mul only the last 2 indices can differ but the rest HAVE TO BE THE SAME.~~
-  
-  * Implement Autodiff for activation functions -> will involve using unary and binary ops so is a matter of implementing Autodiff for operations
-  
-  * Make Sequential Class to stack Classes in Neural Network
-  
-  * Implement loss functions
-    * L1 loss (MAE) - done
-    * L2 loss (MSE) 
-    * log loss
-  
-  * Implement SGD and Adam (AdamW) **(After loss functions are made)**
-    * SGD is done but is slow
-  * Implement SGD and Adam **(After loss functions are made)**
-    * Eps and Betas
-    * Regularization
-  
-  * Rectify Transpose for vector operations as well -> column transpose or row transpose
-    * Same needs to modified in multiplication in `autogradient.h`
-  
-  * A dataloading pipeline (with shuffle and batching) -> needs to modular for different data types like (images, csv, etc.)
-  
-  * removing Eigen operations (im lazy so I dont wanna remove it sadly :( )
-  
-  * adding padding
-  
-  * Optimizations (finally! cause we can now train a very basic neural network) -> we will come back to other loss functions in a bit as that is a mechanical process of adding operations to the autodifferentiation engine and the Tensor class
-    * Momentum in SGD
-    * Some CPU Optimizations
-      * Vectorization and using AVX/AVX2 intrinsics for element-wise ops
-        * Like an operation like `axpy` to speed `SGD` operation
-      * Tiling the matrix multiplication (block/cache blocking)
-      * OpenMP parallelization -> Not sure how we will do so right now -> only matmul makes sense
-    * Lazy evaluation of the computational graph
-    * Cache friendly tiling
-    * Operator Fusing (Like ReLU and Linear)
-    * Strassen's algorithm for large matrix mul.
-    * Dropout
-    * Mixed precision training (This is very important!!!)
-    * He initialization as well -> right now Xavier is the default
--->
-
-## Roadblocks I faced
-
-So one of the first roadblocks that I faced is that (I have spent months on this - not completely but relatively speaking) implementing GEMM on the CPU without a prebaked library is hard.
-- also need to think about subgradients and cases of discontinuities (I think PyTo
-
-
-### Current Hurdle
-
-How to make the SGD faster -> using momentum? Cause it is slow for lower learning rates
-Refactoring the entire code base (cause Tensor class will change) -> cuda kernel and movement of data need to be consideredz`
-
-
-
-
-### Open to Contributions
-This repository is open to contribute to. Please make an issue before submitting
-
-To clone please do the following: (for submodules)
-```bash
-git clone --recursive https://github.com/GodRishUniverse/SimpleNet.git
-```
-
-### Citations [will formalize]
+## Citations [will formalize]
 
 >
 > [1] [Thank you u/brandonpelfrey](https://www.reddit.com/r/algorithms/comments/1naehk1/comment/ndpkcqr/)
@@ -259,20 +604,3 @@ git clone --recursive https://github.com/GodRishUniverse/SimpleNet.git
 > [2] [max() derivative formula](https://math.stackexchange.com/questions/368432/derivative-of-max-function)
 >
 >
-
-
-### OLD
-
-* Integrate Caffe2 IF NEEDED: [Basic info about Caffe](https://builtin.com/machine-learning/caffe#:~:text=Is%20Caffe%20Still%20Used%3F,processing%2C%20computer%20vision%20and%20multimedia.)
-
-* ~~Implement broadcasting properly as it is required for tensor multiplication - there is another bug in the print code because the tensor shape changes but not the data so it accesses beyond what is allocated - **PROBLEM**~~
-  * ~~Potential solution is to basically set a boolean to see if it is a broadcasted tensor or nott - PLAN IS TO MAKE BORADCAST A PRIVATE FUNCTION SO THE BROADCASTED TENSOR VANISHES AFTER COMPUTATION is APPLIED~~
-
-* Just use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) ~~Implement Tensor multiplication (GEMM and not Tensor Product - both are infact different)~~
-  * ~~[Multi dim Transpose](https://www.iaeng.org/publication/WCE2010/WCE2010_pp1838-1841.pdf)~~
-  * ~~Use Kahman Summation~~
-  * Check what device has been set - using a string to call a CUDA kernel or normal matmul for GEMM
-    * **TODO**: Use CUDA for GEMM and Matmul - use
-  * ~~The problem is not matmul or vector-mat mul or vector-vector mul - rather batched mat mul - what I now understand is how batched matmul works and I give an example here~~
-    ~~`When we multiply [2,3,4] with [2,4,5] -> [2,3,5] because the first is a 2-batch of [3,4] matrices and the next one is the 2-batch of [4,5] matrices`~~
-    ~~This is one reason why when doing batched mul only the last 2 indices can differ but the rest HAVE TO BE THE SAME.~~
