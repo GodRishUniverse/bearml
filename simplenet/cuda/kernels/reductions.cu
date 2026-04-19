@@ -4,22 +4,39 @@
 namespace simplenet{
     namespace cuda {
 
-        // TODO: implement atomicMul - can we template this?
-        // Use atomicCAS - which is atomic compare-and-swap
+        // utility function: bit_cast - converts between types of the same size - uses memcpy for the actual conversion
+        template <typename AsType, typename FromType>
+        __device__ AsType bit_cast(FromType val) {
+            static_assert(sizeof(AsType) == sizeof(FromType), "size mismatch");
+            AsType result;
+            memcpy(&result, &val, sizeof(val));
+            return result;
+        }
+
+        // atomicMul via atomicCAS (compare-and-swap loop)
+        // Has to have CASTraits<T> defined
         template<typename T>
         __device__ T atomicMul(T* address, T val)
         {
-          // TODO: IMPLEMENT this - https://stackoverflow.com/questions/43354798/atomic-multiplication-and-division
-          // The idea is here to keep tracking the old value and updating it atomically and also the address
-          int* address_as_int = (int*)address;
-          int old = *address_as_int, assumed; // TODO: what is this syntax?
+          using U = typename simplenet::cuda::CASTraits<T>::int_type;
+
+          U* address_as_u = reinterpret_cast<U*>(address); // reinterpret address as U* for atomicCAS
+          U old = *address_as_u;
+          U assumed_bits;
+
           do {
-            assumed = old;
-            // READ device/gpu function documentation
-            old = atomicCAS(address_as_int, assumed, __float_as_int(val * __float_as_int(assumed)));
-          } while (assumed != old);
-          return __int_as_float(old);
+                assumed_bits = old;
+                T assumed_val = bit_cast<T, U>(assumed_bits);
+                T desired_val = assumed_val * val;
+                U desired_bits = bit_cast<U, T>(desired_val);
+                old = atomicCAS(address_as_u, assumed_bits, desired_bits);
+          } while (assumed_bits != old);
+
+          return bit_cast<T, U>(old);
         }
+
+        // TODO: - think about int8_t specialization - so we apply bitwise operations - understand overlying architecture and operation to figure out the operation
+
 
 
         template<typename T>
@@ -32,6 +49,7 @@ namespace simplenet{
             }
         }
 
+        // test this
         template<typename T>
         void launch_prod_acc_kernel(T *d_data, T *d_out, int64_t offset_new_shape, int64_t offset_old, int64_t size, cudaStream_t stream) {
             bool own_stream = (stream == nullptr);
@@ -57,7 +75,7 @@ namespace simplenet{
         INSTANTIATE_PROD_ACC(double);
 
         // ints
-        INSTANTIATE_PROD_ACC(int8_t);
+        // INSTANTIATE_PROD_ACC(int8_t);
         INSTANTIATE_PROD_ACC(int16_t);
         INSTANTIATE_PROD_ACC(int32_t);
         INSTANTIATE_PROD_ACC(int64_t);
