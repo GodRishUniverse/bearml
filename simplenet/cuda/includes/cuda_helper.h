@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <numeric>
 
 #include "cuda_imports.h" // all cuda imports
 

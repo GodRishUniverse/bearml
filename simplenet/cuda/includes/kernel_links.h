@@ -10,3 +10,4 @@
 #include "../kernels/compares.cuh"
 #include "../kernels/padding.cuh"
 #include "../kernels/accumulate.cuh"
+#include "../kernels/reductions.cuh"

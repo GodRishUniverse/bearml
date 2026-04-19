@@ -1,4 +1,6 @@
 #include "accumulate.cuh"
+#include "element_wise_kernels.cuh"
+#include "reductions.cuh"
 
 namespace simplenet {
     namespace cuda {
@@ -10,10 +12,20 @@ namespace simplenet {
                 case reductions::ReductionOps::SUM:
                     simplenet::cuda::launch_sum_acc_kernel<T>(d_data, d_out, offset_new_shape, offset_old, size, stream);
                     break;
-                case reductions::ReductionOps::MEAN:
+                // TODO: test this below
+                case reductions::ReductionOps::MEAN: {
+                    simplenet::cuda::launch_sum_acc_kernel<T>(d_data, d_out, offset_new_shape, offset_old, size, stream);
+                    T element_count = static_cast<T>(std::accumulate(out_shape.begin(), out_shape.end(), 1, std::multiplies<int>()));
+                    simplenet::cuda::launch_elementwise_contiguous_with_constant<T>(d_out, element_count, d_out, out_shape, OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS, stream);
+                    break;
+                };
+                // TODO: test this below
+                case reductions::ReductionOps::PROD:
+                    simplenet::cuda::launch_prod_acc_kernel<T>(d_data, d_out, offset_new_shape, offset_old, size, stream);
+                    break;
                 case reductions::ReductionOps::MAX:
                 case reductions::ReductionOps::MIN:
-                case reductions::ReductionOps::PROD:
+
                 case reductions::ReductionOps::ARG_MAX:
                 case reductions::ReductionOps::ARG_MIN:
                     throw std::runtime_error("REDUCTION OP NOT IMPLEMENTED YET");
