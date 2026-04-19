@@ -527,6 +527,10 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
 
 ---
 
+## Author
+
+Rishabh Agarwal ([@GodRishUniverse](https://github.com/GodRishUniverse))
+
 ## Citations [will formalize]
 
 >
