@@ -429,6 +429,68 @@ namespace simplenet {
             return result;
         }
 
+
+        // Example for im2col_2d is as follows
+        // Input (4×4):            Patches extracted (2×2 = 4 positions):
+        //  1  2  3  4             Position (0,0): [1,2,3, 5,6,7, 9,10,11]
+        //  5  6  7  8             Position (0,1): [2,3,4, 6,7,8, 10,11,12]
+        //  9 10 11 12             Position (1,0): [5,6,7, 9,10,11, 13,14,15]
+        // 13 14 15 16             Position (1,1): [6,7,8, 10,11,12, 14,15,16]
+
+        // im2col matrix (9 rows × 4 columns):
+        // [ 1   2   5   6 ]
+        // [ 2   3   6   7 ]
+        // [ 3   4   7   8 ]
+        // [ 5   6   9  10 ]
+        // [ 6   7  10  11 ]
+        // [ 7   8  11  12 ]
+        // [ 9  10  13  14 ]
+        // [10  11  14  15 ]
+        // [11  12  15  16 ]
+
+        // TODO: implement im2col and also CUDA version
+        Tensor im2col_2d(const Tensor& a, int kernel_size, int stride, int padding, int dilation){
+
+            if (dilation < 1) {
+                throw std::runtime_error("Dilation must be greater than or equal to 1");
+            }
+
+            if (padding < 0) {
+                throw std::runtime_error("Padding must be greater than or equal to 0");
+            }
+
+            std::vector<int> shape = a.getShape();
+
+            size_t num_channels = (shape.size() >= 3) ? shape[shape.size()-3] : 1;
+            size_t height = (shape.size() >= 2) ? shape[shape.size()-2] : 1;
+            size_t width = shape[shape.size()-1];
+            size_t batch_size = a.sizeOfTensor() / (num_channels * height * width);
+
+            int H_out = (height + 2*padding - dilation*(kernel_size - 1) - 1) / stride + 1;
+            int W_out = (width + 2*padding - dilation*(kernel_size - 1) - 1) / stride + 1;
+
+            // patch matrix shape is num_channels*K*K, H_out*W_out
+
+            int num_patches = (height*width) / (H_out*W_out); // TODO: here I also need to consider the padding,stride and dilation for a general case
+            // then can use these to index into the Tensor and extract patches like in the example above
+            int num_rows_in_patch = num_channels*kernel_size*kernel_size; // C_in * K * K
+            int patch_size = H_out * W_out; // H_out * W_out
+
+            std::vector<int> patch_shape = {batch_size, num_rows_in_patch, patch_size};
+            Tensor patch(patch_shape, a.getDevice());
+
+            // TODO: implement for CUDA
+            // b,c,h,w -> b,c*k*k, h_out*w_out
+            // TODO: need to think about how stride and padding affect the patch matrix and also dilation for a general case
+            for (size_t b = 0; b < batch_size; ++b) {
+                for (int channels = 0; channels < num_channels; ++channels) {
+
+
+                }
+            }
+
+        }
+
         // // Opposite of broadcasting - NOT A VIEW OPERATION
         // Tensor reduce(const Tensor &t, const std::vector<int>& targetShape) {
 

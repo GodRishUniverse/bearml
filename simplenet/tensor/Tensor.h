@@ -82,7 +82,7 @@ namespace simplenet{
        Tensor inverse(const Tensor& a);
 
        // TODO: implement im2col
-       Tensor im2col(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
+       Tensor im2col_2d(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
 
     }
 
@@ -1198,7 +1198,7 @@ namespace simplenet{
             friend Tensor linear_algebra::sign(const Tensor& a);
 
             // TODO: implement im2col
-            friend Tensor linear_algebra::im2col(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
+            friend Tensor linear_algebra::im2col_2d(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
 
 
 

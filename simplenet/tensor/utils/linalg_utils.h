@@ -51,7 +51,7 @@ namespace simplenet {
 
 
         // TODO: im2col
-        Tensor im2col(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
+        Tensor im2col_2d(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
 
         // // Opposite of broadcasting - NOT A VIEW OPERATION
         // Tensor reduce(const Tensor &t, const std::vector<int>& targetShape);
