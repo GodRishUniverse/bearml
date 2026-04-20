@@ -448,8 +448,8 @@ namespace simplenet {
         // [10  11  14  15 ]
         // [11  12  15  16 ]
 
-        // TODO: implement im2col and also CUDA version
-        Tensor im2col_2d(const Tensor& a, int kernel_size, int stride, int padding, int dilation){
+        // TODO: optimize this O(n^6) loop and implement CUDA version
+        Tensor im2col_2d(Tensor& a, int kernel_size, int stride, int padding, int dilation){
 
             if (dilation < 1) {
                 throw std::runtime_error("Dilation must be greater than or equal to 1");
@@ -466,13 +466,19 @@ namespace simplenet {
             size_t width = shape[shape.size()-1];
             size_t batch_size = a.sizeOfTensor() / (num_channels * height * width);
 
-            int H_out = (height + 2*padding - dilation*(kernel_size - 1) - 1) / stride + 1;
-            int W_out = (width + 2*padding - dilation*(kernel_size - 1) - 1) / stride + 1;
+            int H = static_cast<int>(height);
+            int W = static_cast<int>(width);
+            int H_out = (H + 2*padding - dilation*(kernel_size - 1) - 1) / stride + 1;
+            int W_out = (W + 2*padding - dilation*(kernel_size - 1) - 1) / stride + 1;
+
+            if (H_out <= 0 || W_out <= 0) {
+                throw std::runtime_error("Invalid output dimensions - kernel too large for input");
+            }
+
+            double padding_value = 0.0;
 
             // patch matrix shape is num_channels*K*K, H_out*W_out
 
-            int num_patches = (height*width) / (H_out*W_out); // TODO: here I also need to consider the padding,stride and dilation for a general case
-            // then can use these to index into the Tensor and extract patches like in the example above
             int num_rows_in_patch = num_channels*kernel_size*kernel_size; // C_in * K * K
             int patch_size = H_out * W_out; // H_out * W_out
 
@@ -481,13 +487,31 @@ namespace simplenet {
 
             // TODO: implement for CUDA
             // b,c,h,w -> b,c*k*k, h_out*w_out
-            // TODO: need to think about how stride and padding affect the patch matrix and also dilation for a general case
+            // TODO test this out
             for (size_t b = 0; b < batch_size; ++b) {
                 for (int channels = 0; channels < num_channels; ++channels) {
-
-
+                    // kernel size loop
+                    for (int kh = 0; kh < kernel_size; ++kh) {
+                        for (int kw = 0; kw < kernel_size; ++kw) {
+                            // this already knows the patch size and stride
+                            for (int h = 0; h < H_out; ++h) {
+                                for (int w = 0; w < W_out; ++w) {
+                                    // get the value from the input tensor by indexing
+                                    int h_in = h * stride - padding + kh*dilation; // h*stride gives the global row index and then -1*padding ensures we start from the correct row
+                                    int w_in = w * stride - padding + kw*dilation;
+                                    double value = padding_value;
+                                    if (h_in >= 0 && h_in < height && w_in >= 0 && w_in < width) {
+                                        value = a({b, channels, h_in, w_in});
+                                    }
+                                    patch.set(value, {b, channels*kernel_size*kernel_size + kh*kernel_size + kw, h*W_out + w});
+                                }
+                            }
+                        }
+                    }
                 }
             }
+
+            return patch;
 
         }
 

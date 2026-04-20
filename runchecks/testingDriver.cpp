@@ -351,9 +351,21 @@ int main() {
      //
 
      padded.to_(simplenet::Device::cpu());
-     simplenet::Tensor::setPrintPrecision(1);
+     simplenet::Tensor::setPrintPrecision(3);
      simplenet::Tensor cont = simplenet::Tensor::contiguous( padded.slice("1, 1:5:2"));
      cout << cont << endl;
+
+
+     // cout << cont({0,1}) << endl;
+     //
+     auto tens = simplenet::Tensor::ones({1,1,4,4}, simplenet::Device::cpu());
+     tens.linspace(1.0, 16.0);
+
+     cout << "TENS " << endl;
+     cout << tens << endl;
+     cout << "IM2COL " << endl;
+     cout << simplenet::linear_algebra::im2col_2d(tens, 3, 1, 0, 1) << endl;
+
 
 
 

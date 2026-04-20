@@ -5,6 +5,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <algorithm>
+#include <span>
 
 using ll = long long;
 
@@ -29,6 +30,16 @@ namespace simplenet {
 
         // checks if the index is valid or not
         static bool isIndexValid(std::vector<int>& sizePassedDown, const std::vector<int>& shape) {
+            for (size_t i = 0 ; i < shape.size(); i++){
+                if (sizePassedDown[i] <0 || sizePassedDown[i] >= shape[i]){
+                    return false;
+                }
+            }
+            return true;
+        }
+
+
+        static bool isIndexValid(std::span<int>& sizePassedDown, const std::vector<int>& shape) {
             for (size_t i = 0 ; i < shape.size(); i++){
                 if (sizePassedDown[i] <0 || sizePassedDown[i] >= shape[i]){
                     return false;

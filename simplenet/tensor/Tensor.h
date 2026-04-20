@@ -1,6 +1,7 @@
 #pragma once
 #include <cmath>
 #include <cstddef>
+#include <initializer_list>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -8,6 +9,8 @@
 #include <string>
 #include <algorithm>
 #include <memory>
+
+#include <span>
 
 // TODO: refactor Tensor class
 #include "devices/device_type.h"
@@ -426,11 +429,29 @@ namespace simplenet{
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use get()");
                 }
                 if (index.size() != shape.size()){
-                    throw std::invalid_argument("Invalid index size: \nPassed:" + utils::debugShapes(index)+"\nExpected:" +utils::debugShapes(this->shape)+"\n");
+                    throw std::invalid_argument("Invalid index size: \nPassed:\t" + utils::debugShapes(index)+"\nExpected:\t" +utils::debugShapes(this->shape)+"\n");
                 }
 
                 if (utils::isIndexValid(index, this->shape) == false){
-                    throw std::invalid_argument("Invalid index shape: \nPassed" + utils::debugShapes(index)+"\nExpected:" + utils::debugShapes(this->shape)+"\n");
+                    throw std::invalid_argument("Invalid index shape: \nPassed:\t" + utils::debugShapes(index)+"\nExpected:\t" + utils::debugShapes(this->shape)+"\n");
+                }
+
+                size_t off = 0;
+                for (size_t d = 0; d < shape.size(); ++d)
+                    off += index[d] * this->strides[d];
+                return data[this->data_offset+ off];
+            }
+
+            double get(std::span<int> index) const {
+                if (!this->device.is_cpu()) {
+                    throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use get()");
+                }
+                if (index.size() != shape.size()){
+                    throw std::invalid_argument("Invalid index size: \nPassed:\t" + utils::debugShapes(index)+"\nExpected:\t" +utils::debugShapes(this->shape)+"\n");
+                }
+
+                if (utils::isIndexValid(index, this->shape) == false){
+                    throw std::invalid_argument("Invalid index shape: \nPassed:\t" + utils::debugShapes(index)+"\nExpected:\t" + utils::debugShapes(this->shape)+"\n");
                 }
 
                 size_t off = 0;
@@ -651,6 +672,11 @@ namespace simplenet{
                 os << "SLICED VIEW: " << ((tensor.getDataOffset() != 0) ? "TRUE" : "FALSE") << std::endl;
 
                 return os;
+            }
+
+            // use the span overload for get() - which allows for any contiguous bloc
+            double operator()(std::initializer_list<int> indices) {
+                return this->get(indices);
             }
 
             // TODO: REFACTOR ALL OPERATIONS for CUDA support as well
@@ -1571,7 +1597,7 @@ namespace simplenet{
             Tensor& linspace(double start, double end){
                 size_t long_size = this->sizeOfTensor();
                 double size = static_cast<double>(long_size);
-                double step = (end-start)/(size);
+                double step = (end-start+1)/(size);
                 for (size_t i =0; i < long_size ; i++){
                     this->data[i] = start;
                     start+=step;
