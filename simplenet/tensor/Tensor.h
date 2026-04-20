@@ -1763,7 +1763,6 @@ namespace simplenet{
                 return Tensor::slice(*this, parse);
             }
 
-            // TODO: CUDA support
             static Tensor concat(std::initializer_list<Tensor> tensors, int dim =0 ){
                 if (tensors.size() <= 1) {
                     throw std::invalid_argument("More than one tensor is required for concatenation.");
@@ -1795,9 +1794,6 @@ namespace simplenet{
                 temp[dim] = concatDim;
                 Tensor result(temp, tensors.begin()[0].device);
 
-                if (device.type == DeviceType::CUDA) {
-                    result.to_(Device::cpu());
-                }
 
                 // outer_dim, dim, inner_dim is what we have
                 // copy the dim*inner_dim elements for each outer_dim (like the chunks)
@@ -1811,22 +1807,60 @@ namespace simplenet{
                     innerDim *= concatShapePrev[i];
                 }
 
-                for (size_t o = 0; o < outerDim; ++o) {
-                    int offset = 0; // offset will be used to move the pointer to execute the copies
-                    for (size_t i = 0; i < tensors.size(); ++i) {
-                        int src_cat_dim = tensors.begin()[i].getShape()[dim];
-                        int copy_size = src_cat_dim * innerDim;
-                        // we copy the data for each tensor into the result tensor
-                        // outer*concatDim * innerDim moves the pointer to the correct position in the result tensor
-                        // offset * innerDim is the offset that will be copied from the source tensor using (o*src_cat_dim*innerDim)
-                        std::memcpy(result.data  + o*concatDim *innerDim + offset*innerDim, tensors.begin()[i].data + o*src_cat_dim*innerDim, copy_size * sizeof(double));
-                        offset += copy_size;
+                if (device.type == DeviceType::CUDA) {
+                    const size_t n = tensors.size();
+
+                    std::vector<double*> h_data(n);
+                    std::vector<int*> h_shape_ptrs(n); // each entry is a device pointer
+
+                    for (size_t i = 0; i < n; ++i) {
+                        const Tensor& t = tensors.begin()[i];
+                        h_data[i] = t.data; // get the raw data pointer
+
+                        int* d_shape = nullptr;
+                        size_t shape_size = t.getShape().size();
+                        const size_t bytes = shape_size * sizeof(int);
+                        // allocate device memory for the shape and copy from host
+                        CUDA_CHECK(cudaMalloc(&d_shape, bytes));
+                        CUDA_CHECK(cudaMemcpy(d_shape, t.getShape().data(), bytes, cudaMemcpyHostToDevice));
+                        h_shape_ptrs[i] = d_shape;
+                    }
+
+                    double** d_allInputs = nullptr;
+                    CUDA_CHECK(cudaMalloc(&d_allInputs, n * sizeof(double*)));
+                    CUDA_CHECK(cudaMemcpy(d_allInputs, h_data.data(),
+                                          n * sizeof(double*), cudaMemcpyHostToDevice));
+
+                    // allocate the copied shapes pointers in a list of pointers on the device
+                    int** d_shapes = nullptr;
+                    CUDA_CHECK(cudaMalloc(&d_shapes, n * sizeof(int*)));
+                    CUDA_CHECK(cudaMemcpy(d_shapes, h_shape_ptrs.data(),
+                                          n * sizeof(int*), cudaMemcpyHostToDevice));
+
+                    cuda::launch_concat_kernel<double>(d_allInputs, d_shapes, n, result.data,
+                                                       outerDim, innerDim, dim, concatDim);
+
+                    for (int* d_shape : h_shape_ptrs) CUDA_CHECK(cudaFree(d_shape));
+                    CUDA_CHECK(cudaFree(d_allInputs));
+                    CUDA_CHECK(cudaFree(d_shapes));
+                } else {
+                    for (size_t o = 0; o < outerDim; ++o) {
+                        int offset = 0; // offset will be used to move the pointer to execute the copies
+                        for (size_t i = 0; i < tensors.size(); ++i) {
+                            int src_cat_dim = tensors.begin()[i].getShape()[dim];
+                            int copy_size = src_cat_dim * innerDim;
+                            // we copy the data for each tensor into the result tensor
+                            // outer*concatDim * innerDim moves the pointer to the correct position in the result tensor
+                            // offset * innerDim is the offset that will be copied from the source tensor using (o*src_cat_dim*innerDim)
+                            std::memcpy(result.data  + o*concatDim *innerDim + offset*innerDim, tensors.begin()[i].data + o*src_cat_dim*innerDim, copy_size * sizeof(double));
+                            offset += src_cat_dim;
+                        }
                     }
                 }
 
-                if (device.type == DeviceType::CUDA) {
-                    result.to_(device);
-                }
+                // if (device.type == DeviceType::CUDA) {
+                //     result.to_(device);
+                // }
 
                 return result;
             }

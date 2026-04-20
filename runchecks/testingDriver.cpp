@@ -333,6 +333,11 @@ int main() {
      mat_inv.set(-1.0, {4,4});
 
      mat_inv.to_(dev);
+
+
+     cout << "CONCAT " << endl;
+     cout << simplenet::Tensor::concat({mat_inv, mat_inv}, 1) << endl;
+
      cout << "PADDING " << endl;
      auto padded = simplenet::neural_network::padding<double>(mat_inv, 1,Padding_Op_Code::PAD_CONSTANT, 2.0 );
      cout << padded << endl;
