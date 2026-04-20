@@ -87,6 +87,10 @@ namespace simplenet {
                 : Module(seed, dev), in_channels_(in_channels), out_channels_(out_channels), kernel_size_(kernel_size), stride_(stride), padding_(padding), dilation_(dilation), groups_(groups), bias_(bias), padding_mode_(padding_mode), constant_pad_(constant_pad) {
 
             }
+
+            std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(std::shared_ptr<simplenet::Node<simplenet::Tensor>> x) override {
+                // implement im2col and then use GEMM - rather than using FFT
+            }
         };
 
     }

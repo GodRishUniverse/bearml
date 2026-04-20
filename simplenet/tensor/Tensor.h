@@ -80,11 +80,16 @@ namespace simplenet{
        Tensor sign(const Tensor& a);
 
        Tensor inverse(const Tensor& a);
+
+       // TODO: implement im2col
+       Tensor im2col(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
+
     }
 
     namespace neural_network {
         template <typename T>
         Tensor padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode = Padding_Op_Code::PAD_CONSTANT, T constant_value = T(0));
+
     }
 
     class Tensor {
@@ -1192,6 +1197,10 @@ namespace simplenet{
             // sign matrix
             friend Tensor linear_algebra::sign(const Tensor& a);
 
+            // TODO: implement im2col
+            friend Tensor linear_algebra::im2col(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
+
+
 
             // padding (in convolution_layers.h file)
             template <typename T>
@@ -1866,7 +1875,7 @@ namespace simplenet{
             }
 
 
-
+            // TODO: CUDA support
             void stack(std::initializer_list<Tensor> tensors){
                 if (tensors.size() == 0) {
                     throw std::invalid_argument("At least one tensor is required for stacking.");
