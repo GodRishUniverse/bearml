@@ -358,13 +358,13 @@ int main() {
 
      // cout << cont({0,1}) << endl;
      //
-     auto tens = simplenet::Tensor::ones({1,1,4,4}, simplenet::Device::cpu());
+     auto tens = simplenet::Tensor::ones({1,1,4,4}, dev);
      tens.linspace(1.0, 16.0);
 
      cout << "TENS " << endl;
      cout << tens << endl;
-     cout << "IM2COL " << endl;
-     cout << simplenet::linear_algebra::im2col_2d(tens, 3, 1, 0, 1) << endl;
+     // cout << "IM2COL " << endl;
+     // cout << simplenet::linear_algebra::im2col_2d(tens, 3, 1, 0, 1) << endl;
 
 
 

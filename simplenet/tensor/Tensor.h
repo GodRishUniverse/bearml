@@ -1592,20 +1592,21 @@ namespace simplenet{
             }
 
 
-            // TODO: refactor - CUDA
-            // linspace function  to edit the current tensor
+            // linspace function to edit the current tensor
             Tensor& linspace(double start, double end){
                 size_t long_size = this->sizeOfTensor();
                 double size = static_cast<double>(long_size);
                 double step = (end-start+1)/(size);
-                for (size_t i =0; i < long_size ; i++){
-                    this->data[i] = start;
-                    start+=step;
+                if (this->device.is_cpu()) {
+                    for (size_t i =0; i < long_size ; i++){
+                        this->data[i] = start;
+                        start+=step;
+                    }
+                } else {
+                    cuda::launch_linspace_kernel<double>(this->data, start, step, long_size);
                 }
                 return *this;
             }
-
-
 
 
             Tensor transpose(){

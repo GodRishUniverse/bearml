@@ -12,3 +12,4 @@
 #include "../kernels/accumulate.cuh"
 #include "../kernels/reductions.cuh"
 #include "../kernels/concat.cuh"
+#include "../kernels/linspace.cuh"
