@@ -438,17 +438,19 @@ namespace simplenet {
         // 13 14 15 16             Position (1,1): [6,7,8, 10,11,12, 14,15,16]
 
         // im2col matrix (9 rows × 4 columns):
-        // [ 1   2   5   6 ]
-        // [ 2   3   6   7 ]
-        // [ 3   4   7   8 ]
-        // [ 5   6   9  10 ]
-        // [ 6   7  10  11 ]
-        // [ 7   8  11  12 ]
-        // [ 9  10  13  14 ]
-        // [10  11  14  15 ]
-        // [11  12  15  16 ]
+        //                 col0   col1   col2   col3
+        //               (pos00)(pos01)(pos10)(pos11)
+        // row0 (kh=0,kw=0):  1     2     5     6
+        // row1 (kh=0,kw=1):  2     3     6     7
+        // row2 (kh=0,kw=2):  3     4     7     8
+        // row3 (kh=1,kw=0):  5     6     9    10
+        // row4 (kh=1,kw=1):  6     7    10    11
+        // row5 (kh=1,kw=2):  7     8    11    12
+        // row6 (kh=2,kw=0):  9    10    13    14
+        // row7 (kh=2,kw=1): 10    11    14    15
+        // row8 (kh=2,kw=2): 11    12    15    16
 
-        // TODO: optimize this O(n^6) loop and implement CUDA version
+        // TODO: optimize this and implement CUDA version
         Tensor im2col_2d(Tensor& a, int kernel_size, int stride, int padding, int dilation){
 
             if (dilation < 1) {
@@ -497,7 +499,7 @@ namespace simplenet {
                             for (int h = 0; h < H_out; ++h) {
                                 for (int w = 0; w < W_out; ++w) {
                                     // get the value from the input tensor by indexing
-                                    int h_in = h * stride - padding + kh*dilation; // h*stride gives the global row index and then -1*padding ensures we start from the correct row
+                                    int h_in = h * stride - padding + kh*dilation; // h*stride gives the global row index and then -1*padding ensures we start from the correct row by skipping padding rows and kh * dilation tells us -> "Inside the kernel, which row are we on?" Dilation=1 -> just kh. Dilation=2 -> skip a pixel each step.
                                     int w_in = w * stride - padding + kw*dilation;
                                     double value = padding_value;
                                     if (h_in >= 0 && h_in < height && w_in >= 0 && w_in < width) {
@@ -510,9 +512,7 @@ namespace simplenet {
                     }
                 }
             }
-
             return patch;
-
         }
 
         // // Opposite of broadcasting - NOT A VIEW OPERATION
