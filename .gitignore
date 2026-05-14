@@ -6,3 +6,5 @@
 /build_unit_tests/
 # We will add documentation once we have it and fix the problems and have some more features - will replace our README
 Documentation/
+.clangd
+compile_commands.json
