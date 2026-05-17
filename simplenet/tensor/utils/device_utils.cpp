@@ -1,16 +1,4 @@
+// errorCheckSameDevice is now a function template defined inline in device_utils.h
+// (templates are instantiated lazily and cannot live in a standalone .cpp without
+// explicit instantiation). This translation unit is intentionally left empty.
 #include "device_utils.h"
-#include "tensor/Tensor.h"
-
-
-namespace simplenet {
-    namespace utils {
-        void errorCheckSameDevice(const Tensor& a, const Tensor& b) {
-            if (a.getDevice() != b.getDevice()) {
-                throw std::invalid_argument(
-                    "Tensors must be on same device. "
-                );
-            }
-        }
-    }
-
-}

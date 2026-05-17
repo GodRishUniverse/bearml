@@ -3,7 +3,7 @@
 
 
 namespace simplenet {
-    class Tensor; // forward declaration
+    template<typename T> class Tensor; // forward declaration
     namespace reductions {
         enum class ReductionOps: uint16_t {
             SUM,

@@ -1,15 +1,5 @@
+// Tensor is now a class template (see Tensor.h). Its former out-of-line
+// definitions (print_precision, flatten) are now inline in the header because
+// template members need their definitions visible at instantiation. This
+// translation unit is intentionally left empty.
 #include "Tensor.h"
-
-namespace simplenet{
-
-    size_t Tensor::print_precision = 14;
-
-    // flatten
-    Tensor Tensor::flatten(int start_dim, int end_dim, bool keepdims) {
-        Tensor result = *this; // copy the tensor
-        std::vector<int> newShape = Tensor::flatten_(start_dim, end_dim, keepdims);
-        result.setShape(newShape);
-        result.computeStrides();
-        return result;
-    }
-}

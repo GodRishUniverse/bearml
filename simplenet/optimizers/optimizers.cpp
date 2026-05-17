@@ -4,7 +4,7 @@ namespace simplenet {
     namespace neural_network{
         namespace optimizers {
            // The Stochastic part comes from the random selection of the batches
-           SGD::SGD(std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params, double learning_rate) : params(params), learning_rate(learning_rate){
+           SGD::SGD(std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> params, double learning_rate) : params(params), learning_rate(learning_rate){
 
            }
 
@@ -23,10 +23,10 @@ namespace simplenet {
 
            // TODO: fix Adam implementation
            // src - https://builtin.com/machine-learning/adam-optimization#:~:text=Momentum%20speeds%20up%20training%20by,need%20to%20take%20fewer%20steps.
-           Adam::Adam(std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params, double learning_rate, double beta1,  double beta2, double eps) : params(params), learning_rate(learning_rate), beta1(beta1), beta2(beta2), eps(eps), step_count(1){
+           Adam::Adam(std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> params, double learning_rate, double beta1,  double beta2, double eps) : params(params), learning_rate(learning_rate), beta1(beta1), beta2(beta2), eps(eps), step_count(1){
                for (auto& p : params) {
-                      m.push_back(simplenet::Tensor(p->val.getShape())); // zeros, same shape as param
-                      v.push_back(simplenet::Tensor(p->val.getShape()));
+                      m.push_back(simplenet::TensorD(p->val.getShape())); // zeros, same shape as param
+                      v.push_back(simplenet::TensorD(p->val.getShape()));
                 }
            }
 
@@ -37,10 +37,10 @@ namespace simplenet {
                    v[i] = beta2 * v[i] + (1 - beta2) * simplenet::linear_algebra::hadamard(p->grad, p->grad); // hadamard - explicit hadamard product needed for element-wise multiplication
 
                    // Bias-corrected estimates
-                   Tensor m_hat = m[i] / (1 - std::pow(beta1, step_count)); // element wise division
-                   Tensor v_hat = v[i] / (1 - std::pow(beta2, step_count)); // element wise division
+                   TensorD m_hat = m[i] / (1 - std::pow(beta1, step_count)); // element wise division
+                   TensorD v_hat = v[i] / (1 - std::pow(beta2, step_count)); // element wise division
 
-                   p->val -= learning_rate * m_hat / (simplenet::Tensor::sqrt(v_hat) + eps);
+                   p->val -= learning_rate * m_hat / (simplenet::TensorD::sqrt(v_hat) + eps);
                }
                this->step_count++;
            }

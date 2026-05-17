@@ -24,11 +24,11 @@ namespace simplenet{
                 virtual ~Model_Construct()  = default; // it is a pure virtual class
 
                 // we will be passing by value here as we are not sure what the user passes in
-                virtual std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(std::vector<simplenet::Tensor> inputs) = 0; // pure virtual function
+                virtual std::shared_ptr<simplenet::Node<simplenet::TensorD>> forward(std::vector<simplenet::TensorD> inputs) = 0; // pure virtual function
 
                 // get the parameters of the model class
                 // pointers ensure that when they are updated the same memory block is updated and there are no duplicates
-                virtual std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() = 0;
+                virtual std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> parameters() = 0;
 
         };
     }

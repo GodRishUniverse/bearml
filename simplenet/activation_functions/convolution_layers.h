@@ -22,7 +22,7 @@ namespace simplenet {
     namespace neural_network {
 
         template <typename T>
-        simplenet::Tensor padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode, T constant_value){
+        simplenet::Tensor<T> padding(const simplenet::Tensor<T>& input, int pad_amount, Padding_Op_Code padding_mode, T constant_value){
             // now we need to change the shape
             std::vector<int> output_shape = input.getShape();
             std::vector<int> input_shape = input.getShape();
@@ -34,7 +34,7 @@ namespace simplenet {
             output_shape[output_shape.size() - 2] += 2 * pad_amount; // add 2*pad_amount rows
             output_shape[output_shape.size() - 1] += 2 * pad_amount; // add 2*pad_amount columns
 
-            simplenet::Tensor output(output_shape, input.getDevice());
+            simplenet::Tensor<T> output(output_shape, input.getDevice());
 
             long long int batch_size = input.sizeOfTensor() / (input_shape[input_shape.size() - 2] * input_shape[input_shape.size() - 1]);
 
@@ -88,7 +88,7 @@ namespace simplenet {
 
             }
 
-            std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(std::shared_ptr<simplenet::Node<simplenet::Tensor>> x) override {
+            std::shared_ptr<simplenet::Node<simplenet::TensorD>> forward(std::shared_ptr<simplenet::Node<simplenet::TensorD>> x) override {
                 // implement im2col and then use GEMM - rather than using FFT
             }
         };

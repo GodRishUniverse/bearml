@@ -57,16 +57,16 @@ namespace simplenet {
              for (const auto& node : all_nodes) {
                 if constexpr (std::is_same<T,double>::value){
                     node->grad = 0.0;
-                }else if constexpr (std::is_same<T,simplenet::Tensor>::value){
-                    node->grad = simplenet::Tensor(node->val.getShape(), node->val.getDevice());
+                }else if constexpr (simplenet::is_tensor_v<T>){
+                    node->grad = T(node->val.getShape(), node->val.getDevice());
                 }
              }
           }
 
           if constexpr (std::is_same<T,double>::value){
               end_node->grad = 1.0;
-          }else if constexpr (std::is_same<T,simplenet::Tensor>::value){
-              end_node->grad = simplenet::Tensor(end_node->val.getShape(), end_node->val.getDevice()); // The whole matrix is filled with 1 - because we want to compute the Jacobian matrix
+          }else if constexpr (simplenet::is_tensor_v<T>){
+              end_node->grad = T(end_node->val.getShape(), end_node->val.getDevice()); // The whole matrix is filled with 1 - because we want to compute the Jacobian matrix
               end_node->grad.fill(1.0); // fill returns void;
           }
 
@@ -76,8 +76,8 @@ namespace simplenet {
                 if (node->grad != 0.0 && node->backward_fn) {
                       node->backward_fn();
                 }
-            }else if constexpr (std::is_same<T,simplenet::Tensor>::value){
-                if (simplenet::Tensor::has_nonzero_gradient(node->grad) && node->backward_fn) {
+            }else if constexpr (simplenet::is_tensor_v<T>){
+                if (T::has_nonzero_gradient(node->grad) && node->backward_fn) {
                       node->backward_fn();
                 }
             }
@@ -91,4 +91,4 @@ namespace simplenet {
 // Template specified
 
 template double simplenet::autogradient::backward<double>(std::shared_ptr<simplenet::Node<double>>, bool);
-template simplenet::Tensor simplenet::autogradient::backward<simplenet::Tensor>(std::shared_ptr<simplenet::Node<simplenet::Tensor>>, bool);
+template simplenet::Tensor<double> simplenet::autogradient::backward<simplenet::Tensor<double>>(std::shared_ptr<simplenet::Node<simplenet::Tensor<double>>>, bool);

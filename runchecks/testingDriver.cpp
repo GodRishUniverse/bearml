@@ -23,17 +23,17 @@ class Model : public simplenet::neural_network::Model_Construct{
 
     }
 
-    std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(std::vector<simplenet::Tensor> inputs) override {
+    std::shared_ptr<simplenet::Node<simplenet::TensorD>> forward(std::vector<simplenet::TensorD> inputs) override {
         // assuming only x is passed in
-        auto x = simplenet::Node<simplenet::Tensor>::make_node(inputs[0]);
+        auto x = simplenet::Node<simplenet::TensorD>::make_node(inputs[0]);
 
         auto f1 = this->layer1(x);
         auto f2 = this->nonlinearity(f1);
         return this->layer2(f2);
     }
 
-    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() override {
-        std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params;
+    std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> parameters() override {
+        std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> params;
 
         // collect parameters from layer1
         auto l1_params = layer1.parameters();
@@ -276,7 +276,7 @@ int main() {
 
     Model testmodel = Model(2, 5, dev);
 
-    simplenet::Tensor tester2({1,2});
+    simplenet::TensorD tester2({1,2});
     tester2.linspace(1,2);
     tester2.to_(dev);
 
@@ -288,7 +288,7 @@ int main() {
     // cout << "Pred grad: " << pred->grad << endl;
 
 
-    simplenet::Tensor actual({1,5});
+    simplenet::TensorD actual({1,5});
     actual.linspace(1,5);
     actual.to_(dev);
     simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.1);
@@ -296,7 +296,7 @@ int main() {
     // Sample - works gets closer to the ideal values
     for (int i =0;i <10; i++){
         optim.zero_grad();
-        auto ac = simplenet::Node<simplenet::Tensor>::make_node(actual);
+        auto ac = simplenet::Node<simplenet::TensorD>::make_node(actual);
 
         auto loss = simplenet::neural_network::loss_functions::l1_loss(ac, pred);
         simplenet::autogradient::backward(loss);
@@ -325,7 +325,7 @@ int main() {
     // auto c = a * b;
     // cout << c << endl;
 
-     simplenet::Tensor mat_inv ({5,5});
+     simplenet::TensorD mat_inv ({5,5});
      mat_inv.set(1.0, {0,0});
      mat_inv.set(1.0, {1,1});
      mat_inv.set(1.0, {2,2});
@@ -336,7 +336,7 @@ int main() {
 
 
      cout << "CONCAT " << endl;
-     cout << simplenet::Tensor::concat({mat_inv, mat_inv}, 1) << endl;
+     cout << simplenet::TensorD::concat({mat_inv, mat_inv}, 1) << endl;
 
      cout << "PADDING " << endl;
      auto padded = simplenet::neural_network::padding<double>(mat_inv, 1,Padding_Op_Code::PAD_CONSTANT, 2.0 );
@@ -351,14 +351,14 @@ int main() {
      //
 
      padded.to_(simplenet::Device::cpu());
-     simplenet::Tensor::setPrintPrecision(3);
-     simplenet::Tensor cont = simplenet::Tensor::contiguous( padded.slice("1, 1:5:2"));
+     simplenet::TensorD::setPrintPrecision(3);
+     simplenet::TensorD cont = simplenet::TensorD::contiguous( padded.slice("1, 1:5:2"));
      cout << cont << endl;
 
 
      // cout << cont({0,1}) << endl;
      //
-     auto tens = simplenet::Tensor::ones({1,1,4,4}, dev);
+     auto tens = simplenet::TensorD::ones({1,1,4,4}, dev);
      tens.linspace(1.0, 16.0);
 
      cout << "TENS " << endl;
