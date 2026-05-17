@@ -48,16 +48,28 @@ Unit tests can be run with:
 
 ## Core Components
 
-### Tensor (`simplenet::Tensor`)
+### Tensor (`simplenet::Tensor<T>`)
 
-The fundamental data structure. Multi-dimensional, device-aware (CPU/CUDA), and supports broadcasting.
+The fundamental data structure. `Tensor` is a **class template** parameterized on the
+element type. It is multi-dimensional, device-aware (CPU/CUDA), and supports broadcasting.
+
+**dtype aliases** (defined in `tensor/Tensor.h`):
+
+| Alias     | Underlying type  | Description                     |
+|-----------|------------------|---------------------------------|
+| `TensorD` | `Tensor<double>` | 64-bit float (default / legacy) |
+| `Tensorf` | `Tensor<float>`  | 32-bit float                    |
+| `TensorI` | `Tensor<int>`    | 32-bit signed int               |
+
+Use an alias (e.g. `simplenet::Tensorf`) or the explicit form `simplenet::Tensor<float>`.
+The examples below use `Tensorf`; substitute another alias for a different dtype.
 
 ```cpp
 #include "simplenet.h"
 
 // Create tensors
-simplenet::Tensor a({2, 3, 4});          // 2x3x4 tensor, zeros on CPU
-simplenet::Tensor b({3, 4});             // 3x4 tensor
+simplenet::Tensorf a({2, 3, 4});         // 2x3x4 tensor, zeros on CPU
+simplenet::Tensorf b({3, 4});            // 3x4 tensor
 
 // Fill with data
 a.linspace(1, 10);                       // fill with linearly spaced values
@@ -74,7 +86,7 @@ auto g = a * 3.5;
 
 // Shape operations
 a.reshape({6, 4});
-auto t = simplenet::Tensor::transpose(a, 0, 1);
+auto t = simplenet::Tensorf::transpose(a, 0, 1);
 auto flat = a.flatten(0, -1, true);      // flatten dimensions
 a.squeeze(0);                            // remove dimension of size 1
 
@@ -86,18 +98,18 @@ auto mask = simplenet::linear_algebra::mask_of_greater_than(a, b, 1.0, 0.0);
 
 // Slicing
 auto sliced = a.slice("1, 1:5:2");       // numpy-style slicing
-auto cont = simplenet::Tensor::contiguous(sliced);
+auto cont = simplenet::Tensorf::contiguous(sliced);
 
 // Concatenation
-auto cat = simplenet::Tensor::concat({a, b}, 0);
+auto cat = simplenet::Tensorf::concat({a, b}, 0);
 
 // Math functions
-auto t_out = simplenet::Tensor::tan(a);
+auto t_out = simplenet::Tensorf::tan(a);
 
 // Print
 std::cout << a << std::endl;
 a.printShape();
-simplenet::Tensor::setPrintPrecision(4);  // set decimal precision
+simplenet::Tensorf::setPrintPrecision(4);  // set decimal precision
 ```
 
 ### Device Management
@@ -108,14 +120,17 @@ Tensors can be moved between CPU and CUDA devices.
 simplenet::Device cpu_dev = simplenet::Device::cpu();
 simplenet::Device gpu_dev = simplenet::Device::cuda(0);  // GPU 0
 
-simplenet::Tensor t({3, 4});
+simplenet::Tensorf t({3, 4});
 t.to_(gpu_dev);              // move to GPU in-place
 auto t_cpu = t.to(cpu_dev);  // create a copy on CPU
 ```
 
 ### Autograd (`simplenet::Node<T>`)
 
-Reverse-mode automatic differentiation via a computational graph. Works on both `double` and `Tensor` types.
+Reverse-mode automatic differentiation via a computational graph. `Node<T>` is generic
+over its value type: it works on scalar `double` and on any `Tensor<U>` (e.g. `Tensorf`,
+`TensorD`) — the autograd internals dispatch on the `is_tensor_v` trait rather than a
+hardcoded tensor dtype.
 
 ```cpp
 // Scalar autodiff
@@ -129,9 +144,9 @@ std::cout << x->grad << std::endl;  // 3.0
 std::cout << y->grad << std::endl;  // 4.0
 
 // Tensor autodiff
-simplenet::Tensor a({2, 3});
+simplenet::Tensorf a({2, 3});
 a.linspace(1, 6);
-auto node_a = simplenet::Node<simplenet::Tensor>::make_node(a);
+auto node_a = simplenet::Node<simplenet::Tensorf>::make_node(a);
 auto result = node_a * node_a;  // element-wise square
 simplenet::autogradient::backward(result);
 // node_a->grad now contains 2*a
@@ -162,7 +177,7 @@ simplenet::neural_network::ReLU relu;
 simplenet::neural_network::Linear fc2(128, 10, "He", dev);
 
 // Forward pass through layers
-auto x = simplenet::Node<simplenet::Tensor>::make_node(input);
+auto x = simplenet::Node<simplenet::Tensorf>::make_node(input);
 auto h = fc1(x);
 auto h_act = relu(h);
 auto out = fc2(h_act);
@@ -184,15 +199,15 @@ public:
           activation(42, dev),
           layer2(64, out_size, "Xavier", dev) {}
 
-    std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(
-            std::vector<simplenet::Tensor> inputs) override {
-        auto x = simplenet::Node<simplenet::Tensor>::make_node(inputs[0]);
+    std::shared_ptr<simplenet::Node<simplenet::Tensorf>> forward(
+            std::vector<simplenet::Tensorf> inputs) override {
+        auto x = simplenet::Node<simplenet::Tensorf>::make_node(inputs[0]);
         auto h = layer1(x);
         auto h_act = activation(h);
         return layer2(h_act);
     }
 
-    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() override {
+    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensorf>>> parameters() override {
         auto params = layer1.parameters();
         auto l2_params = layer2.parameters();
         params.insert(params.end(), l2_params.begin(), l2_params.end());
@@ -212,7 +227,7 @@ Located in `simplenet::neural_network::loss_functions`:
 | `log_loss(actual, predictions)` | Binary Cross-Entropy (Log Loss) |
 
 ```cpp
-auto actual_node = simplenet::Node<simplenet::Tensor>::make_node(actual);
+auto actual_node = simplenet::Node<simplenet::Tensorf>::make_node(actual);
 auto loss = simplenet::neural_network::loss_functions::l1_loss(actual_node, predictions);
 ```
 
@@ -234,7 +249,7 @@ for (int epoch = 0; epoch < 100; epoch++) {
     optim.zero_grad();
 
     auto pred = model.forward({input});
-    auto actual_node = simplenet::Node<simplenet::Tensor>::make_node(target);
+    auto actual_node = simplenet::Node<simplenet::Tensorf>::make_node(target);
     auto loss = simplenet::neural_network::loss_functions::l2_loss(actual_node, pred);
 
     simplenet::autogradient::backward(loss);
@@ -281,16 +296,16 @@ public:
           nonlinearity(42, dev),
           layer2(out_shape, out_shape, "Xavier", dev) {}
 
-    std::shared_ptr<simplenet::Node<simplenet::Tensor>> forward(
-            std::vector<simplenet::Tensor> inputs) override {
-        auto x = simplenet::Node<simplenet::Tensor>::make_node(inputs[0]);
+    std::shared_ptr<simplenet::Node<simplenet::Tensorf>> forward(
+            std::vector<simplenet::Tensorf> inputs) override {
+        auto x = simplenet::Node<simplenet::Tensorf>::make_node(inputs[0]);
         auto f1 = layer1(x);
         auto f2 = nonlinearity(f1);
         return layer2(f2);
     }
 
-    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> parameters() override {
-        std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensor>>> params;
+    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensorf>>> parameters() override {
+        std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensorf>>> params;
         auto l1 = layer1.parameters();
         params.insert(params.end(), l1.begin(), l1.end());
         auto l2 = layer2.parameters();
@@ -304,11 +319,11 @@ int main() {
 
     Model model(2, 5, dev);
 
-    simplenet::Tensor input({1, 2});
+    simplenet::Tensorf input({1, 2});
     input.linspace(1, 2);
     input.to_(dev);
 
-    simplenet::Tensor target({1, 5});
+    simplenet::Tensorf target({1, 5});
     target.linspace(1, 5);
     target.to_(dev);
 
@@ -318,7 +333,7 @@ int main() {
         optim.zero_grad();
 
         auto pred = model.forward({input});
-        auto actual_node = simplenet::Node<simplenet::Tensor>::make_node(target);
+        auto actual_node = simplenet::Node<simplenet::Tensorf>::make_node(target);
         auto loss = simplenet::neural_network::loss_functions::l1_loss(actual_node, pred);
 
         simplenet::autogradient::backward(loss);
@@ -341,7 +356,8 @@ int main() {
 * Multi-dimensional transpose
 * Tensor reductions: sum, product (with CUDA atomicCAS-based atomicMul)
 * Kahan summation for numerical stability
-* Reverse-mode automatic differentiation for `double` and `Tensor`
+* Templated `Tensor<T>` class with dtype aliases (`TensorD`, `Tensorf`, `TensorI`)
+* Reverse-mode automatic differentiation, generic over scalar `double` and any `Tensor<T>` (via the `is_tensor_v` trait)
 * Neural network module system: Linear, ReLU, Sigmoid, LeakyReLU, Tanh
 * Model construction base class (`Model_Construct`)
 * Loss functions: L1 (MAE), L2 (MSE), Log Loss (BCE)
@@ -372,12 +388,11 @@ int main() {
 
 * **Dependency Management:** Fix `#includes` for the repo to remove cyclical dependencies and repeated includes. -- **Priority After Kernels**
 * **Templatify**
-  * **Templatify Tensor:** Implement template specialization for `Tensor` class to support different data types. **IMPORTANT (Priority)**
-  * **Templatify Autodiff:** Implement template specialization for `Autodiff` class to support different data types.
-  * **Templatify Kernel:** Implement template specialization for `Kernel` class to support different data types.
-    * Provide template specification for types
-* Change data types in Tensor class to use `int8, int16, int32, int64, float16, float32, float64, bfloat8, bfloat16, bfloat32, bfloat64` (Need to check types)
-  * Allow Mixed Precision
+  * ~~**Templatify Tensor:** template the `Tensor` class to support different data types.~~ **DONE** (`Tensor<T>` with `TensorD`/`Tensorf`/`TensorI` aliases)
+  * ~~**Templatify Autodiff:** template the autodiff engine for different data types.~~ **DONE** (generic over `Tensor<T>` via `is_tensor_v`)
+  * ~~**Templatify Kernel:** template the CUDA kernels for different data types.~~ **DONE** (kernels templated, instantiated per element type)
+  * Explicit-instantiation `.cu` split + `if constexpr` host-compute guards so non-`double` aliases can be instantiated -- **IN PROGRESS**
+* Extend supported dtypes (`int8, int16, int64, float16, bfloat16`, etc.) and allow Mixed Precision
 * Add OpenMP support for CPU side
 * **Hardware Support:** Potential support for AMD HIP/ROCm. -- **Maybe**
 

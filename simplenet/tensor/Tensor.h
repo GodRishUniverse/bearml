@@ -15,6 +15,7 @@
 #include <span>
 
 // TODO: refactor Tensor class
+#include "cuda/kernels/utils.cuh"
 #include "devices/device_type.h"
 #include "devices/device_allocator.h"
 
@@ -111,6 +112,10 @@ namespace simplenet{
 
         // ==============================PRIVATE========================================
         private:
+            // All Tensor<U> instantiations are mutual friends so dtype-converting
+            // ops (e.g. change_dtype) can access another instantiation's private data.
+            template <typename U> friend class Tensor;
+
             // The below line was added by an LLM to help me in the template instantiation
             // CPU compute (Eigen / std::math / host arithmetic) is only well-formed for these element
             // types. __nv_bfloat16 / __half are CUDA-only: their CPU branches are if-constexpr'd out
@@ -418,6 +423,34 @@ namespace simplenet{
                 device = targetDevice;
                 allocator_ = std::move(new_allocator); // new unique pointer setting
                 owns_data = true;
+            }
+
+
+            // A Tensor<T> cannot change its own dtype in place: T is fixed by the class template and `data` is T*.
+            // Assumes a contiguous tensor (only data_offset is respected, like to()).
+            // TODO: handle strided / non-contiguous views -> depends if we want to support in-place dtype change
+            template <typename T2>
+            Tensor<T2> change_dtype() const {
+                if (!this->is_contiguous()) {
+                    throw std::runtime_error("change_dtype: cannot change dtype of non-contiguous/sliced view");
+                }
+
+                if constexpr (std::is_same_v<T, T2>) {
+                    return *this; // same dtype -> just a copy
+                } else {
+                    Tensor<T2> new_tensor(this->shape, this->device);
+                    const size_t n = sizeOfTensor();
+
+                    if (this->device.is_cuda()){
+                        cuda::utils::launch_dtype_change<T, T2>(this->data + data_offset, new_tensor.data, n);
+                    } else {
+                        for (size_t i = 0; i < n; ++i) {
+                            new_tensor.data[i] = static_cast<T2>(this->data[data_offset + i]);
+                        }
+                    }
+
+                    return new_tensor;
+                }
             }
 
             // checks if the tensor is contiguous or not
