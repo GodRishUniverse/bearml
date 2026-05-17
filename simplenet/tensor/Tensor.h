@@ -9,6 +9,8 @@
 #include <string>
 #include <algorithm>
 #include <memory>
+#include <type_traits>
+#include <limits>
 
 #include <span>
 
@@ -39,7 +41,12 @@
 #include "cuda/includes/kernel_links.h"
 
 using ll = long long; // can also use int_fast64_t
-using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+// templated Eigen helpers - element type follows the Tensor<T> element type
+template<typename ET>
+using MatrixRowMajorT = Eigen::Matrix<ET, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+template<typename ET>
+using VectorXT = Eigen::Matrix<ET, Eigen::Dynamic, 1>;
 
 
 // TODO :implementation needed - division (inversion - should work for constants and matrix inversion ), unflatten
@@ -51,60 +58,73 @@ using MatrixRowMajor = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eig
 #define TENSOR_H
 namespace simplenet{
 
+    // forward declaration of the class template - needed by the free-function declarations below
+    template <typename T> class Tensor;
+
     // forward declaration
     namespace linear_algebra {
-       Tensor batchedMatMul(const Tensor& a, const Tensor& b); // Forward declare the friend function
-       Tensor reduce(const Tensor& a, std::vector<int>& afterShape, reductions::ReductionOps op); // forward declare for the friend reduce
-       Tensor hadamard(const Tensor &a, const Tensor &other);
+       template <typename T> Tensor<T> batchedMatMul(const Tensor<T>& a, const Tensor<T>& b); // Forward declare the friend function
+       template <typename T> Tensor<T> reduce(const Tensor<T>& a, std::vector<int>& afterShape, reductions::ReductionOps op); // forward declare for the friend reduce
+       template <typename T> Tensor<T> hadamard(const Tensor<T> &a, const Tensor<T> &other);
 
-       Tensor compare(const Tensor& a, const Tensor& b,CompareOp op, double true_val, double false_val);
+       template <typename T> Tensor<T> compare(const Tensor<T>& a, const Tensor<T>& b,CompareOp op, T true_val, T false_val);
 
        // Tensor and Tensor
-       Tensor mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
-       Tensor mask_of_greater_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
-       Tensor mask_of_less_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
-       Tensor mask_of_less_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
-       Tensor mask_of_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+       template <typename T> Tensor<T> mask_of_greater_than_equal_to(const Tensor<T>& first, const Tensor<T>& other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_greater_than(const Tensor<T>& first, const Tensor<T>& other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_less_than_equal_to(const Tensor<T>& first, const Tensor<T>& other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_less_than(const Tensor<T>& first, const Tensor<T>& other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_equal_to(const Tensor<T>& first, const Tensor<T>& other,  T first_val, T second_val);
 
-       // Double and Tensor
-       Tensor mask_of_greater_than_equal_to(double first, const Tensor& other,  double first_val, double second_val);
-       Tensor mask_of_greater_than(double first, const Tensor& other,  double first_val, double second_val);
-       Tensor mask_of_less_than_equal_to(double first, const Tensor& other,  double first_val, double second_val);
-       Tensor mask_of_less_than(double first, const Tensor& other,  double first_val, double second_val);
-       Tensor mask_of_equal_to(double first, const Tensor& other,  double first_val, double second_val);
+       // Scalar and Tensor
+       template <typename T> Tensor<T> mask_of_greater_than_equal_to(T first, const Tensor<T>& other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_greater_than(T first, const Tensor<T>& other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_less_than_equal_to(T first, const Tensor<T>& other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_less_than(T first, const Tensor<T>& other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_equal_to(T first, const Tensor<T>& other,  T first_val, T second_val);
 
-       // Tensor and Double
-       Tensor mask_of_greater_than_equal_to(const Tensor& first, double other,  double first_val, double second_val);
-       Tensor mask_of_greater_than(const Tensor& first, double other,  double first_val, double second_val);
-       Tensor mask_of_less_than_equal_to(const Tensor& first, double other,  double first_val, double second_val);
-       Tensor mask_of_less_than(const Tensor& first, double other,  double first_val, double second_val);
-       Tensor mask_of_equal_to(const Tensor& first, double other,  double first_val, double second_val);
+       // Tensor and Scalar
+       template <typename T> Tensor<T> mask_of_greater_than_equal_to(const Tensor<T>& first, T other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_greater_than(const Tensor<T>& first, T other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_less_than_equal_to(const Tensor<T>& first, T other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_less_than(const Tensor<T>& first, T other,  T first_val, T second_val);
+       template <typename T> Tensor<T> mask_of_equal_to(const Tensor<T>& first, T other,  T first_val, T second_val);
 
-       Tensor sign(const Tensor& a);
+       template <typename T> Tensor<T> sign(const Tensor<T>& a);
 
-       Tensor inverse(const Tensor& a);
+       template <typename T> Tensor<T> inverse(const Tensor<T>& a);
 
        // TODO: implement im2col
-       Tensor im2col_2d(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
+       template <typename T> Tensor<T> im2col_2d(Tensor<T>& a, int kernel_size, int stride, int padding, int dilation);
 
     }
 
     namespace neural_network {
-        template <typename T>
-        Tensor padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode = Padding_Op_Code::PAD_CONSTANT, T constant_value = T(0));
+        // DT is the Tensor element type; constant_value follows that element type
+        template <typename DT>
+        Tensor<DT> padding(const simplenet::Tensor<DT>& input, int pad_amount, Padding_Op_Code padding_mode = Padding_Op_Code::PAD_CONSTANT, DT constant_value = DT(0));
 
     }
 
+    template <typename T>
     class Tensor {
 
         // ==============================PRIVATE========================================
         private:
-            static size_t print_precision;
+            // The below line was added by an LLM to help me in the template instantiation
+            // CPU compute (Eigen / std::math / host arithmetic) is only well-formed for these element
+            // types. __nv_bfloat16 / __half are CUDA-only: their CPU branches are if-constexpr'd out
+            // and throw at runtime. Used to keep all explicit instantiations compiling.
+            static constexpr bool kHostCompute =
+                std::is_same_v<T, float> || std::is_same_v<T, double> || std::is_same_v<T, int>;
+
+            // inline static so each Tensor<T> instantiation gets its own definition
+            inline static size_t print_precision = 14;
             static constexpr double MIN_DIFF = 1e-12;
 
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
-            double * data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
+            T * data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
             bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
             Device device;
             std::unique_ptr<DeviceAllocator> allocator_; // the device allocator we will be using for moving -> we only want a unique allocator
@@ -153,17 +173,17 @@ namespace simplenet{
                 return std::all_of(t.shape.begin(), t.shape.end(), [](int dim) { return dim == 1; });
             }
 
-            static double getScalarValue(const Tensor& t){
+            static T getScalarValue(const Tensor& t){
                 if (!isScalar(t)) {
                     throw std::runtime_error("Cannot get scalar value from non-scalar tensor");
                 }
 
-                double result;
+                T result;
                 if (t.device.is_cpu()) {
                     result = t.data[0];
                 } else {
                     // we copy to the host (cpu) to get the scalar value
-                    t.allocator_->copy_to_host(&result, t.data, sizeof(double));
+                    t.allocator_->copy_to_host(&result, t.data, sizeof(T));
                 }
                 return result;
 
@@ -241,8 +261,8 @@ namespace simplenet{
                 this->allocator_.reset(get_allocator(this->device));
 
                 size_t sizeTensor = sizeOfTensor();
-                size_t bytes = sizeTensor*sizeof(double);
-                this->data = static_cast<double*>(allocator_->allocate(bytes));
+                size_t bytes = sizeTensor*sizeof(T);
+                this->data = static_cast<T*>(allocator_->allocate(bytes));
 
                 // initialize to zero
                 if (this->device.is_cpu()) {
@@ -260,8 +280,8 @@ namespace simplenet{
                 computeStrides();
                 this->allocator_.reset(get_allocator(other.device));
                 size_t full_size = sizeOfTensor();
-                size_t bytes = full_size * sizeof(double);
-                this->data =static_cast<double*>(allocator_->allocate(bytes));
+                size_t bytes = full_size * sizeof(T);
+                this->data =static_cast<T*>(allocator_->allocate(bytes));
 
                 if (other.is_contiguous()) {
                     if (this->device == other.device) {
@@ -298,8 +318,8 @@ namespace simplenet{
                     this->is_sliced_view = other.is_sliced_view;
 
                     this->allocator_.reset(get_allocator(device));
-                    size_t bytes = sizeOfTensor() * sizeof(double);
-                    this->data =static_cast<double*>(allocator_->allocate(bytes));
+                    size_t bytes = sizeOfTensor() * sizeof(T);
+                    this->data =static_cast<T*>(allocator_->allocate(bytes));
                     if (this->device == other.device) {
                         // cpu to cpu or gpu to gpu
                         allocator_->copy_device_to_device(this->data, other.data, bytes);
@@ -363,7 +383,7 @@ namespace simplenet{
                     return *this; // Return copy on same device
                 }
                 Tensor result(shape, targetDevice);
-                size_t bytes = sizeOfTensor() * sizeof(double);
+                size_t bytes = sizeOfTensor() * sizeof(T);
                 if (targetDevice.is_cpu()) {
                     // GPU -> CPU
                     allocator_->copy_to_host(result.data, data, bytes);
@@ -379,9 +399,9 @@ namespace simplenet{
             void to_(const Device& targetDevice) {
                 if (device == targetDevice) return;
 
-                size_t bytes = sizeOfTensor() * sizeof(double);
+                size_t bytes = sizeOfTensor() * sizeof(T);
                 auto new_allocator = std::unique_ptr<DeviceAllocator>(get_allocator(targetDevice));
-                double* new_data = static_cast<double*>(new_allocator->allocate(bytes));
+                T* new_data = static_cast<T*>(new_allocator->allocate(bytes));
 
                 // transfer data
                 if (targetDevice.is_cpu()) {
@@ -424,7 +444,7 @@ namespace simplenet{
             }
 
 
-            double get(std::vector<int> index) const {
+            T get(std::vector<int> index) const {
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use get()");
                 }
@@ -442,7 +462,7 @@ namespace simplenet{
                 return data[this->data_offset+ off];
             }
 
-            double get(std::span<int> index) const {
+            T get(std::span<int> index) const {
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use get()");
                 }
@@ -461,7 +481,7 @@ namespace simplenet{
             }
 
 
-            void set(double val, std::vector<int> index) const {
+            void set(T val, std::vector<int> index) const {
 
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
@@ -538,7 +558,7 @@ namespace simplenet{
 
             // TODO: refactor
             // TODO: add test to check offset values
-            void set_with_offset(ll offset, int row, int col, double val){
+            void set_with_offset(ll offset, int row, int col, T val){
                 // assumes offset is passed correctly at the moment
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
@@ -649,6 +669,8 @@ namespace simplenet{
                 os << "Tensor on device: ";
                 os << tensor.device.to_string() << "\n";
 
+                os << "Tensor dtype: " << utils::print_type<T>() << "\n"; // cause we templated so T is not known at compile time
+
                 os << "Tensor data:\n";
                 if (tensor.device.is_cpu()) {
                     // No copy: walk the view in place.
@@ -675,7 +697,7 @@ namespace simplenet{
             }
 
             // use the span overload for get() - which allows for any contiguous bloc
-            double operator()(std::initializer_list<int> indices) {
+            T operator()(std::initializer_list<int> indices) {
                 return this->get(indices);
             }
 
@@ -716,7 +738,7 @@ namespace simplenet{
                 if (A.device.type == DeviceType::CUDA) {
                     if (A.shape == B.shape) {
                         Tensor C(A.shape, A.device);
-                        cuda::launch_elementwise_contiguous<double>(A.data, B.data, C.data, C.getShape(), op);
+                        cuda::launch_elementwise_contiguous<T>(A.data, B.data, C.data, C.getShape(), op);
                         return C;
                     }
                     auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
@@ -729,28 +751,28 @@ namespace simplenet{
 
                     Tensor C(outShape, A.device);
 
-                    cuda::launch_elementwise_broadcast<double>(aView.data, bView.data, C.data,
+                    cuda::launch_elementwise_broadcast<T>(aView.data, bView.data, C.data,
                         aView.getStrides(), bView.getStrides(), C.getShape(), op);
                     return C;
                 }
                 // CPU path with appropriate lambda
                 switch(op) {
-                    case OP_Code::OP_ADD: return elementwise_binary_cpu(A, B, std::plus<double>{});
-                    case OP_Code::OP_SUB: return elementwise_binary_cpu(A, B, std::minus<double>{});
-                    case OP_Code::OP_MUL: return elementwise_binary_cpu(A, B, std::multiplies<double>{});
-                    case OP_Code::OP_DIV: return elementwise_binary_cpu(A, B, std::divides<double>{});
-                    case OP_Code::OP_MAX: return elementwise_binary_cpu(A, B, [](double a, double b){ return std::max(a,b); });
-                    case OP_Code::OP_MIN: return elementwise_binary_cpu(A, B, [](double a, double b){ return std::min(a,b); });
+                    case OP_Code::OP_ADD: return elementwise_binary_cpu(A, B, std::plus<T>{});
+                    case OP_Code::OP_SUB: return elementwise_binary_cpu(A, B, std::minus<T>{});
+                    case OP_Code::OP_MUL: return elementwise_binary_cpu(A, B, std::multiplies<T>{});
+                    case OP_Code::OP_DIV: return elementwise_binary_cpu(A, B, std::divides<T>{});
+                    case OP_Code::OP_MAX: return elementwise_binary_cpu(A, B, [](T a, T b){ return std::max(a,b); });
+                    case OP_Code::OP_MIN: return elementwise_binary_cpu(A, B, [](T a, T b){ return std::min(a,b); });
                     default:
                         throw std::invalid_argument("OP Code does not exist - in elementwise_binary.");
                 }
             }
 
             // Tensor-scalar operator: handles Tensor op scalar and scalar op Tensor
-            static Tensor elementwise_scalar(const Tensor& A, double b, OP_Code op, LHS_RHS_Code side) {
+            static Tensor elementwise_scalar(const Tensor& A, T b, OP_Code op, LHS_RHS_Code side) {
                 Tensor C(A.shape, A.device);
                 if (A.device.type == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<double>(A.data, b, C.data, A.shape, op, side);
+                    cuda::launch_elementwise_contiguous_with_constant<T>(A.data, b, C.data, A.shape, op, side);
                     return C;
                 }
                 size_t N = A.sizeOfTensor();
@@ -809,7 +831,7 @@ namespace simplenet{
 
                         Tensor oView = makeBroadcastView(other, outShape);
 
-                        cuda::launch_elementwise_broadcast<double>(data, other.data, data,
+                        cuda::launch_elementwise_broadcast<T>(data, other.data, data,
                             getStrides(), oView.getStrides(), outShape, op);
 
                         return *this;
@@ -839,7 +861,7 @@ namespace simplenet{
                 } else {
                     // CUDA
                     if (device.type == DeviceType::CUDA) {
-                        cuda::launch_elementwise_contiguous<double>(data, other.data, data, shape, op);
+                        cuda::launch_elementwise_contiguous<T>(data, other.data, data, shape, op);
                         return *this;
                     }
                     size_t N = sizeOfTensor();
@@ -858,9 +880,9 @@ namespace simplenet{
             }
 
             // in-place scalar-Tensor operator
-            Tensor& inplace_scalar(double b, OP_Code op) {
+            Tensor& inplace_scalar(T b, OP_Code op) {
                 if (device.type == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<double>(this->data, b, this->data, shape, op, LHS_RHS_Code::OP_RHS);
+                    cuda::launch_elementwise_contiguous_with_constant<T>(this->data, b, this->data, shape, op, LHS_RHS_Code::OP_RHS);
                     return *this;
                 }
                 size_t N = sizeOfTensor();
@@ -892,7 +914,7 @@ namespace simplenet{
             static Tensor elementwise_unary(const Tensor& A, OP_Code op) {
                 if (A.device.type == DeviceType::CUDA) {
                     Tensor C(A.shape, A.device);
-                    cuda::launch_elementwise_unary<double>(
+                    cuda::launch_elementwise_unary<T>(
                         A.data,
                         C.data,
                         C.getShape(),
@@ -902,16 +924,16 @@ namespace simplenet{
                 }
                 // CPU path with appropriate lambda
                 switch(op) {
-                    case OP_Code::OP_EXP: return elementwise_unary_cpu(A, [](double a){ return std::exp(a); });
-                    case OP_Code::OP_LOG: return elementwise_unary_cpu(A, [](double a){ return std::log(a); });
-                    case OP_Code::OP_SQRT: return elementwise_unary_cpu(A, [](double a){ return std::sqrt(a); });
-                    case OP_Code::OP_ABS: return elementwise_unary_cpu(A, [](double a){ return std::abs(a); });
-                    case OP_Code::OP_SIN: return elementwise_unary_cpu(A, [](double a){ return std::sin(a); });
-                    case OP_Code::OP_COS: return elementwise_unary_cpu(A, [](double a){ return std::cos(a); });
-                    case OP_Code::OP_TAN: return elementwise_unary_cpu(A, [](double a){ return std::tan(a); });
-                    case OP_Code::OP_SINH: return elementwise_unary_cpu(A, [](double a){ return std::sinh(a); });
-                    case OP_Code::OP_COSH: return elementwise_unary_cpu(A, [](double a){ return std::cosh(a); });
-                    case OP_Code::OP_TANH: return elementwise_unary_cpu(A, [](double a){ return std::tanh(a); });
+                    case OP_Code::OP_EXP: return elementwise_unary_cpu(A, [](T a){ return std::exp(a); });
+                    case OP_Code::OP_LOG: return elementwise_unary_cpu(A, [](T a){ return std::log(a); });
+                    case OP_Code::OP_SQRT: return elementwise_unary_cpu(A, [](T a){ return std::sqrt(a); });
+                    case OP_Code::OP_ABS: return elementwise_unary_cpu(A, [](T a){ return std::abs(a); });
+                    case OP_Code::OP_SIN: return elementwise_unary_cpu(A, [](T a){ return std::sin(a); });
+                    case OP_Code::OP_COS: return elementwise_unary_cpu(A, [](T a){ return std::cos(a); });
+                    case OP_Code::OP_TAN: return elementwise_unary_cpu(A, [](T a){ return std::tan(a); });
+                    case OP_Code::OP_SINH: return elementwise_unary_cpu(A, [](T a){ return std::sinh(a); });
+                    case OP_Code::OP_COSH: return elementwise_unary_cpu(A, [](T a){ return std::cosh(a); });
+                    case OP_Code::OP_TANH: return elementwise_unary_cpu(A, [](T a){ return std::tanh(a); });
                     default:
                         throw std::invalid_argument("OP Code does not exist - in elementwise_unary.");
                 }
@@ -930,16 +952,16 @@ namespace simplenet{
             }
 
             // element wise add
-            Tensor& operator+=(const double& b) {
+            Tensor& operator+=(const T& b) {
                 return inplace_scalar(b, OP_Code::OP_ADD);
             }
 
             // element wise add
-            friend Tensor operator+(const Tensor &A, const double& b) {
+            friend Tensor operator+(const Tensor &A, const T& b) {
                 return elementwise_scalar(A, b, OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
             }
 
-            friend Tensor operator+(const double& b, const Tensor &A) {
+            friend Tensor operator+(const T& b, const Tensor &A) {
                 return A+b;
             } // same as above
 
@@ -952,36 +974,36 @@ namespace simplenet{
                 return inplace_tensor_binary(other, OP_Code::OP_SUB);
             }
             // element wise subtract
-            Tensor& operator-=(const double& b) {
+            Tensor& operator-=(const T& b) {
                 return inplace_scalar(b, OP_Code::OP_SUB);
             }
             // element wise subtract
-            friend Tensor operator-(const Tensor &A, const double& b) {
+            friend Tensor operator-(const Tensor &A, const T& b) {
                 return elementwise_scalar(A, b, OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
             }
             // element wise subtract - operation is switched (b - A)
-            friend Tensor operator-(const double& b, const Tensor &A) {
+            friend Tensor operator-(const T& b, const Tensor &A) {
                 return elementwise_scalar(A, b, OP_Code::OP_SUB, LHS_RHS_Code::OP_LHS);
             }
 
             // --------------------------------MULTIPLICATION----------------------------------------------------------------------
 
             // Hadamard product
-            friend Tensor linear_algebra::hadamard(const Tensor &a, const Tensor &other);
+            template<typename U> friend Tensor<U> linear_algebra::hadamard(const Tensor<U> &a, const Tensor<U> &other);
 
             // THIS is where we will be doing the multiplication when the dimensions exceed the normal 2 of a matrix
-            friend Tensor linear_algebra::batchedMatMul(const Tensor& a, const Tensor& b);
+            template<typename U> friend Tensor<U> linear_algebra::batchedMatMul(const Tensor<U>& a, const Tensor<U>& b);
 
             // TODO: write CUDA kernel
-            friend Tensor linear_algebra::reduce(const Tensor& a, std::vector<int>& afterShape, reductions::ReductionOps op);
+            template<typename U> friend Tensor<U> linear_algebra::reduce(const Tensor<U>& a, std::vector<int>& afterShape, reductions::ReductionOps op);
 
             // element wise multiply (now uses elementwise_scalar dispatch)
-            friend Tensor operator*(const Tensor &A, const double& b) {
+            friend Tensor operator*(const Tensor &A, const T& b) {
                 return elementwise_scalar(A, b, OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
             }
 
             // for when the operations are reversed
-            friend Tensor operator*(const double& b, const Tensor &A) {
+            friend Tensor operator*(const T& b, const Tensor &A) {
                 return A*b; // order of multiplication doesn't matter here -> does it?
             }
 
@@ -1020,7 +1042,7 @@ namespace simplenet{
                     if (a.device == DeviceType::CUDA) {
                         // Treat as 1x1 matmul: (1,N) * (N,1) = (1,1), extract scalar
                         Tensor result({1}, a.device);
-                        cuda::launch_gemm_contiguous<double>(
+                        cuda::launch_gemm_contiguous<T>(
                             a.data, b.data, result.data,
                             1,    // batchsize
                             1,    // m (rows of a treated as row vector)
@@ -1031,8 +1053,8 @@ namespace simplenet{
                         return result;
                     }
 
-                    Eigen::Map<const Eigen::VectorXd> vec_a(a.data, a_shape[0]);
-                    Eigen::Map<const Eigen::VectorXd> vec_b(b.data, b_shape[0]);
+                    Eigen::Map<const VectorXT<T>> vec_a(a.data, a_shape[0]);
+                    Eigen::Map<const VectorXT<T>> vec_b(b.data, b_shape[0]);
 
                     Tensor output({1});
                     output.data[0] = vec_a.dot(vec_b);
@@ -1048,7 +1070,7 @@ namespace simplenet{
                     if (a.device == DeviceType::CUDA) {
                         // Treat vector as (m,1) matrix: (n,m) * (m,1) = (n,1)
                         Tensor result({a_shape[0]}, a.device);
-                        cuda::launch_gemm_contiguous<double>(
+                        cuda::launch_gemm_contiguous<T>(
                             a.data, b.data, result.data,
                             1,           // batchsize
                             a_shape[0],  // m
@@ -1059,11 +1081,11 @@ namespace simplenet{
                         return result;
                     }
 
-                    Eigen::Map<const MatrixRowMajor> mat_a(a.data, a_shape[0], a_shape[1]);
-                    Eigen::Map<const Eigen::VectorXd> vec_b(b.data, b_shape[0]);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a.data, a_shape[0], a_shape[1]);
+                    Eigen::Map<const VectorXT<T>> vec_b(b.data, b_shape[0]);
 
                     Tensor result({a_shape[0]});
-                    Eigen::Map<Eigen::VectorXd> result_vec(result.data, a_shape[0]);
+                    Eigen::Map<VectorXT<T>> result_vec(result.data, a_shape[0]);
                     result_vec = mat_a * vec_b;
 
                     return result;
@@ -1078,7 +1100,7 @@ namespace simplenet{
                     if (a.device == DeviceType::CUDA) {
                         // Treat vector as (1,m) matrix: (1,m) * (m,n) = (1,n)
                         Tensor result({1,b_shape[1]}, a.device);
-                        cuda::launch_gemm_contiguous<double>(
+                        cuda::launch_gemm_contiguous<T>(
                             a.data, b.data, result.data,
                             1,           // batchsize
                             1,           // m
@@ -1089,12 +1111,12 @@ namespace simplenet{
                         return result;
                     }
 
-                    Eigen::Map<const Eigen::VectorXd> vec_a(a.data, a_shape[0]);
-                    Eigen::Map<const MatrixRowMajor> mat_b(b.data, b_shape[0], b_shape[1]);
+                    Eigen::Map<const VectorXT<T>> vec_a(a.data, a_shape[0]);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b.data, b_shape[0], b_shape[1]);
 
 
                     Tensor result({b_shape[1]});
-                    Eigen::Map<Eigen::VectorXd> result_vec(result.data, b_shape[1]);
+                    Eigen::Map<VectorXT<T>> result_vec(result.data, b_shape[1]);
                     result_vec = mat_b * vec_a;
 
                     return result;
@@ -1108,7 +1130,7 @@ namespace simplenet{
 
                     if (a.device == DeviceType::CUDA) {
                         Tensor result({a_shape[0], b_shape[1]}, a.device);
-                        cuda::launch_gemm_contiguous<double>(
+                        cuda::launch_gemm_contiguous<T>(
                             a.data, b.data, result.data,
                             1,           // batchsize
                             a_shape[0],  // m
@@ -1119,11 +1141,11 @@ namespace simplenet{
                         return result;
                     }
 
-                    Eigen::Map<const MatrixRowMajor> mat_a(a.data, a_shape[0], a_shape[1]);
-                    Eigen::Map<const MatrixRowMajor> mat_b(b.data, b_shape[0], b_shape[1]);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a.data, a_shape[0], a_shape[1]);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b.data, b_shape[0], b_shape[1]);
 
                     Tensor result({a_shape[0], b_shape[1]});
-                    Eigen::Map<MatrixRowMajor> result_mat(result.data, a_shape[0], b_shape[1]);
+                    Eigen::Map<MatrixRowMajorT<T>> result_mat(result.data, a_shape[0], b_shape[1]);
                     result_mat = (mat_a * mat_b);
 
                     return result;
@@ -1144,17 +1166,17 @@ namespace simplenet{
                  return *this;
             }
             // calls the element wise mul
-            Tensor& operator*=(const double& B) {
+            Tensor& operator*=(const T& B) {
                  *this = *this * B;
                  return *this;
             }
 
             // -------------------------------DIVISION--------------------------------------------------------------------------
-            friend Tensor operator/(const Tensor &A, const double& b) {
+            friend Tensor operator/(const Tensor &A, const T& b) {
                 return elementwise_scalar(A, b, OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS);
             }
 
-            friend Tensor operator/(const double& b, const Tensor &A) {
+            friend Tensor operator/(const T& b, const Tensor &A) {
                 return elementwise_scalar(A, b, OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
             }
 
@@ -1166,7 +1188,7 @@ namespace simplenet{
             }
 
             // Another case exists but that is when matrix b is invertible and then it just becomes matrix mul
-            friend Tensor linear_algebra::inverse(const Tensor& a); // TODO: add CUDA dispatch function to compute inverse
+            template<typename U> friend Tensor<U> linear_algebra::inverse(const Tensor<U>& a); // TODO: add CUDA dispatch function to compute inverse
 
 
             // --------------------------------EQUALITY--------------------------------------------------------------------------
@@ -1175,7 +1197,7 @@ namespace simplenet{
             friend bool operator==(const Tensor &a, const Tensor &b){
                 if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
                     if (a.getDevice().type == DeviceType::CUDA && b.getDevice().type == DeviceType::CUDA){
-                        return cuda::launch_check_equal_kernel<double>(a.data, b.data, a.sizeOfTensor()); // need to test this
+                        return cuda::launch_check_equal_kernel<T>(a.data, b.data, a.sizeOfTensor()); // need to test this
                     }
                     // NOTE: std::abs is better for doubles
                     for (size_t i = 0; i<a.sizeOfTensor(); i++){
@@ -1197,40 +1219,39 @@ namespace simplenet{
             // -----------------------------------------------Operations helpful in mask generations------------------
 
 
-            friend Tensor linear_algebra::compare(const Tensor& a, const Tensor& b,CompareOp op, double true_val, double false_val);
+            template<typename U> friend Tensor<U> linear_algebra::compare(const Tensor<U>& a, const Tensor<U>& b,CompareOp op, U true_val, U false_val);
 
-            friend Tensor linear_algebra::mask_of_greater_than_equal_to(const Tensor& first, const Tensor& other, double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_greater_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_less_than_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_less_than(const Tensor& first, const Tensor& other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_equal_to(const Tensor& first, const Tensor& other,  double first_val, double second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_greater_than_equal_to(const Tensor<U>& first, const Tensor<U>& other, U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_greater_than(const Tensor<U>& first, const Tensor<U>& other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_less_than_equal_to(const Tensor<U>& first, const Tensor<U>& other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_less_than(const Tensor<U>& first, const Tensor<U>& other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_equal_to(const Tensor<U>& first, const Tensor<U>& other,  U first_val, U second_val);
 
             // Double and Tensor
-            friend Tensor linear_algebra::mask_of_greater_than_equal_to(double first, const Tensor& other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_greater_than(double first, const Tensor& other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_less_than_equal_to(double first, const Tensor& other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_less_than(double first, const Tensor& other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_equal_to(double first, const Tensor& other,  double first_val, double second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_greater_than_equal_to(U first, const Tensor<U>& other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_greater_than(U first, const Tensor<U>& other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_less_than_equal_to(U first, const Tensor<U>& other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_less_than(U first, const Tensor<U>& other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_equal_to(U first, const Tensor<U>& other,  U first_val, U second_val);
 
             // Tensor and Double
-            friend Tensor linear_algebra::mask_of_greater_than_equal_to(const Tensor& first, double other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_greater_than(const Tensor& first, double other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_less_than_equal_to(const Tensor& first, double other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_less_than(const Tensor& first, double other,  double first_val, double second_val);
-            friend Tensor linear_algebra::mask_of_equal_to(const Tensor& first, double other,  double first_val, double second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_greater_than_equal_to(const Tensor<U>& first, U other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_greater_than(const Tensor<U>& first, U other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_less_than_equal_to(const Tensor<U>& first, U other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_less_than(const Tensor<U>& first, U other,  U first_val, U second_val);
+            template<typename U> friend Tensor<U> linear_algebra::mask_of_equal_to(const Tensor<U>& first, U other,  U first_val, U second_val);
 
 
             // sign matrix
-            friend Tensor linear_algebra::sign(const Tensor& a);
+            template<typename U> friend Tensor<U> linear_algebra::sign(const Tensor<U>& a);
 
             // TODO: implement im2col
-            friend Tensor linear_algebra::im2col_2d(const Tensor& a, int kernel_size, int stride, int padding, int dilation);
+            template<typename U> friend Tensor<U> linear_algebra::im2col_2d(Tensor<U>& a, int kernel_size, int stride, int padding, int dilation);
 
 
 
             // padding (in convolution_layers.h file)
-            template <typename T>
-            friend Tensor neural_network::padding(const simplenet::Tensor& input, int pad_amount, Padding_Op_Code padding_mode, T constant_value);
+            template<typename DU> friend Tensor<DU> neural_network::padding(const simplenet::Tensor<DU>& input, int pad_amount, Padding_Op_Code padding_mode, DU constant_value);
 
             // TODO: refactor for native CUDA support
             //----------------------------------------ACCUMULATORs (used in reduce)------------------------------------------------------
@@ -1243,11 +1264,15 @@ namespace simplenet{
                 if (shape.size()==1 && dim ==0){
                     // no need to check keep dims as if keepdims is false then it will be a scalar anyways
                     Tensor new_t({1}, this->device);
-                    new_t.data[0] = (op == reductions::ReductionOps::PROD) ? 1.0
-                                             : (op == reductions::ReductionOps::MAX)  ? -std::numeric_limits<double>::infinity()
-                                             : (op == reductions::ReductionOps::MIN)  ?  std::numeric_limits<double>::infinity()
-                                             : 0.0; // even for argmin/argmax initial value is 0
-                    double value = new_t.data[0]; // for argmin/argmax
+                    new_t.data[0] = (op == reductions::ReductionOps::PROD) ? T(1)
+                                             : (op == reductions::ReductionOps::MAX)  ? std::numeric_limits<T>::lowest()
+                                             : (op == reductions::ReductionOps::MIN)  ?  std::numeric_limits<T>::max()
+                                             : T(0); // even for argmin/argmax initial value is 0
+                    // argmin/argmax need the running comparison value seeded to the
+                    // opposite extreme (the index in new_t.data[0] stays 0 by default)
+                    T value = (op == reductions::ReductionOps::ARG_MAX) ? std::numeric_limits<T>::lowest()
+                            : (op == reductions::ReductionOps::ARG_MIN) ? std::numeric_limits<T>::max()
+                            : new_t.data[0]; // for argmin/argmax
                     for (size_t i =0; i < sizeOfTensor(); i++){
                         switch (op) {
                             case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
@@ -1298,10 +1323,10 @@ namespace simplenet{
                 ll offset_old{offset_new_shape*oldDim};
 
                 Tensor new_t(newShape, this->device);
-                double* flat_data = new_t.data;
+                T* flat_data = new_t.data;
 
                 if (this->device.type == DeviceType::CUDA) {
-                    cuda::launch_accumulate_kernel<double>(this->data, flat_data, this->shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
+                    cuda::launch_accumulate_kernel<T>(this->data, flat_data, this->shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
 
                 } else {
 
@@ -1313,15 +1338,15 @@ namespace simplenet{
                     for (size_t v =0; v<sizeOfTensor(); v+=offset_old){
                         for (size_t s = 0; s<offset_new_shape;s++){
                             // accumulate initial value based on reduction op
-                            double val = (op == reductions::ReductionOps::PROD) ? 1.0
-                                                     : (op == reductions::ReductionOps::MAX || op == reductions::ReductionOps::ARG_MAX)  ? -std::numeric_limits<double>::infinity()
-                                                     : (op == reductions::ReductionOps::MIN || op == reductions::ReductionOps::ARG_MIN)  ?  std::numeric_limits<double>::infinity()
-                                                     : 0.0;
+                            T val = (op == reductions::ReductionOps::PROD) ? T(1)
+                                                     : (op == reductions::ReductionOps::MAX || op == reductions::ReductionOps::ARG_MAX)  ? std::numeric_limits<T>::lowest()
+                                                     : (op == reductions::ReductionOps::MIN || op == reductions::ReductionOps::ARG_MIN)  ?  std::numeric_limits<T>::max()
+                                                     : T(0);
                             int64_t arg_idx = 0;
 
                             for (int idx = 0; idx<oldDim; idx++){
                                 // edited from this->data to copy_tensor.data
-                                double elem = copy_tensor.data[v + idx * offset_new_shape + s];
+                                T elem = copy_tensor.data[v + idx * offset_new_shape + s];
                                 switch (op) {
                                     case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
                                         val += elem;
@@ -1422,7 +1447,7 @@ namespace simplenet{
             //----------------------------------------Max------------------------------------------------------
 
             // TODO: fix this - CUDA kernel as well
-            static Tensor max(const Tensor& t,const  double val){
+            static Tensor max(const Tensor& t,const  T val){
                 // std::cout <<"MAX" <<std::endl;
                 if (t.device == DeviceType::CUDA) {
                     // Create a scalar tensor on CUDA filled with val
@@ -1438,7 +1463,7 @@ namespace simplenet{
                 return a;
             }
 
-            static Tensor max(const double val, const Tensor& t){
+            static Tensor max(const T val, const Tensor& t){
                 return Tensor::max(t,val);
             }
 
@@ -1449,7 +1474,7 @@ namespace simplenet{
                 }
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
-                    cuda::launch_elementwise_contiguous<double>(
+                    cuda::launch_elementwise_contiguous<T>(
                         t.data, s.data, result.data,
                         t.getShape(), OP_Code::OP_MAX
                     );
@@ -1464,7 +1489,7 @@ namespace simplenet{
 
             //----------------------------------------Min------------------------------------------------------
 
-            static Tensor min(const Tensor& t, double val){
+            static Tensor min(const Tensor& t, T val){
                 // std::cout <<"MIN" <<std::endl;
                 if (t.device == DeviceType::CUDA) {
                     Tensor scalar_t(t.getShape());
@@ -1479,7 +1504,7 @@ namespace simplenet{
                 return a;
             }
 
-            static Tensor min(const double val, const Tensor& t){
+            static Tensor min(const T val, const Tensor& t){
                 return Tensor::min(t,val);
             }
 
@@ -1490,7 +1515,7 @@ namespace simplenet{
                 }
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
-                    cuda::launch_elementwise_contiguous<double>(
+                    cuda::launch_elementwise_contiguous<T>(
                         t.data, s.data, result.data,
                         t.getShape(), OP_Code::OP_MIN
                     );
@@ -1522,11 +1547,11 @@ namespace simplenet{
             //----------------------------------------Mean ------------------------------------------------------
             static Tensor mean(Tensor &t ){
                 Tensor result({1}, t.device);
-                double sum = 0.0;
+                T sum = T(0);
                 if (t.device == DeviceType::CUDA) {
                     cuda::launch_sum_kernel(t.data, result.data, t.sizeOfTensor());
                     result.to_(Device::cpu()); // send to CPU to get the sum as GPU direct memory access is NOT SET UP
-                    result.set(result.data[0] / static_cast<double>(t.sizeOfTensor()), {0}); // set the mean value
+                    result.set(static_cast<T>(result.data[0] / static_cast<double>(t.sizeOfTensor())), {0}); // set the mean value
                     result.to_(t.device); // send back to GPU
                 }else {
                     size_t sizeTensor = t.sizeOfTensor();
@@ -1534,7 +1559,7 @@ namespace simplenet{
                        sum += t.data[i];
 
                     }
-                    result.set(sum / static_cast<double>(t.sizeOfTensor()), {0}) ;
+                    result.set(static_cast<T>(sum / static_cast<double>(t.sizeOfTensor())), {0}) ;
                 }
                 return result;
             }
@@ -1548,10 +1573,10 @@ namespace simplenet{
 
 
             // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
-            void fill(double v){
+            void fill(T v){
                 // CUDA fill
                 if (!this->device.is_cpu()) {
-                    cuda::launch_fill<double>(
+                    cuda::launch_fill<T>(
                         this->data,
                         v,
                         this->shape
@@ -1583,7 +1608,15 @@ namespace simplenet{
 
             }
 
-            Tensor flatten(int start_dim =0, int end_dim = -1, bool keepdims=false); // function declaration
+            // flatten - definition moved inline (was in Tensor.cpp; templates need
+            // the definition visible at instantiation)
+            Tensor flatten(int start_dim =0, int end_dim = -1, bool keepdims=false) {
+                Tensor result = *this; // copy the tensor
+                std::vector<int> newShape = this->flatten_(start_dim, end_dim, keepdims);
+                result.setShape(newShape);
+                result.computeStrides();
+                return result;
+            }
 
             // flatten - inplace
             void flatten_inplace(int start_dim =0, int end_dim = -1, bool keepdims=false){
@@ -1593,17 +1626,19 @@ namespace simplenet{
 
 
             // linspace function to edit the current tensor
-            Tensor& linspace(double start, double end){
+            Tensor& linspace(T start, T end){
                 size_t long_size = this->sizeOfTensor();
                 double size = static_cast<double>(long_size);
-                double step = (end-start+1)/(size);
+                // accumulate in double for precision, store back as the element type T
+                double cur = static_cast<double>(start);
+                double step = (static_cast<double>(end)-cur+1)/(size);
                 if (this->device.is_cpu()) {
                     for (size_t i =0; i < long_size ; i++){
-                        this->data[i] = start;
-                        start+=step;
+                        this->data[i] = static_cast<T>(cur);
+                        cur+=step;
                     }
                 } else {
-                    cuda::launch_linspace_kernel<double>(this->data, start, step, long_size);
+                    cuda::launch_linspace_kernel<T>(this->data, static_cast<T>(start), static_cast<T>(step), long_size);
                 }
                 return *this;
             }
@@ -1846,7 +1881,7 @@ namespace simplenet{
                 if (device.type == DeviceType::CUDA) {
                     const size_t n = tensors.size();
 
-                    std::vector<double*> h_data(n);
+                    std::vector<T*> h_data(n);
                     std::vector<int*> h_shape_ptrs(n); // each entry is a device pointer
 
                     for (size_t i = 0; i < n; ++i) {
@@ -1862,10 +1897,10 @@ namespace simplenet{
                         h_shape_ptrs[i] = d_shape;
                     }
 
-                    double** d_allInputs = nullptr;
-                    CUDA_CHECK(cudaMalloc(&d_allInputs, n * sizeof(double*)));
+                    T** d_allInputs = nullptr;
+                    CUDA_CHECK(cudaMalloc(&d_allInputs, n * sizeof(T*)));
                     CUDA_CHECK(cudaMemcpy(d_allInputs, h_data.data(),
-                                          n * sizeof(double*), cudaMemcpyHostToDevice));
+                                          n * sizeof(T*), cudaMemcpyHostToDevice));
 
                     // allocate the copied shapes pointers in a list of pointers on the device
                     int** d_shapes = nullptr;
@@ -1873,7 +1908,7 @@ namespace simplenet{
                     CUDA_CHECK(cudaMemcpy(d_shapes, h_shape_ptrs.data(),
                                           n * sizeof(int*), cudaMemcpyHostToDevice));
 
-                    cuda::launch_concat_kernel<double>(d_allInputs, d_shapes, n, result.data,
+                    cuda::launch_concat_kernel<T>(d_allInputs, d_shapes, n, result.data,
                                                        outerDim, innerDim, dim, concatDim);
 
                     for (int* d_shape : h_shape_ptrs) CUDA_CHECK(cudaFree(d_shape));
@@ -1888,7 +1923,7 @@ namespace simplenet{
                             // we copy the data for each tensor into the result tensor
                             // outer*concatDim * innerDim moves the pointer to the correct position in the result tensor
                             // offset * innerDim is the offset that will be copied from the source tensor using (o*src_cat_dim*innerDim)
-                            std::memcpy(result.data  + o*concatDim *innerDim + offset*innerDim, tensors.begin()[i].data + o*src_cat_dim*innerDim, copy_size * sizeof(double));
+                            std::memcpy(result.data  + o*concatDim *innerDim + offset*innerDim, tensors.begin()[i].data + o*src_cat_dim*innerDim, copy_size * sizeof(T));
                             offset += src_cat_dim;
                         }
                     }
@@ -1915,7 +1950,7 @@ namespace simplenet{
                 }
 
                 size_t total = (tensors.size()+1) * this->sizeOfTensor();
-                double * temp = new double[total];
+                T * temp = new T[total];
                 size_t stride = this->sizeOfTensor();
 
                 this->shape.insert(this->shape.begin(), tensors.size()+1);
@@ -1925,7 +1960,7 @@ namespace simplenet{
                 std::copy(this->data, this->data + stride, temp + 0);
                 ll start = stride;
                 for (const Tensor& tensor : tensors){
-                    double * tempData = tensor.data;
+                    T * tempData = tensor.data;
 
                     std::copy(tempData, tempData + stride, temp + start); // copy the data
                     start += stride;
@@ -1942,5 +1977,22 @@ namespace simplenet{
             // static Tensor identity_matrix(std::vector<int>& sizePassed, int n)
 
         };
+
+    // dtype aliases - the supported element types for Tensor<T>
+    using TensorD  = Tensor<double>;          // 64-bit float (default / legacy precision)
+    using Tensorf  = Tensor<float>;           // 32-bit float
+    using TensorI  = Tensor<int>;             // 32-bit signed int
+
+
+    // trait: is_tensor_v<U> is true iff U is some Tensor<E> specialization.
+    // Used by autograd so Node<T> stays generic over Tensor<T> (any element
+    // type) instead of hard-coding a concrete alias like TensorD.
+    template<typename>   struct is_tensor                : std::false_type {};
+    template<typename E> struct is_tensor<Tensor<E>>     : std::true_type  {};
+    template<typename U> inline constexpr bool is_tensor_v = is_tensor<U>::value;
 }
+
+// linear_algebra friend templates - definitions included here so they are visible
+// for instantiation, now that Tensor<T> is a complete type (breaks the include cycle).
+#include "utils/linalg_utils.tpp"
 #endif

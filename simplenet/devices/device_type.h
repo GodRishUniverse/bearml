@@ -7,7 +7,8 @@ namespace simplenet {
     // Our enum for the devices that we will have
     enum class DeviceType {
         CPU,
-        CUDA
+        CUDA,
+        HIP // HIP is the AMD equivalent of CUDA - CUDA and HIP should be interchangeable cause of AMD's hipify tool
     };
 
     class Device {
@@ -20,12 +21,16 @@ namespace simplenet {
 
             static Device cpu() { return Device(DeviceType::CPU, -1); }
             static Device cuda(int id = 0) { return Device(DeviceType::CUDA, id); }
+            static Device hip(int id = 0) { return Device(DeviceType::HIP, id); }
+
 
             bool is_cpu() const { return type == DeviceType::CPU; }
             bool is_cuda() const { return type == DeviceType::CUDA; }
+            bool is_hip() const { return type == DeviceType::HIP; }
 
             std::string to_string() const {
                 if (is_cpu()) return "cpu";
+                if (is_hip()) return "hip:" + std::to_string(device_id);
                 return "cuda:" + std::to_string(device_id);
             }
 
@@ -35,6 +40,9 @@ namespace simplenet {
                     return true;
                 }
                 if (type == DeviceType::CUDA && other.type == DeviceType::CUDA) {
+                    return device_id == other.device_id;
+                }
+                if (type == DeviceType::HIP && other.type == DeviceType::HIP) {
                     return device_id == other.device_id;
                 }
                 return false;
