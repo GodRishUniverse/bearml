@@ -1,13 +1,23 @@
 # simplenet/CMakeLists.txt
 cmake_minimum_required(VERSION 3.30)
 
-# Create a library target from all source files in subdirectories
-file(GLOB_RECURSE SRC_FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/*.cu"  # Add .cu files as well
-)
+# Create a library target from all source files in subdirectories.
+# .cu files are only compiled into the library when CUDA is enabled.
+file(GLOB_RECURSE SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+
+if(SIMPLENET_CUDA_ENABLED)
+    file(GLOB_RECURSE CUDA_SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.cu")
+    list(APPEND SRC_FILES ${CUDA_SRC_FILES})
+endif()
 
 add_library(simplenet ${SRC_FILES})
+
+# Source code gates CUDA paths on this macro: #if defined(SIMPLENET_USE_CUDA)
+# (kept identical to the CMake option name so the C++ guards and the build
+#  switch never drift apart again).
+if(SIMPLENET_CUDA_ENABLED)
+    target_compile_definitions(simplenet PUBLIC SIMPLENET_USE_CUDA)
+endif()
 
 target_include_directories(simplenet
     PUBLIC
@@ -30,12 +40,15 @@ target_include_directories(simplenet PUBLIC
 
 find_package(Boost REQUIRED)
 
-target_link_libraries(simplenet PUBLIC
-    CUDA::cudart
-    CUDA::cuda_driver
-    Boost::boost
-)
+target_link_libraries(simplenet PUBLIC Boost::boost)
 
-set_target_properties(simplenet PROPERTIES
-    CUDA_SEPARABLE_COMPILATION ON
-)
+# Only link the CUDA runtime/driver when CUDA support is enabled.
+if(SIMPLENET_CUDA_ENABLED)
+    target_link_libraries(simplenet PUBLIC
+        CUDA::cudart
+        CUDA::cuda_driver
+    )
+    set_target_properties(simplenet PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+    )
+endif()

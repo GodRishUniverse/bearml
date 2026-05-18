@@ -1,7 +1,10 @@
 #pragma once
+#if defined(SIMPLENET_USE_CUDA)
 #include <cuda_runtime.h>
+#endif
 #include "device_type.h"
 #include <cstring>
+#include <stdexcept>
 
 namespace simplenet {
 
@@ -43,6 +46,7 @@ namespace simplenet {
         Device device() const override { return Device::cpu(); }
     };
 
+#if defined(SIMPLENET_USE_CUDA)
     // CUDA Allocator
     class CUDAAllocator : public DeviceAllocator {
         private:
@@ -86,6 +90,7 @@ namespace simplenet {
 
             Device device() const override { return Device::cuda(this->device_id); }
     };
+#endif // SIMPLENET_USE_CUDA
 
     // factory function
     // returns the type of allocator
@@ -93,7 +98,13 @@ namespace simplenet {
         if (device.is_cpu()) {
             return new CPUAllocator();
         } else {
+#if defined(SIMPLENET_USE_CUDA)
             return new CUDAAllocator(device.device_id);
+#else
+            throw std::runtime_error(
+                "Requested a CUDA device but SimpleNet was built without CUDA "
+                "(SIMPLENET_USE_CUDA=OFF). Rebuild with CUDA enabled.");
+#endif
         }
     }
 

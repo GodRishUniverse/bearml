@@ -15,7 +15,6 @@
 #include <span>
 
 // TODO: refactor Tensor class
-#include "cuda/kernels/utils.cuh"
 #include "devices/device_type.h"
 #include "devices/device_allocator.h"
 
@@ -37,9 +36,21 @@
 #include <iomanip>
 
 
-// cuda imports
-#include "cuda/includes/cuda_helper.h"
-#include "cuda/includes/kernel_links.h"
+// Operation-code enums (OP_Code, LHS_RHS_Code, Padding_Op_Code). These are
+// plain C++ and used by CPU paths too, so they must NOT sit behind the CUDA
+// guard. Previously they only reached here transitively via cuda_imports.h.
+#include "operators/ops.h"
+#include "operators/padding_ops.h"
+
+#if defined(SIMPLENET_USE_CUDA)
+    #include "cuda/includes/cuda_helper.h"
+    #include "cuda/includes/kernel_links.h"
+    #include "cuda/kernels/utils.cuh"
+#else
+    // CPU-only build: provide throwing stubs for the cuda::launch_* API so the
+    // (runtime-dead) CUDA dispatch branches still compile.
+    #include "cuda/includes/kernel_stubs.h"
+#endif
 
 using ll = long long; // can also use int_fast64_t
 

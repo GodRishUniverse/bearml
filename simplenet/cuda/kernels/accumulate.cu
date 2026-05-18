@@ -2,6 +2,11 @@
 #include "element_wise_kernels.cuh"
 #include "reductions.cuh"
 
+#include <numeric>      // std::accumulate
+#include <functional>   // std::multiplies
+#include <stdexcept>    // std::runtime_error
+#include <vector>
+
 namespace simplenet {
     namespace cuda {
 

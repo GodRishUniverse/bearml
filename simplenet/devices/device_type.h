@@ -56,15 +56,26 @@ namespace simplenet {
     // Macro functions -> https://stackoverflow.com/questions/163365/how-do-i-make-a-c-macro-behave-like-a-function
     // error checking macro
     #ifndef CUDA_CHECK_MACRO
-    #define CUDA_CHECK(call) \
-        do { \
-            cudaError_t error = call; \
-            if (error != cudaSuccess) { \
-                throw std::runtime_error( \
-                    std::string("CUDA error at ") + __FILE__ + ":" + \
-                    std::to_string(__LINE__) + " - " + \
-                    cudaGetErrorString(error)); \
-            } \
-        } while(0)
+    #define CUDA_CHECK_MACRO
+    #if defined(SIMPLENET_USE_CUDA)
+        #define CUDA_CHECK(call) \
+            do { \
+                cudaError_t error = call; \
+                if (error != cudaSuccess) { \
+                    throw std::runtime_error( \
+                        std::string("CUDA error at ") + __FILE__ + ":" + \
+                        std::to_string(__LINE__) + " - " + \
+                        cudaGetErrorString(error)); \
+                } \
+            } while(0)
+    #else
+        // CPU-only build: deliberately does NOT expand `call`, so the wrapped
+        // cudaMalloc/cudaMemcpy/... symbols are never referenced.
+        #define CUDA_CHECK(call) \
+            throw std::runtime_error( \
+                std::string("CUDA op at ") + __FILE__ + ":" + \
+                std::to_string(__LINE__) + \
+                " invoked but SimpleNet built without CUDA (SIMPLENET_USE_CUDA=OFF)")
+    #endif
     #endif
 }
