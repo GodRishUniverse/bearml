@@ -14,7 +14,6 @@
 
 #include <span>
 
-// TODO: refactor Tensor class
 #include "devices/device_type.h"
 #include "devices/device_allocator.h"
 
@@ -29,6 +28,7 @@
 #include "utils/linalg_utils.h"
 #include "utils/device_utils.h"
 #include "utils/slice.h"
+#include "utils/ordering.h"
 
 #include "reductions/reduction_ops.h"
 
@@ -140,6 +140,7 @@ namespace simplenet{
 
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
+            std::vector<int> strides_col_major; // TODO: use this to make all ops transpose friendly and avoid copy operations
             T * data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
             bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
             Device device;
@@ -157,6 +158,7 @@ namespace simplenet{
                 v.shape   = newShape;
                 v.data_offset = t.data_offset;
                 v.strides = utils::computeBroadcastStrides(t.shape, t.strides, newShape); // no need to change this
+                v.strides_col_major = compute_col_major_strides(newShape); // cached canonical col-major strides for this shape
                 v.owns_data = false; // we do not want the broadcasted tensors to own the data that it points - so we do not double delete
                 v.allocator_ = nullptr; // we do not have an allocator for the views
                 v.is_sliced_view = t.is_sliced_view;
@@ -171,11 +173,18 @@ namespace simplenet{
                 v.data_offset = sliceResult.offset;
                 v.shape      = sliceResult.shape;
                 v.strides    = sliceResult.strides;
+                v.strides_col_major = compute_col_major_strides(sliceResult.shape); // cached canonical col-major strides for this shape
                 v.owns_data  = false;       // parent owns the storage
                 v.allocator_ = nullptr;
                 v.is_sliced_view = true;
                 return v;
             }
+
+
+            // TODO: implement
+            static Tensor makeStrideView(const Tensor& t){
+            }
+
 
             static bool isScalar(const Tensor& t) {
                 if (t.shape.empty()) return true;
@@ -329,6 +338,7 @@ namespace simplenet{
                     this->shape = other.shape;
                     this->device = other.device;
                     this->strides = other.strides;
+                    this->strides_col_major = other.strides_col_major;
                     this->owns_data = true;  // Copy always owns its data
                     this->data_offset = other.data_offset;
                     this->is_sliced_view = other.is_sliced_view;
@@ -353,7 +363,7 @@ namespace simplenet{
             }
 
             // move constructor
-            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), device(other.device), data(other.data), allocator_(std::move(other.allocator_)), data_offset(other.data_offset){
+            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), strides_col_major(std::move(other.strides_col_major)), device(other.device), data(other.data), allocator_(std::move(other.allocator_)), data_offset(other.data_offset){
                 // this->shape = other.shape;
                 // this->data = other.data;
                 // this->device = other.device;
@@ -375,6 +385,7 @@ namespace simplenet{
                     this->data = other.data;
                     this->device = other.device;
                     this->strides = std::move(other.strides);
+                    this->strides_col_major = std::move(other.strides_col_major);
                     this->allocator_ = std::move(other.allocator_);
                     this->owns_data = other.owns_data;
                     this->data_offset = other.data_offset;
@@ -464,7 +475,8 @@ namespace simplenet{
                 }
             }
 
-            // checks if the tensor is contiguous or not
+            // TODO: redefine as (row or col) once copy constructor, change_dtype, contiguous() route by layout
+            // checks if the tensor is contiguous or not (row-major only for now)
             bool is_contiguous() const {
                   size_t s = 1;
                   for (int d = (int)shape.size() - 1; d >= 0; --d) {
@@ -473,6 +485,34 @@ namespace simplenet{
                   }
                   return data_offset == 0;
             }
+
+            // strides match canonical row-major (C order) for the current shape AND offset is zero
+            bool is_row_major_contiguous() const {
+                return is_contiguous();
+            }
+
+            // strides match canonical col-major (Fortran order) for the current shape AND offset is zero
+            bool is_col_major_contiguous() const {
+                if (strides.size() != shape.size()) return false;
+                size_t v = 1;
+                for (size_t d = 0; d < shape.size(); ++d) {
+                    if ((size_t)strides[d] != v) return false;
+                    v *= shape[d];
+                }
+                return data_offset == 0;
+            }
+
+            // Returns the layout descriptor for this tensor's current strides.
+            // Note: for 1-D and scalar tensors row-major and col-major coincide;
+            // we report ROW_MAJOR in that case (row is checked first).
+            utils::Layout layout() const {
+                if (is_row_major_contiguous()) return utils::Layout::ROW_MAJOR;
+                if (is_col_major_contiguous()) return utils::Layout::COL_MAJOR;
+                return utils::Layout::STRIDED;
+            }
+
+            // Accessor for the cached canonical col-major strides of this tensor's shape.
+            std::vector<int> getStridesColMajor() const { return this->strides_col_major; }
 
             Device getDevice() const {
                 return this->device;
@@ -647,13 +687,29 @@ namespace simplenet{
                 return this->data_offset;
             }
 
-            void computeStrides() {
-                strides.resize(shape.size());
-                size_t s = 1;
-                for (int d = shape.size()-1; d >= 0; --d) {
-                    strides[d] = s;
-                    s *= shape[d];
+            static std::vector<int> compute_row_major_strides(const std::vector<int>& sh) {
+                std::vector<int> s(sh.size());
+                size_t v = 1;
+                for (int d = (int)sh.size() - 1; d >= 0; --d) {
+                    s[d] = (int)v;
+                    v *= sh[d];
                 }
+                return s;
+            }
+
+            static std::vector<int> compute_col_major_strides(const std::vector<int>& sh) {
+                std::vector<int> s(sh.size());
+                size_t v = 1;
+                for (size_t d = 0; d < sh.size(); ++d) {
+                    s[d] = (int)v;
+                    v *= sh[d];
+                }
+                return s;
+            }
+
+            void computeStrides() {
+                strides            = compute_row_major_strides(shape);
+                strides_col_major  = compute_col_major_strides(shape);
             }
 
             // utility functions
