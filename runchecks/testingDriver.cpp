@@ -414,6 +414,9 @@ int main() {
 
      // // we need to use simplenet ops (shouldn't these be in linalg?)
      // cout << simplenet::Tensor::tan(mat_inv) << endl;
+     simplenet::TensorD t({5});
+     t.linspace(0.0, 8.0);
+     cout << t << endl;
 
 
 }

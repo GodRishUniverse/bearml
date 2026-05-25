@@ -1769,10 +1769,10 @@ namespace simplenet{
             // linspace function to edit the current tensor
             Tensor& linspace(T start, T end){
                 size_t long_size = this->sizeOfTensor();
-                double size = static_cast<double>(long_size);
+                double size = static_cast<double>(long_size-1);
                 // accumulate in double for precision, store back as the element type T
                 double cur = static_cast<double>(start);
-                double step = (static_cast<double>(end)-cur+1)/(size);
+                double step = (static_cast<double>(end)-cur)/(size);
                 if (this->device.is_cpu()) {
                     for (size_t i =0; i < long_size ; i++){
                         this->data[i] = static_cast<T>(cur);
