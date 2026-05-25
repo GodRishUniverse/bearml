@@ -34,6 +34,26 @@ namespace simplenet {
                 throw std::invalid_argument("Tensors must be on the same device");
             }
 
+            // The broadcast GEMM kernel and the CPU Eigen RowMajor Map below both assume each
+            // inner (M,K) / (K,N) matrix is laid out row-major contig. A transposed or permuted
+            // operand would silently produce wrong results, so densify on entry. Operator*'s 2D
+            // path (case 6) is layout-aware; once gemm_kernel_broadcast also takes per-operand
+            // strides, this densify can drop.
+            auto inner_is_row_major = [](const Tensor<T>& t){
+                int nd = (int)t.getShape().size();
+                if (nd < 2) return true;
+                int K = t.getShape()[nd - 1];
+                auto s = t.getStrides();
+                return s[nd - 1] == 1 && s[nd - 2] == K;
+            };
+            // We avoid densifying when only the BATCH dims are broadcast/permuted (inner matrix
+            // is still row-major contig in storage). makeBroadcastView further down still handles
+            // those correctly via stride 0.
+            Tensor<T> a_storage = inner_is_row_major(a) ? a : Tensor<T>::contiguous(a);
+            Tensor<T> b_storage = inner_is_row_major(b) ? b : Tensor<T>::contiguous(b);
+            const Tensor<T>& a_ref = inner_is_row_major(a) ? a : a_storage;
+            const Tensor<T>& b_ref = inner_is_row_major(b) ? b : b_storage;
+
             // Compute broadcast shape for batch dimensions
             std::vector<int> a_batch_dims(a_size.begin(), a_size.end() - 2);
             std::vector<int> b_batch_dims(b_size.begin(), b_size.end() - 2);
@@ -65,8 +85,8 @@ namespace simplenet {
             full_b_shape.push_back(b_rows);
             full_b_shape.push_back(b_cols);
 
-            Tensor<T> a_view = Tensor<T>::makeBroadcastView(a, full_a_shape);
-            Tensor<T> b_view = Tensor<T>::makeBroadcastView(b, full_b_shape);
+            Tensor<T> a_view = Tensor<T>::makeBroadcastView(a_ref, full_a_shape);
+            Tensor<T> b_view = Tensor<T>::makeBroadcastView(b_ref, full_b_shape);
 
             ll total_batch_size {1};
             for (int i : batch_shape){
@@ -84,7 +104,7 @@ namespace simplenet {
                     b_view.strides.begin() + batch_shape.size());
 
                 cuda::launch_gemm_broadcasted<T>(
-                    a.data, b.data, result.data,
+                    a_ref.data, b_ref.data, result.data,
                     a_rows, a_cols, b_cols,
                     T(1), T(0),
                     &batch_shape,

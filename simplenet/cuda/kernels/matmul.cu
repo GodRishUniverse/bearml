@@ -80,6 +80,9 @@ namespace simplenet {
             const int K, // common_dim
             const int N, // column_count
             T alpha, T beta,
+            // Layout-aware GEMM - so that when we have ColumnMajor layout, we can still use contiguous memory access
+            int64_t row_aware_strde_a, int64_t col_aware_stride_a,
+            int64_t row_aware_strde_b, int64_t col_aware_stride_b,
             T* __restrict__ a,
             T* __restrict__ b,
             T* c
@@ -89,11 +92,16 @@ namespace simplenet {
             int batchId = blockIdx.z;
 
             if (batchId < batchsize &&  row<M && column<N){
+                int64_t a_batch_off = (int64_t) batchId * M * K;
+                int64_t b_batch_off = (int64_t) batchId * K * N;
+                int64_t c_batch_off = (int64_t) batchId * M * N;
+
                 T sum {}; // brace initialization
                 for (int mid = 0; mid<K; ++mid){
-                    sum+= a[batchId*M*K + row*K + mid]*b[batchId*K*N + mid*N + column];
+                    // basically, we're doing a dot product between row/column of a and b - but stride-aware so that col/row-major order is preserved (triton kernel was the inspiration)
+                    sum+= a[a_batch_off + row*row_aware_strde_a + mid*col_aware_stride_a]*b[b_batch_off + mid*row_aware_strde_b + column*col_aware_stride_b];
                 }
-                c[batchId*M*N + row*N + column] = alpha*sum + beta*c[batchId*M*N + row*N + column];
+                c[c_batch_off + row*N + column] = alpha*sum + beta*c[c_batch_off + row*N + column];
             }
         }
 
@@ -171,6 +179,8 @@ namespace simplenet {
             int n,
             T alpha,
             T beta,
+            int64_t row_aware_strde_a, int64_t col_aware_stride_a,
+            int64_t row_aware_strde_b, int64_t col_aware_stride_b,
             cudaStream_t stream
         ) {
             bool own_stream = (stream == nullptr);
@@ -186,7 +196,10 @@ namespace simplenet {
                       batchsize);
 
             // launching the kernel - syntax kernel_name<<<grid, block, sharedMem, stream>>>(kernel_args);
-            gemm_kernel_contiguous<T><<<grid, block, 0, stream>>>(batchsize, m,  k, n,  alpha, beta, d_a, d_b, d_c);
+            gemm_kernel_contiguous<T><<<grid, block, 0, stream>>>(batchsize, m,  k, n,  alpha, beta,
+                row_aware_strde_a, col_aware_stride_a,
+                row_aware_strde_b, col_aware_stride_b,
+                d_a, d_b, d_c);
 
             CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
 

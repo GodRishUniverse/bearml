@@ -1028,7 +1028,7 @@ TEST(ReductionTest, ReduceViaLinalgReduce) {
 }
 
 
-// ---------------- Stride-aware view ops (step 2) ----------------
+// ---------------- Stride-aware view ops ----------------
 
 // transpose should produce a non-owning view that shares the parent's storage
 TEST(StrideViewTest, TransposeIsView) {
@@ -1122,8 +1122,9 @@ TEST(StrideViewTest, CopyCtorDensifiesStridedView) {
     EXPECT_DOUBLE_EQ(copy.get({2, 0}), 3.0);
 }
 
-// is_contiguous() must still be strict row-major (call sites that feed .data into row-major
-// kernels rely on this; flipping it silently would corrupt them — see audit in step 1)
+// is_contiguous() must stay strict row-major. Call sites (copy ctor, change_dtype, contiguous())
+// feed .data straight into row-major kernels and would silently corrupt on col-major input
+// if this were redefined as the (row || col) union.
 TEST(StrideViewTest, IsContiguousStaysStrictRowMajor) {
     TensorD a({2, 3}); a.linspace(1.0, 6.0);
     TensorD t = a.transpose(); // col-major layout for shape (3,2)
@@ -1147,6 +1148,159 @@ TEST(StrideViewTest, AutogradMatMulBackwardThroughTransposedView) {
     EXPECT_EQ(b->grad.getShape(), (std::vector<int>{3, 2}));
     EXPECT_TRUE(TensorD::has_nonzero_gradient(a->grad));
     EXPECT_TRUE(TensorD::has_nonzero_gradient(b->grad));
+}
+
+
+// ---------------- Layout-aware GEMM ----------------
+// Exercise operator* with a transposed (col-major) operand on every dispatch case:
+//   case 3 (vec.vec), case 4 (mat.vec), case 5 (vec.mat), case 6 (2D mat.mat), plus batchedMatMul.
+// The GEMM kernel consumes the operand's (row_stride, col_stride) directly, so no upstream
+// .contiguous() is needed for transposed views.
+
+// Build A = [[1,2,3],[4,5,6]]. A^T = [[1,4],[2,5],[3,6]]. A * A^T = [[14,32],[32,77]].
+TEST(GemmLayoutTest, Case6_MatMulWithTransposedOperand_CPU) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD at = a.transpose();              // (3,2) col-major view, NOT densified
+    EXPECT_EQ(at.layout(), utils::Layout::COL_MAJOR);
+    TensorD c = a * at;                       // hits case 6 (2D x 2D), CPU Eigen branch
+    EXPECT_EQ(c.getShape(), (std::vector<int>{2, 2}));
+    EXPECT_DOUBLE_EQ(c.get({0, 0}), 14.0);
+    EXPECT_DOUBLE_EQ(c.get({0, 1}), 32.0);
+    EXPECT_DOUBLE_EQ(c.get({1, 0}), 32.0);
+    EXPECT_DOUBLE_EQ(c.get({1, 1}), 77.0);
+}
+
+// A^T * A — left operand is the col-major view. A^T (3,2) * A (2,3) = (3,3).
+TEST(GemmLayoutTest, Case6_TransposedOnLeft_CPU) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD at = a.transpose();
+    TensorD c = at * a;                       // (3,2)col * (2,3)row -> (3,3)
+    EXPECT_EQ(c.getShape(), (std::vector<int>{3, 3}));
+    // expected = [[1,4],[2,5],[3,6]] * [[1,2,3],[4,5,6]] = [[17,22,27],[22,29,36],[27,36,45]]
+    EXPECT_DOUBLE_EQ(c.get({0, 0}), 17.0);
+    EXPECT_DOUBLE_EQ(c.get({0, 2}), 27.0);
+    EXPECT_DOUBLE_EQ(c.get({1, 1}), 29.0);
+    EXPECT_DOUBLE_EQ(c.get({2, 2}), 45.0);
+}
+
+// Both operands col-major: A^T * (A^T)^T == A^T * A (since transpose of transpose is original).
+// We test it the indirect way: both Eigen ColMajor maps.
+TEST(GemmLayoutTest, Case6_BothColMajor_CPU) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD b({3, 2}); b.linspace(1.0, 6.0); // (3,2) row-major
+    TensorD at = a.transpose();              // (3,2) col-major
+    TensorD bt = b.transpose();              // (2,3) col-major
+    TensorD c = at * bt;                      // (3,2)col * (2,3)col -> (3,3)
+    // expected = [[1,4],[2,5],[3,6]] * [[1,3,5],[2,4,6]] = [[9,19,29],[12,26,40],[15,33,51]]
+    EXPECT_EQ(c.getShape(), (std::vector<int>{3, 3}));
+    EXPECT_DOUBLE_EQ(c.get({0, 0}), 9.0);
+    EXPECT_DOUBLE_EQ(c.get({1, 1}), 26.0);
+    EXPECT_DOUBLE_EQ(c.get({2, 2}), 51.0);
+}
+
+// Sanity: existing row-major behaviour still correct after the layout-aware refactor
+TEST(GemmLayoutTest, Case6_RowMajorBaseline_CPU) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD b({3, 2}); b.linspace(1.0, 6.0);
+    TensorD c = a * b; // (2,3)row * (3,2)row -> [[22,28],[49,64]]
+    EXPECT_DOUBLE_EQ(c.get({0, 0}), 22.0);
+    EXPECT_DOUBLE_EQ(c.get({0, 1}), 28.0);
+    EXPECT_DOUBLE_EQ(c.get({1, 0}), 49.0);
+    EXPECT_DOUBLE_EQ(c.get({1, 1}), 64.0);
+}
+
+// case 4: matrix * vector with a transposed matrix.
+// a = [[1,2,3],[4,5,6]], a^T = [[1,4],[2,5],[3,6]] (3,2), v = [10, 20] (2)
+// a^T * v = [1*10+4*20, 2*10+5*20, 3*10+6*20] = [90, 120, 150]
+TEST(GemmLayoutTest, Case4_MatVec_WithTransposedMat_CPU) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD v({2});    v.set(10.0, {0}); v.set(20.0, {1});
+    TensorD at = a.transpose(); // (3,2) col-major
+    TensorD r = at * v;          // case 4
+    EXPECT_EQ(r.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 90.0);
+    EXPECT_DOUBLE_EQ(r.get({1}), 120.0);
+    EXPECT_DOUBLE_EQ(r.get({2}), 150.0);
+}
+
+// case 5: vector * matrix with a transposed matrix.
+// v = [10, 20, 30] (3), a = [[1,2,3],[4,5,6]] (2,3), a^T = [[1,4],[2,5],[3,6]] (3,2)
+// v * a^T = [10*1+20*2+30*3, 10*4+20*5+30*6] = [140, 320]
+TEST(GemmLayoutTest, Case5_VecMat_WithTransposedMat_CPU) {
+    TensorD v({3});
+    v.set(10.0, {0}); v.set(20.0, {1}); v.set(30.0, {2});
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD at = a.transpose(); // (3,2) col-major
+    TensorD r = v * at;          // case 5
+    EXPECT_EQ(r.getShape(), (std::vector<int>{2}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 140.0);
+    EXPECT_DOUBLE_EQ(r.get({1}), 320.0);
+}
+
+// case 3 (dot product) — 1D operands are simultaneously row- and col-major (single-axis),
+// but cover it for completeness so the new stride params don't regress 1D.
+TEST(GemmLayoutTest, Case3_DotProduct_Baseline_CPU) {
+    TensorD a({3}); a.set(1.0, {0}); a.set(2.0, {1}); a.set(3.0, {2});
+    TensorD b({3}); b.set(4.0, {0}); b.set(5.0, {1}); b.set(6.0, {2});
+    TensorD c = a * b;
+    EXPECT_DOUBLE_EQ(c.get({0}), 32.0);
+}
+
+// batchedMatMul (3D+) — A is (B,M,K), B has a transposed inner matrix.
+// We construct B as (B,N,K) row-major and transpose to get (B,K,N) col-major view.
+// batchedMatMul should densify and still produce the right product.
+TEST(GemmLayoutTest, BatchedMatMul_WithTransposedInnerB_CPU) {
+    // batch=2, M=2, K=3, N=2
+    TensorD a({2, 2, 3}); a.linspace(1.0, 12.0);
+    // Build B' as (2, 2, 3) row-major then transpose -> (2, 3, 2) col-major inner
+    TensorD b({2, 2, 3}); b.linspace(1.0, 12.0);
+    TensorD bt = b.transpose(); // (2, 3, 2) with col-major inner
+    TensorD c = a * bt;          // batchedMatMul path
+    EXPECT_EQ(c.getShape(), (std::vector<int>{2, 2, 2}));
+    // Batch 0: a0 = [[1,2,3],[4,5,6]], b0 = [[1,2,3],[4,5,6]], b0^T = [[1,4],[2,5],[3,6]]
+    //   a0 * b0^T = [[1+4+9, 4+10+18],[4+10+18, 16+25+36]] = [[14,32],[32,77]]
+    EXPECT_DOUBLE_EQ(c.get({0, 0, 0}), 14.0);
+    EXPECT_DOUBLE_EQ(c.get({0, 0, 1}), 32.0);
+    EXPECT_DOUBLE_EQ(c.get({0, 1, 0}), 32.0);
+    EXPECT_DOUBLE_EQ(c.get({0, 1, 1}), 77.0);
+    // Batch 1: a1 = [[7,8,9],[10,11,12]], b1 = [[7,8,9],[10,11,12]], b1^T = [[7,10],[8,11],[9,12]]
+    //   a1 * b1^T = [[7*7+8*8+9*9, 7*10+8*11+9*12], [10*7+11*8+12*9, 10*10+11*11+12*12]]
+    //             = [[194, 266], [266, 365]]
+    EXPECT_DOUBLE_EQ(c.get({1, 0, 0}), 194.0);
+    EXPECT_DOUBLE_EQ(c.get({1, 0, 1}), 266.0);
+    EXPECT_DOUBLE_EQ(c.get({1, 1, 1}), 365.0);
+}
+
+// Autograd matmul backward now goes through view-only .transpose() (no .contiguous() at the call site).
+// Verify the gradients are correct, not just non-zero.
+// For c = a * b, d/da = grad * b^T, d/db = a^T * grad. With grad=ones((2,2)),
+//   a=[[1,2],[3,4]], b=[[1,0],[0,1]]: c=[[1,2],[3,4]], grad_a = ones * b^T = [[1,0],[0,1]]^T cols sum...
+// Easier: pick a, b such that the analytic gradient is hand-checkable.
+// a=[[1,2,3],[4,5,6]] (2,3), b=[[1,0],[0,1],[1,1]] (3,2). Forward: c (2,2).
+// grad starts as ones(2,2). d/da = grad * b^T = ones(2,2) * [[1,0,1],[0,1,1]] = [[1,1,2],[1,1,2]]
+// d/db = a^T * grad = [[1,4],[2,5],[3,6]] * ones(2,2) = [[5,5],[7,7],[9,9]]
+TEST(GemmLayoutTest, AutogradBackwardThroughTransposeViewNoContiguous) {
+    TensorD ta({2, 3}); ta.linspace(1.0, 6.0);
+    TensorD tb({3, 2});
+    tb.set(1.0, {0, 0}); tb.set(0.0, {0, 1});
+    tb.set(0.0, {1, 0}); tb.set(1.0, {1, 1});
+    tb.set(1.0, {2, 0}); tb.set(1.0, {2, 1});
+    auto a = Node<TensorD>::make_node(ta);
+    auto b = Node<TensorD>::make_node(tb);
+    auto c = a * b;
+    autogradient::backward(c);
+    // grad_a — first row should be [1, 1, 2]
+    EXPECT_DOUBLE_EQ(a->grad.get({0, 0}), 1.0);
+    EXPECT_DOUBLE_EQ(a->grad.get({0, 1}), 1.0);
+    EXPECT_DOUBLE_EQ(a->grad.get({0, 2}), 2.0);
+    EXPECT_DOUBLE_EQ(a->grad.get({1, 0}), 1.0);
+    EXPECT_DOUBLE_EQ(a->grad.get({1, 2}), 2.0);
+    // grad_b — first column should be [5, 7, 9]
+    EXPECT_DOUBLE_EQ(b->grad.get({0, 0}), 5.0);
+    EXPECT_DOUBLE_EQ(b->grad.get({1, 0}), 7.0);
+    EXPECT_DOUBLE_EQ(b->grad.get({2, 0}), 9.0);
+    EXPECT_DOUBLE_EQ(b->grad.get({0, 1}), 5.0);
+    EXPECT_DOUBLE_EQ(b->grad.get({2, 1}), 9.0);
 }
 
 

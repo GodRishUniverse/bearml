@@ -1181,7 +1181,9 @@ namespace simplenet{
                     }
 
                     if (a.device == DeviceType::CUDA) {
-                        // Treat as 1x1 matmul: (1,N) * (N,1) = (1,1), extract scalar
+                        // Treat as 1x1 matmul: (1,K) * (K,1) = (1,1)
+                        // 1D row-major vec of length K, viewed as (1,K): row_stride doesn't matter (only one row), col_stride=1
+                        // 1D row-major vec of length K, viewed as (K,1): row_stride=1, col_stride doesn't matter (only one col)
                         Tensor result({1}, a.device);
                         cuda::launch_gemm_contiguous<T>(
                             a.data, b.data, result.data,
@@ -1189,7 +1191,10 @@ namespace simplenet{
                             1,    // m (rows of a treated as row vector)
                             a_shape[0], // k (common dim),
                             1,    // n (cols of result)
-                            1.0, 0.0, nullptr
+                            1.0, 0.0,
+                            (int64_t)a_shape[0], 1,   // ra_row, ra_col for A as (1,K)
+                            1, 1,                     // rb_row, rb_col for B as (K,1)
+                            nullptr
                         );
                         return result;
                     }
@@ -1209,7 +1214,9 @@ namespace simplenet{
                     }
 
                     if (a.device == DeviceType::CUDA) {
-                        // Treat vector as (m,1) matrix: (n,m) * (m,1) = (n,1)
+                        // Treat vector b as (m,1) matrix: (n,m) * (m,1) = (n,1)
+                        // A's strides come straight from the tensor (handles transposed/permuted A view natively).
+                        // B is 1D row-major contiguous → viewed as (m,1): row_stride=1, col_stride=1 (single col).
                         Tensor result({a_shape[0]}, a.device);
                         cuda::launch_gemm_contiguous<T>(
                             a.data, b.data, result.data,
@@ -1217,12 +1224,18 @@ namespace simplenet{
                             a_shape[0],  // m
                             a_shape[1],  // k (common dim),
                             1,           // n (output cols)
-                            1.0, 0.0, nullptr
+                            1.0, 0.0,
+                            (int64_t)a.strides[0], (int64_t)a.strides[1],   // A real strides
+                            1, 1,                                            // B as (K,1)
+                            nullptr
                         );
                         return result;
                     }
 
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a.data, a_shape[0], a_shape[1]);
+                    // Eigen's RowMajor Map can't read a col-major view directly; densify if needed.
+                    // The CUDA path above already handles layout natively via per-operand strides.
+                    Tensor a_use = a.is_row_major_contiguous() ? a : Tensor::contiguous(a);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.data, a_shape[0], a_shape[1]);
                     Eigen::Map<const VectorXT<T>> vec_b(b.data, b_shape[0]);
 
                     Tensor result({a_shape[0]});
@@ -1239,7 +1252,9 @@ namespace simplenet{
                     }
 
                     if (a.device == DeviceType::CUDA) {
-                        // Treat vector as (1,m) matrix: (1,m) * (m,n) = (1,n)
+                        // Treat vector a as (1,m) matrix: (1,m) * (m,n) = (1,n)
+                        // A is 1D row-major contiguous → viewed as (1,m): row_stride=m (single row), col_stride=1.
+                        // B's strides come straight from the tensor (handles transposed/permuted B view).
                         Tensor result({1,b_shape[1]}, a.device);
                         cuda::launch_gemm_contiguous<T>(
                             a.data, b.data, result.data,
@@ -1247,18 +1262,24 @@ namespace simplenet{
                             1,           // m
                             b_shape[0],  // k (common dim),
                             b_shape[1],  // n (output cols)
-                            1.0, 0.0, nullptr
+                            1.0, 0.0,
+                            (int64_t)a_shape[0], 1,                          // A as (1,K)
+                            (int64_t)b.strides[0], (int64_t)b.strides[1],    // B real strides
+                            nullptr
                         );
                         return result;
                     }
 
+                    // For v(m) * B(m,n) -> (n,), the math is B^T * v with v as a column vector.
+                    // (The earlier `mat_b * vec_a` form only typechecked when B was square.)
+                    // Densify b first if it's a col-major / strided view so the RowMajor Map is correct.
+                    Tensor b_use = b.is_row_major_contiguous() ? b : Tensor::contiguous(b);
                     Eigen::Map<const VectorXT<T>> vec_a(a.data, a_shape[0]);
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b.data, b_shape[0], b_shape[1]);
-
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.data, b_shape[0], b_shape[1]);
 
                     Tensor result({b_shape[1]});
                     Eigen::Map<VectorXT<T>> result_vec(result.data, b_shape[1]);
-                    result_vec = mat_b * vec_a;
+                    result_vec = mat_b.transpose() * vec_a;
 
                     return result;
                 }
@@ -1269,25 +1290,65 @@ namespace simplenet{
                         throw std::invalid_argument("Matrix dimensions incompatible for multiplication");
                     }
 
+                    // Operands can be: ROW_MAJOR (fresh tensors, regular slices), COL_MAJOR (transposed
+                    // views — strides swapped against shape), or STRIDED (permutes, broadcast). The CUDA
+                    // kernel consumes any (row_stride, col_stride) pair natively, so we pass the operand's
+                    // own strides for row/col-major. For STRIDED we densify on entry — Eigen Stride<> would
+                    // also work but adds a lot of code surface for an uncommon case.
+                    using Layout = utils::Layout;
+                    auto a_layout = a.layout();
+                    auto b_layout = b.layout();
+                    // Tensor::contiguous() is a no-op when the operand is row-major contig, so this
+                    // costs nothing for the common case.
+                    Tensor a_use = (a_layout == Layout::STRIDED) ? Tensor::contiguous(a) : a;
+                    Tensor b_use = (b_layout == Layout::STRIDED) ? Tensor::contiguous(b) : b;
+                    // refresh layouts after the potential densify
+                    a_layout = a_use.layout();
+                    b_layout = b_use.layout();
+
                     if (a.device == DeviceType::CUDA) {
                         Tensor result({a_shape[0], b_shape[1]}, a.device);
+                        // a_use.strides[0] is the M-axis stride, a_use.strides[1] is the K-axis stride.
+                        // For row-major (M,K) that's (K, 1); for col-major it's (1, M). The kernel doesn't
+                        // care which — it just uses both to compute a[row * row_stride + k * col_stride].
                         cuda::launch_gemm_contiguous<T>(
-                            a.data, b.data, result.data,
+                            a_use.data, b_use.data, result.data,
                             1,           // batchsize
                             a_shape[0],  // m
                             a_shape[1],  // k
                             b_shape[1],  // n
-                            1.0, 0.0, nullptr
+                            1.0, 0.0,
+                            (int64_t)a_use.strides[0], (int64_t)a_use.strides[1],
+                            (int64_t)b_use.strides[0], (int64_t)b_use.strides[1],
+                            nullptr
                         );
                         return result;
                     }
 
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a.data, a_shape[0], a_shape[1]);
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b.data, b_shape[0], b_shape[1]);
-
+                    // CPU path: Eigen Map can't take a (stride0, stride1) pair, only "is the data laid out
+                    // RowMajor or ColMajor for THIS shape". So pick the Map type from the layout flag.
+                    // Eigen happily multiplies a RowMajor matrix by a ColMajor one and vice versa.
                     Tensor result({a_shape[0], b_shape[1]});
                     Eigen::Map<MatrixRowMajorT<T>> result_mat(result.data, a_shape[0], b_shape[1]);
-                    result_mat = (mat_a * mat_b);
+
+                    using ColMajorT = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
+                    if (a_layout == Layout::ROW_MAJOR && b_layout == Layout::ROW_MAJOR) {
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.data, a_shape[0], a_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.data, b_shape[0], b_shape[1]);
+                        result_mat = mat_a * mat_b;
+                    } else if (a_layout == Layout::ROW_MAJOR /* && b is COL_MAJOR */) {
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.data, a_shape[0], a_shape[1]);
+                        Eigen::Map<const ColMajorT>          mat_b(b_use.data, b_shape[0], b_shape[1]);
+                        result_mat = mat_a * mat_b;
+                    } else if (b_layout == Layout::ROW_MAJOR /* && a is COL_MAJOR */) {
+                        Eigen::Map<const ColMajorT>          mat_a(a_use.data, a_shape[0], a_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.data, b_shape[0], b_shape[1]);
+                        result_mat = mat_a * mat_b;
+                    } else { // both col-major
+                        Eigen::Map<const ColMajorT> mat_a(a_use.data, a_shape[0], a_shape[1]);
+                        Eigen::Map<const ColMajorT> mat_b(b_use.data, b_shape[0], b_shape[1]);
+                        result_mat = mat_a * mat_b;
+                    }
 
                     return result;
                 }
