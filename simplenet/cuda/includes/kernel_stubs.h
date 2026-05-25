@@ -52,6 +52,7 @@ namespace simplenet {
 
     namespace utils {
         SIMPLENET_CUDA_STUB(launch_dtype_change)
+        SIMPLENET_CUDA_STUB(launch_contiguous_gather)
     }
 
     #undef SIMPLENET_CUDA_STUB

@@ -43,7 +43,7 @@ TEST(TensorTest, Fill) {
 
 TEST(TensorTest, Linspace) {
     TensorD t({5});
-    t.linspace(0.0, 10.0);
+    t.linspace(0.0, 8.0);
     EXPECT_NEAR(t.get({0}), 0.0, 1e-10);
     EXPECT_NEAR(t.get({1}), 2.0, 1e-10);
     EXPECT_NEAR(t.get({4}), 8.0, 1e-10);
@@ -1025,6 +1025,128 @@ TEST(ReductionTest, ReduceViaLinalgReduce) {
     TensorD r = linear_algebra::reduce(a, targetShape, reductions::ReductionOps::SUM);
     EXPECT_EQ(r.getShape(), (std::vector<int>{1, 1}));
     EXPECT_DOUBLE_EQ(r.get({0, 0}), 21.0);  // 1+2+3+4+5+6
+}
+
+
+// ---------------- Stride-aware view ops (step 2) ----------------
+
+// transpose should produce a non-owning view that shares the parent's storage
+TEST(StrideViewTest, TransposeIsView) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD t = a.transpose();
+    EXPECT_EQ(t.getShape(), (std::vector<int>{3, 2}));
+    // strides for (3,2) col-major are [1,3] — exactly the swap of the original [3,1]
+    EXPECT_EQ(t.getStrides(), (std::vector<int>{1, 3}));
+}
+
+// transposing a row-major (M,N) gives a (N,M) whose strides match col-major canonical
+TEST(StrideViewTest, TransposeLayoutIsColMajor) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD t = a.transpose();
+    EXPECT_EQ(t.layout(), utils::Layout::COL_MAJOR);
+    // and the parent's layout is unchanged
+    EXPECT_EQ(a.layout(), utils::Layout::ROW_MAJOR);
+}
+
+// reading through the view yields the transposed values via stride-aware get()
+TEST(StrideViewTest, TransposeValuesViaStridedGet) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0); // [[1,2,3],[4,5,6]]
+    TensorD t = a.transpose();
+    // t[i,j] == a[j,i]
+    EXPECT_DOUBLE_EQ(t.get({0, 0}), 1.0);
+    EXPECT_DOUBLE_EQ(t.get({0, 1}), 4.0);
+    EXPECT_DOUBLE_EQ(t.get({1, 0}), 2.0);
+    EXPECT_DOUBLE_EQ(t.get({2, 1}), 6.0);
+}
+
+// densifying a transposed view yields a row-major contiguous tensor with the right values
+TEST(StrideViewTest, TransposeContiguousDensifies) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD dense = a.transpose().contiguous();
+    EXPECT_EQ(dense.getShape(), (std::vector<int>{3, 2}));
+    EXPECT_EQ(dense.layout(), utils::Layout::ROW_MAJOR);
+    EXPECT_TRUE(dense.is_contiguous());
+    // same values as the strided view
+    EXPECT_DOUBLE_EQ(dense.get({0, 0}), 1.0);
+    EXPECT_DOUBLE_EQ(dense.get({0, 1}), 4.0);
+    EXPECT_DOUBLE_EQ(dense.get({2, 1}), 6.0);
+}
+
+// 3D transpose only swaps the last two dims; outer batch dim is preserved
+TEST(StrideViewTest, Transpose3DBatched) {
+    TensorD a({2, 2, 3}); a.linspace(1.0, 12.0);
+    TensorD t = a.transpose();
+    EXPECT_EQ(t.getShape(), (std::vector<int>{2, 3, 2}));
+    // batch 0: original rows [1,2,3],[4,5,6] -> transposed [[1,4],[2,5],[3,6]]
+    EXPECT_DOUBLE_EQ(t.get({0, 0, 0}), 1.0);
+    EXPECT_DOUBLE_EQ(t.get({0, 0, 1}), 4.0);
+    EXPECT_DOUBLE_EQ(t.get({0, 2, 1}), 6.0);
+    // batch 1: original [7,8,9],[10,11,12]
+    EXPECT_DOUBLE_EQ(t.get({1, 0, 0}), 7.0);
+    EXPECT_DOUBLE_EQ(t.get({1, 2, 1}), 12.0);
+}
+
+// permute({2,0,1}) on a (2,3,4) tensor produces shape (4,2,3) and reads from old[new_j, new_k, new_i]
+TEST(StrideViewTest, Permute3DCorrectness) {
+    TensorD a({2, 3, 4}); a.linspace(1.0, 24.0);
+    TensorD p = a.permute({2, 0, 1});
+    EXPECT_EQ(p.getShape(), (std::vector<int>{4, 2, 3}));
+    EXPECT_EQ(p.layout(), utils::Layout::STRIDED);
+    // p[i,j,k] == a[j,k,i]; a is row-major linspace so a[i,j,k] = i*12 + j*4 + k + 1
+    auto a_at = [&](int i, int j, int k){ return i*12 + j*4 + k + 1; };
+    EXPECT_DOUBLE_EQ(p.get({0, 0, 0}), a_at(0, 0, 0));
+    EXPECT_DOUBLE_EQ(p.get({0, 0, 1}), a_at(0, 1, 0));
+    EXPECT_DOUBLE_EQ(p.get({1, 0, 0}), a_at(0, 0, 1));
+    EXPECT_DOUBLE_EQ(p.get({3, 1, 2}), a_at(1, 2, 3));
+}
+
+// inplace_permute should refuse a wrong-length or non-permutation order rather than corrupt
+TEST(StrideViewTest, PermuteInvalidThrows) {
+    TensorD a({2, 3, 4});
+    EXPECT_THROW(a.permute({0, 1}),       std::invalid_argument); // wrong length
+    EXPECT_THROW(a.permute({0, 0, 1}),    std::invalid_argument); // duplicate
+    EXPECT_THROW(a.permute({0, 1, 3}),    std::invalid_argument); // out of range
+}
+
+// copying a strided view as an lvalue must auto-densify (used to throw before contiguous() was fixed).
+// `TensorD x = a.transpose();` would MOVE from the rvalue and keep view semantics, so we name the
+// view first to force lvalue copy semantics in the second construction.
+TEST(StrideViewTest, CopyCtorDensifiesStridedView) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD view = a.transpose();   // view (move from rvalue)
+    TensorD copy(view);             // copy ctor — view is an lvalue, previously threw here
+    EXPECT_EQ(copy.getShape(), (std::vector<int>{3, 2}));
+    EXPECT_EQ(copy.layout(), utils::Layout::ROW_MAJOR);
+    EXPECT_TRUE(copy.is_contiguous());
+    EXPECT_DOUBLE_EQ(copy.get({0, 1}), 4.0); // would be 2.0 if storage were misread as row-major
+    EXPECT_DOUBLE_EQ(copy.get({2, 0}), 3.0);
+}
+
+// is_contiguous() must still be strict row-major (call sites that feed .data into row-major
+// kernels rely on this; flipping it silently would corrupt them — see audit in step 1)
+TEST(StrideViewTest, IsContiguousStaysStrictRowMajor) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0);
+    TensorD t = a.transpose(); // col-major layout for shape (3,2)
+    EXPECT_TRUE(a.is_contiguous());
+    EXPECT_TRUE(a.is_row_major_contiguous());
+    EXPECT_FALSE(t.is_contiguous());           // strict row-major check, not the union
+    EXPECT_FALSE(t.is_row_major_contiguous());
+    EXPECT_TRUE(t.is_col_major_contiguous());
+}
+
+// matmul backward goes through .transpose().contiguous() in autograd:209-210; verify the
+// gradient still has the right shape and a sensible non-zero pattern
+TEST(StrideViewTest, AutogradMatMulBackwardThroughTransposedView) {
+    TensorD ta({2, 3}); ta.linspace(1.0, 6.0); // (2,3)
+    TensorD tb({3, 2}); tb.linspace(1.0, 6.0); // (3,2)
+    auto a = Node<TensorD>::make_node(ta);
+    auto b = Node<TensorD>::make_node(tb);
+    auto c = a * b; // (2,2)
+    autogradient::backward(c);
+    EXPECT_EQ(a->grad.getShape(), (std::vector<int>{2, 3}));
+    EXPECT_EQ(b->grad.getShape(), (std::vector<int>{3, 2}));
+    EXPECT_TRUE(TensorD::has_nonzero_gradient(a->grad));
+    EXPECT_TRUE(TensorD::has_nonzero_gradient(b->grad));
 }
 
 

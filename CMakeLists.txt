@@ -1,8 +1,15 @@
 cmake_minimum_required(VERSION 3.30)
 
-set(CMAKE_CUDA_HOST_COMPILER /usr/bin/gcc-14)
-set(CMAKE_C_COMPILER /usr/bin/gcc-14)
-set(CMAKE_CXX_COMPILER /usr/bin/g++-14)
+set(CMAKE_CUDA_HOST_COMPILER /usr/bin/gcc-15)
+set(CMAKE_C_COMPILER /usr/bin/gcc-15)
+set(CMAKE_CXX_COMPILER /usr/bin/g++-15)
+
+# check_language(CUDA) below runs nvcc in an isolated try_compile that does NOT
+# inherit CMAKE_CUDA_HOST_COMPILER. Without this, nvcc defaults to /usr/bin/g++
+# (gcc 16 on Fedora 44) and bails with "unsupported GNU version! gcc versions
+# later than 15 are not supported", making the probe report NOTFOUND. Setting
+# CUDAHOSTCXX in the environment is the documented escape hatch.
+set(ENV{CUDAHOSTCXX} "/usr/bin/g++-15")
 
 # CUDA is declared as an OPTIONAL language so the project still configures
 # on machines without a CUDA toolkit / GPU (CPU-only builds).

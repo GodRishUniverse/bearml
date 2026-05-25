@@ -206,8 +206,10 @@ namespace simplenet{
                         break;
                     case OP_Code::OP_MUL:
                         if constexpr (simplenet::is_tensor_v<T>){
-                            accumulate_grad(a_locked->grad, node_locked->grad * b_locked->val.transpose(), a_locked->val); // grad_a = grad * b^T
-                            accumulate_grad(b_locked->grad,a_locked->val.transpose() * node_locked->grad, b_locked->val); // grad_b = a^T * grad
+                            // .transpose() returns an O(1) strided view; operator* (gemm_kernel_contiguous) expects
+                            // row-major contiguous operands, so densify here. Drop the .contiguous() once GEMM is layout-aware.
+                            accumulate_grad(a_locked->grad, node_locked->grad * b_locked->val.transpose().contiguous(b_locked->val.getDevice()), a_locked->val); // grad_a = grad * b^T
+                            accumulate_grad(b_locked->grad, a_locked->val.transpose().contiguous(a_locked->val.getDevice()) * node_locked->grad, b_locked->val); // grad_b = a^T * grad
                         }else {
                             // doubles (no transpose needed for scalars)
                             a_locked->grad += node_locked->grad * b_locked->val; // grad_a = grad * b^T

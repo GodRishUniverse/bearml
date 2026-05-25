@@ -14,7 +14,6 @@
 
 #include <span>
 
-// TODO: refactor Tensor class
 #include "devices/device_type.h"
 #include "devices/device_allocator.h"
 
@@ -29,6 +28,7 @@
 #include "utils/linalg_utils.h"
 #include "utils/device_utils.h"
 #include "utils/slice.h"
+#include "utils/ordering.h"
 
 #include "reductions/reduction_ops.h"
 
@@ -140,6 +140,7 @@ namespace simplenet{
 
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
+            std::vector<int> strides_col_major; // TODO: use this to make all ops transpose friendly and avoid copy operations
             T * data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
             bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
             Device device;
@@ -157,6 +158,7 @@ namespace simplenet{
                 v.shape   = newShape;
                 v.data_offset = t.data_offset;
                 v.strides = utils::computeBroadcastStrides(t.shape, t.strides, newShape); // no need to change this
+                v.strides_col_major = compute_col_major_strides(newShape); // cached canonical col-major strides for this shape
                 v.owns_data = false; // we do not want the broadcasted tensors to own the data that it points - so we do not double delete
                 v.allocator_ = nullptr; // we do not have an allocator for the views
                 v.is_sliced_view = t.is_sliced_view;
@@ -171,11 +173,31 @@ namespace simplenet{
                 v.data_offset = sliceResult.offset;
                 v.shape      = sliceResult.shape;
                 v.strides    = sliceResult.strides;
+                v.strides_col_major = compute_col_major_strides(sliceResult.shape); // cached canonical col-major strides for this shape
                 v.owns_data  = false;       // parent owns the storage
                 v.allocator_ = nullptr;
                 v.is_sliced_view = true;
                 return v;
             }
+
+
+            // Shallow view of `t` with the same shape/strides/offset.
+            // Used as a starting point for ops that produce a strided view by
+            // permuting metadata (transpose, permute) without moving storage.
+            static Tensor makeStrideView(const Tensor& t){
+                Tensor v;
+                v.device            = t.device;
+                v.data              = t.data;
+                v.data_offset       = t.data_offset;
+                v.shape             = t.shape;
+                v.strides           = t.strides;
+                v.strides_col_major = t.strides_col_major;
+                v.owns_data         = false;          // parent (or its owner) holds the storage
+                v.allocator_        = nullptr;
+                v.is_sliced_view    = t.is_sliced_view;
+                return v;
+            }
+
 
             static bool isScalar(const Tensor& t) {
                 if (t.shape.empty()) return true;
@@ -314,8 +336,36 @@ namespace simplenet{
                     }
                     this->device = other.device;
                 } else {
-                    // TODO:
-                    throw std::runtime_error("Cannot copy non-contiguous tensor - make it contiguous first");
+                    // other is a strided view (transpose / permute / slice / broadcast).
+                    // gather it into our freshly allocated dst, which is row-major for `shape`.
+                    // We stay on other's device — cross-device copies still require an explicit .to().
+                    this->device = other.device;
+                    const int nd = (int)other.shape.size();
+                    if (other.device.type == DeviceType::CUDA) {
+                        // device kernel wants shape/strides on the device; pack them into size_t and hand off
+                        std::vector<size_t> h_shape(nd);
+                        std::vector<size_t> h_strides(nd);
+                        for (int d = 0; d < nd; ++d) {
+                            h_shape[d]   = (size_t)other.shape[d];
+                            h_strides[d] = (size_t)other.strides[d];
+                        }
+                        cuda::utils::launch_contiguous_gather<T>(
+                            other.data, this->data, other.data_offset,
+                            h_shape.data(), h_strides.data(), (size_t)nd, full_size);
+                    } else {
+                        // i walks the DESTINATION in row-major (dst is dense, so we write data[i] in flat order)
+                        for (size_t i = 0; i < full_size; ++i) {
+                            size_t tmp = i;                 // running quotient — peels one axis at a time
+                            size_t src = other.data_offset; // start at the view's offset into the source's storage
+                            // innermost dim varies fastest in row-major, so we modulo it out first and work outwards
+                            for (int d = nd - 1; d >= 0; --d) {
+                                size_t coord = tmp % (size_t)other.shape[d];   // coord along axis d for this dst index
+                                tmp /= (size_t)other.shape[d];                 // strip that axis from tmp for the next iteration
+                                src += coord * (size_t)other.strides[d];       // step in source storage by source's own stride along axis d
+                            }
+                            this->data[i] = other.data[src];
+                        }
+                    }
                 }
                 // std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
             }
@@ -329,6 +379,7 @@ namespace simplenet{
                     this->shape = other.shape;
                     this->device = other.device;
                     this->strides = other.strides;
+                    this->strides_col_major = other.strides_col_major;
                     this->owns_data = true;  // Copy always owns its data
                     this->data_offset = other.data_offset;
                     this->is_sliced_view = other.is_sliced_view;
@@ -353,7 +404,7 @@ namespace simplenet{
             }
 
             // move constructor
-            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), device(other.device), data(other.data), allocator_(std::move(other.allocator_)), data_offset(other.data_offset){
+            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), strides_col_major(std::move(other.strides_col_major)), device(other.device), data(other.data), allocator_(std::move(other.allocator_)), data_offset(other.data_offset){
                 // this->shape = other.shape;
                 // this->data = other.data;
                 // this->device = other.device;
@@ -375,6 +426,7 @@ namespace simplenet{
                     this->data = other.data;
                     this->device = other.device;
                     this->strides = std::move(other.strides);
+                    this->strides_col_major = std::move(other.strides_col_major);
                     this->allocator_ = std::move(other.allocator_);
                     this->owns_data = other.owns_data;
                     this->data_offset = other.data_offset;
@@ -464,7 +516,8 @@ namespace simplenet{
                 }
             }
 
-            // checks if the tensor is contiguous or not
+            // TODO: redefine as (row or col) once copy constructor, change_dtype, contiguous() route by layout
+            // checks if the tensor is contiguous or not (row-major only for now)
             bool is_contiguous() const {
                   size_t s = 1;
                   for (int d = (int)shape.size() - 1; d >= 0; --d) {
@@ -473,6 +526,34 @@ namespace simplenet{
                   }
                   return data_offset == 0;
             }
+
+            // strides match canonical row-major (C order) for the current shape AND offset is zero
+            bool is_row_major_contiguous() const {
+                return is_contiguous();
+            }
+
+            // strides match canonical col-major (Fortran order) for the current shape AND offset is zero
+            bool is_col_major_contiguous() const {
+                if (strides.size() != shape.size()) return false;
+                size_t v = 1;
+                for (size_t d = 0; d < shape.size(); ++d) {
+                    if ((size_t)strides[d] != v) return false;
+                    v *= shape[d];
+                }
+                return data_offset == 0;
+            }
+
+            // Returns the layout descriptor for this tensor's current strides.
+            // Note: for 1-D and scalar tensors row-major and col-major coincide;
+            // we report ROW_MAJOR in that case (row is checked first).
+            utils::Layout layout() const {
+                if (is_row_major_contiguous()) return utils::Layout::ROW_MAJOR;
+                if (is_col_major_contiguous()) return utils::Layout::COL_MAJOR;
+                return utils::Layout::STRIDED;
+            }
+
+            // Accessor for the cached canonical col-major strides of this tensor's shape.
+            std::vector<int> getStridesColMajor() const { return this->strides_col_major; }
 
             Device getDevice() const {
                 return this->device;
@@ -647,13 +728,29 @@ namespace simplenet{
                 return this->data_offset;
             }
 
-            void computeStrides() {
-                strides.resize(shape.size());
-                size_t s = 1;
-                for (int d = shape.size()-1; d >= 0; --d) {
-                    strides[d] = s;
-                    s *= shape[d];
+            static std::vector<int> compute_row_major_strides(const std::vector<int>& sh) {
+                std::vector<int> s(sh.size());
+                size_t v = 1;
+                for (int d = (int)sh.size() - 1; d >= 0; --d) {
+                    s[d] = (int)v;
+                    v *= sh[d];
                 }
+                return s;
+            }
+
+            static std::vector<int> compute_col_major_strides(const std::vector<int>& sh) {
+                std::vector<int> s(sh.size());
+                size_t v = 1;
+                for (size_t d = 0; d < sh.size(); ++d) {
+                    s[d] = (int)v;
+                    v *= sh[d];
+                }
+                return s;
+            }
+
+            void computeStrides() {
+                strides            = compute_row_major_strides(shape);
+                strides_col_major  = compute_col_major_strides(shape);
             }
 
             // utility functions
@@ -1672,10 +1769,10 @@ namespace simplenet{
             // linspace function to edit the current tensor
             Tensor& linspace(T start, T end){
                 size_t long_size = this->sizeOfTensor();
-                double size = static_cast<double>(long_size);
+                double size = static_cast<double>(long_size-1);
                 // accumulate in double for precision, store back as the element type T
                 double cur = static_cast<double>(start);
-                double step = (static_cast<double>(end)-cur+1)/(size);
+                double step = (static_cast<double>(end)-cur)/(size);
                 if (this->device.is_cpu()) {
                     for (size_t i =0; i < long_size ; i++){
                         this->data[i] = static_cast<T>(cur);
@@ -1688,67 +1785,62 @@ namespace simplenet{
             }
 
 
+            // Returns an O(1) non-owning view that transposes the last two dims.
+            // No data is moved; call .contiguous() before feeding into a
+            // row-major-only kernel (GEMM, element_wise_contiguous, etc.).
             Tensor transpose(){
-                // 3 cases:
-                // Case 1: 1 as the shape return the same thing - scalar - If transposing the same dimension or a single element tensor, return a copy
-                if (sizeOfTensor() <= 1 ) {
-                    return *this; // copy op
+                // scalar / single-element: nothing to do
+                if (sizeOfTensor() <= 1) {
+                    return makeStrideView(*this);
                 }
 
-                // Case 2: Vectors: ROW Tranpose or COLUMN Transpose
-                if (this->shape.size() == 2 && (this->shape[0]==1 || this->shape[1]==1)) {
-                    Tensor newTensor = *this; // copy
-                    std::swap(newTensor.shape[0], newTensor.shape[1]);
-                    newTensor.computeStrides();
-                    return newTensor;
+                if (this->shape.size() < 2){
+                    throw std::invalid_argument("transpose requires a tensor of rank >= 2");
                 }
 
-
-                // Case 3: Transpose the last 2 dims
-                std::vector<int> new_shape = this->shape;
-                std::reverse(new_shape.begin()+(new_shape.size()-2), new_shape.end()); // reverse the shape
-                Tensor n (new_shape, this->device); // new matrix with reversed shape (transposed)
-                ll offset = new_shape[new_shape.size()-1]*new_shape[new_shape.size()-2];
-
-
-                if (this->device.type == DeviceType::CUDA) {
-
-                    ll batch_size = this->sizeOfTensor() / offset;
-                    // batch size is the number of elements in each batch
-                    cuda::launch_transpose_kernel(this->data, n.data, batch_size, this->shape[this->shape.size()-2], this->shape[this->shape.size()-1]);
-                } else {
-                    for (size_t s = 0; s<n.sizeOfTensor(); s+=offset){
-                        for (int r = 0 ; r<new_shape[this->shape.size()-2]; r++){
-                            for (int c = 0; c < new_shape[this->shape.size()-1]; c++){
-                                n.data[s+r*new_shape[new_shape.size()-1]+c] = this->data[s+c*this->shape[this->shape.size()-1]+r]; // transpose last two dims
-                            }
-                        }
-                    }
-                }
-                return n; // transposed
+                Tensor v = makeStrideView(*this);
+                const int n = (int)v.shape.size();
+                std::swap(v.shape[n-2],             v.shape[n-1]);
+                std::swap(v.strides[n-2],           v.strides[n-1]);
+                std::swap(v.strides_col_major[n-2], v.strides_col_major[n-1]);
+                return v;
             }
 
 
             // Permute - Not the same as TRANSPOSE
+            // Returns a non-owning strided view; no data is moved.
             Tensor permute(std::vector<int> new_order){
-                Tensor result= *this; // copy constructor
+                Tensor result = makeStrideView(*this);
                 result.inplace_permute(new_order);
                 return result;
             }
 
             void inplace_permute(std::vector<int> new_order) {
-                std::vector<int> temp ;
-                for (int i = 0; i < new_order.size(); i++){
-                        if (new_order[i] < 0 || new_order[i] >= this->shape.size()){
-                            throw std::invalid_argument("Invalid permute order");
-                        }
+                if (new_order.size() != this->shape.size()){
+                    throw std::invalid_argument("Permute order must have same length as tensor rank");
                 }
-                // permuting the shape
-                for (int i = 0; i < new_order.size(); i++){
-                    temp.push_back(this->shape[new_order[i]]);
+                std::vector<bool> seen(this->shape.size(), false);
+                for (int i = 0; i < (int)new_order.size(); i++){
+                    if (new_order[i] < 0 || new_order[i] >= (int)this->shape.size()){
+                        throw std::invalid_argument("Invalid permute order");
+                    }
+                    if (seen[new_order[i]]){
+                        throw std::invalid_argument("Permute order must be a permutation (no duplicates)");
+                    }
+                    seen[new_order[i]] = true;
                 }
-                this->shape = temp;
-                this->computeStrides();
+
+                std::vector<int> new_shape(this->shape.size());
+                std::vector<int> new_strides(this->shape.size());
+                std::vector<int> new_strides_col_major(this->shape.size());
+                for (int i = 0; i < (int)new_order.size(); i++){
+                    new_shape[i]             = this->shape[new_order[i]];
+                    new_strides[i]           = this->strides[new_order[i]];
+                    new_strides_col_major[i] = this->strides_col_major[new_order[i]];
+                }
+                this->shape             = std::move(new_shape);
+                this->strides           = std::move(new_strides);
+                this->strides_col_major = std::move(new_strides_col_major);
             }
 
 
@@ -1799,18 +1891,40 @@ namespace simplenet{
 
 
             static Tensor contiguous(const Tensor& t, const Device& device = Device::cpu()) {
-                if (t.is_contiguous()) return t;
+                if (t.is_contiguous()) return t; // already row-major + offset 0, nothing to do
 
-                if (device.type == DeviceType::CUDA || t.device.type == DeviceType::CUDA) {
-                    throw std::runtime_error("Contiguous operation is not supported on CUDA tensors");
-                }
-
+                // result is a fresh row-major tensor with the same shape — its storage will be written
+                // in linear order (data[0], data[1], ...) by the loop below
                 Tensor result(t.shape, t.device);
+                const size_t n   = t.sizeOfTensor();
+                const int    nd  = (int)t.shape.size();
 
-                for (size_t i = 0; i < t.sizeOfTensor();  ++i) {
-                    result.data[i] = t.data[i+t.data_offset];
+                if (t.device.type == DeviceType::CUDA) {
+                    // device kernel needs shape/strides on the device; copy them into size_t buffers and hand off
+                    std::vector<size_t> h_shape(nd);
+                    std::vector<size_t> h_strides(nd);
+                    for (int d = 0; d < nd; ++d) {
+                        h_shape[d]   = (size_t)t.shape[d];
+                        h_strides[d] = (size_t)t.strides[d];
+                    }
+                    cuda::utils::launch_contiguous_gather<T>(
+                        t.data, result.data, t.data_offset,
+                        h_shape.data(), h_strides.data(), (size_t)nd, n);
+                } else {
+                    // i walks the DESTINATION row-major (so we write result.data[i] in the natural flat order)
+                    for (size_t i = 0; i < n; ++i) {
+                        size_t tmp = i;               // running quotient — peels one axis at a time
+                        size_t src = t.data_offset;   // running flat index into source storage; non-zero when t is a slice view
+                        // innermost dim varies fastest in row-major, so we modulo it out first and work outward
+                        for (int d = nd - 1; d >= 0; --d) {
+                            size_t coord = tmp % (size_t)t.shape[d];   // coord along axis d for this destination index
+                            tmp /= (size_t)t.shape[d];                  // strip that axis from tmp so the next iteration sees the outer dims
+                            src += coord * (size_t)t.strides[d];        // step in source storage by source's own stride along axis d
+                                                                        // -> for transpose this is the swapped dim's stride, for broadcast it's 0, for slice it's the parent's stride
+                        }
+                        result.data[i] = t.data[src]; // dst is dense, so flat index == i; src lands wherever the source's strides put us
+                    }
                 }
-                // std::cout << "contiguous: " << (result.is_contiguous() ? "yes" : "no") << std::endl;
                 return result;
             }
 
