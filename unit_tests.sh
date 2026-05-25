@@ -1,3 +1,4 @@
+mkdir -p build_unit_tests;
 cd build_unit_tests;
 cmake ..;
 make;
