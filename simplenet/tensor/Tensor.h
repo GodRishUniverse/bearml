@@ -336,8 +336,36 @@ namespace simplenet{
                     }
                     this->device = other.device;
                 } else {
-                    // TODO:
-                    throw std::runtime_error("Cannot copy non-contiguous tensor - make it contiguous first");
+                    // other is a strided view (transpose / permute / slice / broadcast).
+                    // gather it into our freshly allocated dst, which is row-major for `shape`.
+                    // We stay on other's device — cross-device copies still require an explicit .to().
+                    this->device = other.device;
+                    const int nd = (int)other.shape.size();
+                    if (other.device.type == DeviceType::CUDA) {
+                        // device kernel wants shape/strides on the device; pack them into size_t and hand off
+                        std::vector<size_t> h_shape(nd);
+                        std::vector<size_t> h_strides(nd);
+                        for (int d = 0; d < nd; ++d) {
+                            h_shape[d]   = (size_t)other.shape[d];
+                            h_strides[d] = (size_t)other.strides[d];
+                        }
+                        cuda::utils::launch_contiguous_gather<T>(
+                            other.data, this->data, other.data_offset,
+                            h_shape.data(), h_strides.data(), (size_t)nd, full_size);
+                    } else {
+                        // i walks the DESTINATION in row-major (dst is dense, so we write data[i] in flat order)
+                        for (size_t i = 0; i < full_size; ++i) {
+                            size_t tmp = i;                 // running quotient — peels one axis at a time
+                            size_t src = other.data_offset; // start at the view's offset into the source's storage
+                            // innermost dim varies fastest in row-major, so we modulo it out first and work outwards
+                            for (int d = nd - 1; d >= 0; --d) {
+                                size_t coord = tmp % (size_t)other.shape[d];   // coord along axis d for this dst index
+                                tmp /= (size_t)other.shape[d];                 // strip that axis from tmp for the next iteration
+                                src += coord * (size_t)other.strides[d];       // step in source storage by source's own stride along axis d
+                            }
+                            this->data[i] = other.data[src];
+                        }
+                    }
                 }
                 // std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
             }
@@ -1863,13 +1891,16 @@ namespace simplenet{
 
 
             static Tensor contiguous(const Tensor& t, const Device& device = Device::cpu()) {
-                if (t.is_contiguous()) return t;
+                if (t.is_contiguous()) return t; // already row-major + offset 0, nothing to do
 
+                // result is a fresh row-major tensor with the same shape — its storage will be written
+                // in linear order (data[0], data[1], ...) by the loop below
                 Tensor result(t.shape, t.device);
                 const size_t n   = t.sizeOfTensor();
                 const int    nd  = (int)t.shape.size();
 
                 if (t.device.type == DeviceType::CUDA) {
+                    // device kernel needs shape/strides on the device; copy them into size_t buffers and hand off
                     std::vector<size_t> h_shape(nd);
                     std::vector<size_t> h_strides(nd);
                     for (int d = 0; d < nd; ++d) {
@@ -1880,15 +1911,18 @@ namespace simplenet{
                         t.data, result.data, t.data_offset,
                         h_shape.data(), h_strides.data(), (size_t)nd, n);
                 } else {
+                    // i walks the DESTINATION row-major (so we write result.data[i] in the natural flat order)
                     for (size_t i = 0; i < n; ++i) {
-                        size_t tmp = i;
-                        size_t src = t.data_offset;
+                        size_t tmp = i;               // running quotient — peels one axis at a time
+                        size_t src = t.data_offset;   // running flat index into source storage; non-zero when t is a slice view
+                        // innermost dim varies fastest in row-major, so we modulo it out first and work outward
                         for (int d = nd - 1; d >= 0; --d) {
-                            size_t coord = tmp % (size_t)t.shape[d];
-                            tmp /= (size_t)t.shape[d];
-                            src += coord * (size_t)t.strides[d];
+                            size_t coord = tmp % (size_t)t.shape[d];   // coord along axis d for this destination index
+                            tmp /= (size_t)t.shape[d];                  // strip that axis from tmp so the next iteration sees the outer dims
+                            src += coord * (size_t)t.strides[d];        // step in source storage by source's own stride along axis d
+                                                                        // -> for transpose this is the swapped dim's stride, for broadcast it's 0, for slice it's the parent's stride
                         }
-                        result.data[i] = t.data[src];
+                        result.data[i] = t.data[src]; // dst is dense, so flat index == i; src lands wherever the source's strides put us
                     }
                 }
                 return result;

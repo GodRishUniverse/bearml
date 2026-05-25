@@ -35,6 +35,83 @@ namespace simplenet {
                 }
             }
 
+            // Stride-walking gather: writes a row-major contiguous copy of a strided source.
+            // Used by Tensor::contiguous() when the source is a view (transpose / permute / slice / broadcast),
+            // so the source's storage may have gaps, repeats, or a reversed walk order vs row-major.
+            template <typename T>
+            __global__ void contiguous_gather_kernel(
+                const T* __restrict__ d_src, T* __restrict__ d_dst, size_t src_offset,
+                const size_t* __restrict__ d_shape, const size_t* __restrict__ d_strides,
+                size_t nd, size_t total
+            ) {
+                // grid-stride loop: each thread keeps grabbing a fresh output index until we've covered all `total` elements
+                for (size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+                     i < total;
+                     i += (size_t)blockDim.x * gridDim.x) {
+                    // i is the flat row-major index into the DESTINATION (we're building it dense and row-major).
+                    // To copy the right value we need to figure out which (i0, i1, ..., i_{nd-1}) coord that is,
+                    // then index into the SOURCE using the source's strides (which may be anything).
+                    size_t tmp = i;          // running quotient — every iteration of the inner loop peels off one axis from it
+                    size_t src = src_offset; // running flat index into source storage; starts at the view's offset (slice/broadcast views can carry a nonzero offset)
+
+                    // walk axes innermost -> outermost because in ROW-MAJOR the innermost (last) dim is the
+                    // fastest-changing one in i, so it modulo's out cleanly first. Then the next outer dim, and so on.
+                    for (int d = (int)nd - 1; d >= 0; --d) {
+                        size_t coord = tmp % d_shape[d]; // coord along axis d (e.g. column when d == nd-1, then row when d == nd-2, ...)
+                        tmp /= d_shape[d];               // strip that axis off so the next iteration sees only the more-outer dims
+                        src += coord * d_strides[d];     // step `coord` times in source storage along axis d
+                                                         // -> source stride is 0 for broadcast axes (we re-read the same element),
+                                                         // -> source stride for a transposed dim is the OTHER dim's row-major stride,
+                                                         // -> for an arbitrary permute it's whichever original axis was permuted into d.
+                    }
+
+                    d_dst[i] = d_src[src]; // dst is dense row-major, so its flat index IS i; src is wherever the source's stride pattern landed
+                }
+            }
+
+            template <typename T>
+            void launch_contiguous_gather(
+                const T* d_src, T* d_dst, size_t src_offset,
+                const size_t* h_shape, const size_t* h_strides, size_t nd, size_t total,
+                cudaStream_t stream
+            ) {
+                bool own_stream = (stream == nullptr);
+                if (own_stream) {
+                    CUDA_CHECK(cudaStreamCreate(&stream));
+                }
+
+                size_t md_bytes = nd * sizeof(size_t);
+                size_t *d_shape = nullptr, *d_strides = nullptr;
+                CUDA_CHECK(cudaMallocAsync(&d_shape,   md_bytes, stream));
+                CUDA_CHECK(cudaMallocAsync(&d_strides, md_bytes, stream));
+                CUDA_CHECK(cudaMemcpyAsync(d_shape,   h_shape,   md_bytes, cudaMemcpyHostToDevice, stream));
+                CUDA_CHECK(cudaMemcpyAsync(d_strides, h_strides, md_bytes, cudaMemcpyHostToDevice, stream));
+
+                dim3 block(THREAD_COUNT);
+                dim3 grid = get_blocks(total, THREAD_COUNT);
+                contiguous_gather_kernel<T><<<grid, block, 0, stream>>>(
+                    d_src, d_dst, src_offset, d_shape, d_strides, nd, total);
+
+                CUDA_CHECK(cudaGetLastError());
+
+                CUDA_CHECK(cudaFreeAsync(d_shape,   stream));
+                CUDA_CHECK(cudaFreeAsync(d_strides, stream));
+
+                if (own_stream) {
+                    CUDA_CHECK(cudaStreamSynchronize(stream));
+                    CUDA_CHECK(cudaStreamDestroy(stream));
+                }
+            }
+
+            INSTANTIATE_CONTIGUOUS_GATHER(float)
+            INSTANTIATE_CONTIGUOUS_GATHER(double)
+            INSTANTIATE_CONTIGUOUS_GATHER(__half)
+            INSTANTIATE_CONTIGUOUS_GATHER(__nv_bfloat16)
+            INSTANTIATE_CONTIGUOUS_GATHER(int8_t)
+            INSTANTIATE_CONTIGUOUS_GATHER(int16_t)
+            INSTANTIATE_CONTIGUOUS_GATHER(int32_t)
+            INSTANTIATE_CONTIGUOUS_GATHER(int64_t)
+
             // floats
             INSTANTIATE_DTYPE_CHANGE(double, float)
             INSTANTIATE_DTYPE_CHANGE(double, __half)
