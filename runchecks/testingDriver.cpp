@@ -294,7 +294,7 @@ int main() {
     simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.1);
 
     // Sample - works gets closer to the ideal values
-    for (int i =0;i <10; i++){
+    for (int i =0;i <100; i++){
         optim.zero_grad();
         auto ac = simplenet::Node<simplenet::TensorD>::make_node(actual);
 
