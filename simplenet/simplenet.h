@@ -16,4 +16,6 @@
 #include "devices/device_type.h"
 #include "operators/ops.h"
 #include "operators/padding_ops.h"
+#include "dataloader/dataloader.h"
+#include "datasets/datasets.h"
 // #include "cuda/includes/"
