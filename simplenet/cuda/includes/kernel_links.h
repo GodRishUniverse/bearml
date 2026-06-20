@@ -14,3 +14,4 @@
 #include "../kernels/concat.cuh"
 #include "../kernels/linspace.cuh"
 #include "../kernels/utils.cuh"
+#include "../kernels/softmax.cuh"
