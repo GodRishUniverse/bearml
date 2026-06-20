@@ -1,6 +1,7 @@
 #pragma once
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <initializer_list>
 #include <stdexcept>
 #include <utility>
@@ -606,6 +607,21 @@ namespace simplenet{
             }
 
 
+            // only for contiguous tensors (this function will help with device-agnostic copying and memory management for bulk data like loading csv files, etc.)
+            void set_using_bulk_copy(const std::vector<T>& values) const {
+                size_t full_size = this->sizeOfTensor();
+                // partial fills are allowed; only reject overflow
+                if (values.size() > full_size) {
+                    throw std::invalid_argument("Invalid values size: \nPassed:\t" + std::to_string(values.size()) + "\nExpected (max):\t" + std::to_string(full_size) + "\n");
+                }
+
+                if (!this->is_contiguous()) {
+                    throw std::runtime_error("set_using_bulk_copy only supports contiguous tensors");
+                }
+                // Makes it device-agnostic: destination first, then source, then bytes
+                this->allocator_->copy_to_device(this->data + this->data_offset, values.data(), values.size() * sizeof(T));
+            }
+
             void set(T val, std::vector<int> index) const {
 
                 if (!this->device.is_cpu()) {
@@ -769,6 +785,18 @@ namespace simplenet{
             // baseline
             static Tensor zeros_like(const Tensor& t) {
                 return Tensor(t.shape, t.device);
+            }
+
+            // build a tensor from a flat host buffer (e.g. parsed csv rows, decoded pixels)
+            static Tensor from_host(const std::vector<int>& shape, const std::vector<T>& host,
+                                    const Device& device = Device::cpu()) {
+                Tensor t(shape, device);
+                if (host.size() != t.sizeOfTensor()) {
+                    throw std::invalid_argument("from_host: data size does not match shape: \nPassed:\t" +
+                        std::to_string(host.size()) + "\nExpected:\t" + std::to_string(t.sizeOfTensor()) + "\n");
+                }
+                t.set_using_bulk_copy(host);
+                return t;
             }
 
             // helper function for recursive printing
