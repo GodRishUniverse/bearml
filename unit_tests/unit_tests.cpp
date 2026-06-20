@@ -631,7 +631,7 @@ TEST(LossTest, ShapeMismatchThrows) {
 // Linear Layer Tests
 
 TEST(LinearTest, OutputShape) {
-    neural_network::Linear layer(5, 10);
+    neural_network::Linear<> layer(5, 10);
     TensorD input({1, 5});
     input.fill(1.0);
     auto x = Node<TensorD>::make_node(input);
@@ -640,7 +640,7 @@ TEST(LinearTest, OutputShape) {
 }
 
 TEST(LinearTest, Parameters) {
-    neural_network::Linear layer(3, 4);
+    neural_network::Linear<> layer(3, 4);
     auto params = layer.parameters();
     EXPECT_EQ(params.size(), 2u); // weight + bias
     EXPECT_EQ(params[0]->val.getShape(), (std::vector<int>{3, 4})); // weight
@@ -648,7 +648,7 @@ TEST(LinearTest, Parameters) {
 }
 
 TEST(LinearTest, BackwardProducesGradients) {
-    neural_network::Linear layer(3, 2);
+    neural_network::Linear<> layer(3, 2);
     TensorD input({1, 3});
     input.fill(1.0);
     auto x = Node<TensorD>::make_node(input);
@@ -663,7 +663,7 @@ TEST(LinearTest, BackwardProducesGradients) {
 // ReLU Tests
 
 TEST(ReLUTest, ForwardPositive) {
-    neural_network::ReLU relu;
+    neural_network::ReLU<> relu;
     TensorD input({4});
     input.set(-2.0, {0}); input.set(0.0, {1}); input.set(3.0, {2}); input.set(-1.0, {3});
     auto x = Node<TensorD>::make_node(input);

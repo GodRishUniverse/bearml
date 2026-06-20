@@ -477,7 +477,7 @@ namespace simplenet{
 
                 // TODO - implement this below(need slicing operation)
                 case OP_Code::OP_PAD:
-                    if constexpr (simplenet::is_tensor_v<T>)  node  = make_node(simplenet::neural_network::padding(a->val, pad_amount, padding_mode, constant_value));
+                    if constexpr (simplenet::is_tensor_v<T>)  node  = make_node(simplenet::neural_network::padding(a->val, pad_amount, padding_mode, static_cast<simplenet::tensor_element_t<T>>(constant_value)));
                     else throw std::invalid_argument("Autograd: OP_PAD cannot be applied to a non-Tensor type - in elementwise_unary.");
                     break;
                 default:

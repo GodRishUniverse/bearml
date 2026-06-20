@@ -17,6 +17,9 @@ namespace simplenet {
         // will apply polymorphism and inheritance for activation functions as the principle idea is the same
         // will inherit the Node class for operations to be carried out and use the backward features
 
+        // Module is generic over the tensor element type. Default stays TensorD so
+        // existing TensorD-based layers keep working via Module<> / Module<TensorD>.
+        template <typename T = simplenet::TensorD>
         class Module{
             protected:
                 // Protected members can be called by derived classes
@@ -27,22 +30,22 @@ namespace simplenet {
                 virtual ~Module()  = default; // it is a pure virtual class
 
                 // we will assume at least one input - may change it
-                virtual std::shared_ptr<simplenet::Node<TensorD>> forward(std::shared_ptr<simplenet::Node<TensorD>> x) = 0; // pure virtual function
-                virtual std::shared_ptr<simplenet::Node<TensorD>> forward(TensorD& x)  =0; // another virtual representation
+                virtual std::shared_ptr<simplenet::Node<T>> forward(std::shared_ptr<simplenet::Node<T>> x) = 0; // pure virtual function
+                virtual std::shared_ptr<simplenet::Node<T>> forward(T& x)  =0; // another virtual representation
 
-                virtual std::shared_ptr<simplenet::Node<TensorD>> operator()(TensorD&x) =0;
-                virtual std::shared_ptr<simplenet::Node<TensorD>> operator()(std::shared_ptr<simplenet::Node<TensorD>> x) =0;
+                virtual std::shared_ptr<simplenet::Node<T>> operator()(T&x) =0;
+                virtual std::shared_ptr<simplenet::Node<T>> operator()(std::shared_ptr<simplenet::Node<T>> x) =0;
 
-                virtual TensorD get_detached_value(TensorD& t) = 0;
-                virtual TensorD get_detached_value(std::shared_ptr<simplenet::Node<TensorD>> t) = 0;
+                virtual T get_detached_value(T& t) = 0;
+                virtual T get_detached_value(std::shared_ptr<simplenet::Node<T>> t) = 0;
 
                 virtual void initialize_parameters() {}
 
                 // get all the parameters here
-                virtual std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> parameters() = 0;
+                virtual std::vector<std::shared_ptr<simplenet::Node<T>>> parameters() = 0;
 
                 // TODO: test this
-                static void xavier_init(TensorD& t, int input_size, int output_size, int seed) {
+                static void xavier_init(T& t, int input_size, int output_size, int seed) {
 
                     // std::random_device rd{};
                     std::mt19937 gen(seed);
@@ -78,7 +81,7 @@ namespace simplenet {
                 }
 
                 // He initialization - to check
-                static void he_init(TensorD& t, int input_size, int seed){
+                static void he_init(T& t, int input_size, int seed){
                     // std::random_device rd{};
                     std::mt19937 gen(seed);
 
@@ -114,21 +117,22 @@ namespace simplenet {
         };
 
         // inherits operations and also gets structure from Module class
-        class Linear : public Module{
+        template <typename T = simplenet::TensorD>
+        class Linear : public Module<T>{
             private:
-                std::shared_ptr<simplenet::Node<TensorD>> W;  // Weight matrix as a node for autogradient
-                std::shared_ptr<simplenet::Node<TensorD>> B;  // Bias vector as a node for autogradient
+                std::shared_ptr<simplenet::Node<T>> W;  // Weight matrix as a node for autogradient
+                std::shared_ptr<simplenet::Node<T>> B;  // Bias vector as a node for autogradient
                 int input_size;
                 int output_size;
                 std::string initialization_method;
             public:
-                Linear(int in_shape, int out_shape, std::string initialization = "Xavier", Device dev = Device(DeviceType::CPU, 0), int random_seed =42) : Module(random_seed, dev), input_size(in_shape), output_size(out_shape), initialization_method(initialization){
+                Linear(int in_shape, int out_shape, std::string initialization = "Xavier", Device dev = Device(DeviceType::CPU, 0), int random_seed =42) : Module<T>(random_seed, dev), input_size(in_shape), output_size(out_shape), initialization_method(initialization){
                     // Initialize on CPU first  so that we dont get GPU direct access errors - then transfer to the target device
-                    TensorD weight_tensor({input_size, output_size});
-                    TensorD bias_tensor({ output_size});
+                    T weight_tensor({input_size, output_size});
+                    T bias_tensor({ output_size});
 
-                    W = simplenet::Node<TensorD>::make_node(weight_tensor);
-                    B = simplenet::Node<TensorD>::make_node(bias_tensor);
+                    W = simplenet::Node<T>::make_node(weight_tensor);
+                    B = simplenet::Node<T>::make_node(bias_tensor);
 
                     initialize_parameters();
 
@@ -138,32 +142,32 @@ namespace simplenet {
                     }
                 }
 
-                std::shared_ptr<simplenet::Node<TensorD>> operator()(TensorD&x) override {
+                std::shared_ptr<simplenet::Node<T>> operator()(T&x) override {
                     return this->forward(x);
                 }
 
-                std::shared_ptr<simplenet::Node<TensorD>> operator()(std::shared_ptr<simplenet::Node<TensorD>> x) override {
+                std::shared_ptr<simplenet::Node<T>> operator()(std::shared_ptr<simplenet::Node<T>> x) override {
                     return this->forward(x);
                 }
 
                 // we override this from Module class
-                std::shared_ptr<simplenet::Node<TensorD>> forward(std::shared_ptr<simplenet::Node<TensorD>> x) override{
+                std::shared_ptr<simplenet::Node<T>> forward(std::shared_ptr<simplenet::Node<T>> x) override{
                     return x * W + B;
                 }
 
-                std::shared_ptr<simplenet::Node<TensorD>> forward(TensorD& x) override{
-                    std::shared_ptr<simplenet::Node<TensorD>> node_x = simplenet::Node<simplenet::TensorD>::make_node(x);
+                std::shared_ptr<simplenet::Node<T>> forward(T& x) override{
+                    std::shared_ptr<simplenet::Node<T>> node_x = simplenet::Node<T>::make_node(x);
                     return node_x * W + B; // convert input shape to output shape
                 }
 
-                TensorD get_detached_value(TensorD& t)override {
+                T get_detached_value(T& t)override {
                     // t.printShape();
                     // W->val.printShape();
                     // B->val.printShape();
                     return (t*W->val + B->val);
                 }
 
-                TensorD get_detached_value(std::shared_ptr<simplenet::Node<TensorD>> t)override {
+                T get_detached_value(std::shared_ptr<simplenet::Node<T>> t)override {
                     // t.printShape();
                     // W->val.printShape();
                     // B->val.printShape();
@@ -187,65 +191,66 @@ namespace simplenet {
                 };
 
                 // Helpers
-                TensorD get_weights() const { return W->val; }
-                TensorD get_bias() const { return B->val; }
+                T get_weights() const { return W->val; }
+                T get_bias() const { return B->val; }
 
                 int get_in_shape() const { return input_size; }
                 int get_out_shape() const { return output_size; }
 
-                std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> parameters() override{
+                std::vector<std::shared_ptr<simplenet::Node<T>>> parameters() override{
                     return {W,B};
                 }
 
         };
 
-        class ReLU : public Module{
+        template <typename T = simplenet::TensorD>
+        class ReLU : public Module<T>{
             public:
-                ReLU(int random_seed =42, Device dev =  Device(DeviceType::CPU, 0)) : Module(random_seed, dev){
+                ReLU(int random_seed =42, Device dev =  Device(DeviceType::CPU, 0)) : Module<T>(random_seed, dev){
 
                 }
 
-                std::shared_ptr<simplenet::Node<TensorD>> operator()(TensorD&x) override {
+                std::shared_ptr<simplenet::Node<T>> operator()(T&x) override {
                     return this->forward(x);
                 }
 
-                std::shared_ptr<simplenet::Node<TensorD>> operator()(std::shared_ptr<simplenet::Node<TensorD>> x) override {
+                std::shared_ptr<simplenet::Node<T>> operator()(std::shared_ptr<simplenet::Node<T>> x) override {
                     return this->forward(x);
                 }
 
                 // we override this from Module class
-                std::shared_ptr<simplenet::Node<TensorD>> forward(std::shared_ptr<simplenet::Node<TensorD>> x) override{
+                std::shared_ptr<simplenet::Node<T>> forward(std::shared_ptr<simplenet::Node<T>> x) override{
                     std::vector<int> temp_shape = x->val.getShape();
-                    TensorD temp_zero(temp_shape, this->device);
-                    std::shared_ptr<simplenet::Node<TensorD>> mask_node = simplenet::Node<simplenet::TensorD>::make_node(temp_zero);
+                    T temp_zero(temp_shape, this->device);
+                    std::shared_ptr<simplenet::Node<T>> mask_node = simplenet::Node<T>::make_node(temp_zero);
                     return max(x, mask_node);
                 }
 
-                std::shared_ptr<simplenet::Node<TensorD>> forward(TensorD& x) override{
+                std::shared_ptr<simplenet::Node<T>> forward(T& x) override{
                     std::vector<int> temp_shape = x.getShape();
-                    TensorD temp_zero(temp_shape,this->device);
-                    std::shared_ptr<simplenet::Node<TensorD>> mask_node = simplenet::Node<simplenet::TensorD>::make_node(temp_zero);
-                    std::shared_ptr<simplenet::Node<TensorD>> node_x = simplenet::Node<simplenet::TensorD>::make_node(x);
+                    T temp_zero(temp_shape,this->device);
+                    std::shared_ptr<simplenet::Node<T>> mask_node = simplenet::Node<T>::make_node(temp_zero);
+                    std::shared_ptr<simplenet::Node<T>> node_x = simplenet::Node<T>::make_node(x);
                     return max(node_x, mask_node);
                 }
 
-                TensorD get_detached_value(TensorD& t)override {
+                T get_detached_value(T& t)override {
                     std::vector<int> temp_shape = t.getShape();
-                    TensorD temp_zero(temp_shape, this->device);
-                    std::shared_ptr<simplenet::Node<TensorD>> mask_node = simplenet::Node<simplenet::TensorD>::make_node(temp_zero);
-                    std::shared_ptr<simplenet::Node<TensorD>> node_t = simplenet::Node<simplenet::TensorD>::make_node(t);
+                    T temp_zero(temp_shape, this->device);
+                    std::shared_ptr<simplenet::Node<T>> mask_node = simplenet::Node<T>::make_node(temp_zero);
+                    std::shared_ptr<simplenet::Node<T>> node_t = simplenet::Node<T>::make_node(t);
                     return (max(node_t, mask_node))->val;
                 }
 
-                TensorD get_detached_value(std::shared_ptr<simplenet::Node<TensorD>> t)override {
+                T get_detached_value(std::shared_ptr<simplenet::Node<T>> t)override {
                     std::vector<int> temp_shape = t->val.getShape();
-                    TensorD temp_zero(temp_shape, this->device);
-                    std::shared_ptr<simplenet::Node<TensorD>> mask_node = simplenet::Node<simplenet::TensorD>::make_node(temp_zero);
+                    T temp_zero(temp_shape, this->device);
+                    std::shared_ptr<simplenet::Node<T>> mask_node = simplenet::Node<T>::make_node(temp_zero);
                     return (max(t, mask_node))->val;
                 }
 
                 // return nothing a relu layer does not have parameters
-                std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> parameters() override{
+                std::vector<std::shared_ptr<simplenet::Node<T>>> parameters() override{
                     return {};
                 }
 

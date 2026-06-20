@@ -2237,6 +2237,13 @@ namespace simplenet{
     template<typename>   struct is_tensor                : std::false_type {};
     template<typename E> struct is_tensor<Tensor<E>>     : std::true_type  {};
     template<typename U> inline constexpr bool is_tensor_v = is_tensor<U>::value;
+
+    // tensor_element_t<Tensor<E>> yields E, the scalar element type. Lets generic
+    // code (e.g. autograd) cast scalars to a tensor's precision instead of assuming
+    // double, so Tensor<float> instantiations don't hit double/float type clashes.
+    template<typename>   struct tensor_element {};
+    template<typename E> struct tensor_element<Tensor<E>> { using type = E; };
+    template<typename U> using tensor_element_t = typename tensor_element<U>::type;
 }
 
 // linear_algebra friend templates - definitions included here so they are visible

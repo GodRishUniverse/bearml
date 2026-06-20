@@ -69,7 +69,8 @@ namespace simplenet {
 
         // TODO: need to figure out how I can implement convolution layers (and pooling)
         // template copied from pytorch doc - https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
-        class Conv2D : public Module {
+        template <typename T = simplenet::TensorD>
+        class Conv2D : public Module<T> {
         private:
             int in_channels_;
             int out_channels_;
@@ -84,11 +85,11 @@ namespace simplenet {
 
         public:
             Conv2D(int in_channels, int out_channels, int kernel_size, int stride = 1, int padding = 0, int dilation =1, int groups = 1, bool bias = true, Padding_Op_Code padding_mode = Padding_Op_Code::PAD_CONSTANT, int seed = 42, simplenet::Device dev = simplenet::Device::cpu(), int constant_pad = 0)
-                : Module(seed, dev), in_channels_(in_channels), out_channels_(out_channels), kernel_size_(kernel_size), stride_(stride), padding_(padding), dilation_(dilation), groups_(groups), bias_(bias), padding_mode_(padding_mode), constant_pad_(constant_pad) {
+                : Module<T>(seed, dev), in_channels_(in_channels), out_channels_(out_channels), kernel_size_(kernel_size), stride_(stride), padding_(padding), dilation_(dilation), groups_(groups), bias_(bias), padding_mode_(padding_mode), constant_pad_(constant_pad) {
 
             }
 
-            std::shared_ptr<simplenet::Node<simplenet::TensorD>> forward(std::shared_ptr<simplenet::Node<simplenet::TensorD>> x) override {
+            std::shared_ptr<simplenet::Node<T>> forward(std::shared_ptr<simplenet::Node<T>> x) override {
                 // implement im2col and then use GEMM - rather than using FFT
             }
         };
