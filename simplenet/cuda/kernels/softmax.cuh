@@ -3,6 +3,7 @@
 #include "../includes/cuda_helper.h"
 #include <cstdint>
 #include <vector>
+#include "utils.cuh"
 
 
 namespace simplenet {

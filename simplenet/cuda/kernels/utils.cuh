@@ -10,6 +10,12 @@ namespace simplenet {
             template <typename InputT, typename OutputT>
             void launch_dtype_change(InputT *d_data, OutputT *d_out, int64_t size, cudaStream_t stream = nullptr);
 
+            template <typename T>
+             __device__ T* shared_mem() {
+                 extern __shared__ unsigned char smem_raw[];   // always unsigned char → one consistent type
+                 return reinterpret_cast<T*>(smem_raw);
+             }
+
             #ifndef INSTANTIATE_DTYPE_CHANGE
             #define INSTANTIATE_DTYPE_CHANGE(InT, OutT) \
                 template void launch_dtype_change<InT, OutT>(InT *d_data, OutT *d_out, int64_t size, cudaStream_t stream);
@@ -23,9 +29,9 @@ namespace simplenet {
                 const size_t* h_shape, const size_t* h_strides, size_t nd, size_t total,
                 cudaStream_t stream = nullptr);
 
-            #ifndef INSTANTIATE_CONTIGUOUS_GATHER
-            #define INSTANTIATE_CONTIGUOUS_GATHER(Ty) \
-                template void launch_contiguous_gather<Ty>(const Ty* d_src, Ty* d_dst, size_t src_offset, \
+            #ifndef INSTANTIATE_SINGLE_TYPE_UTILS
+            #define INSTANTIATE_SINGLE_TYPE_UTILS(T) \
+                template void launch_contiguous_gather<T>(const T* d_src, T* d_dst, size_t src_offset, \
                     const size_t* h_shape, const size_t* h_strides, size_t nd, size_t total, cudaStream_t stream);
             #endif
         }

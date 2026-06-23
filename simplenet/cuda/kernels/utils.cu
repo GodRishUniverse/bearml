@@ -103,14 +103,14 @@ namespace simplenet {
                 }
             }
 
-            INSTANTIATE_CONTIGUOUS_GATHER(float)
-            INSTANTIATE_CONTIGUOUS_GATHER(double)
-            INSTANTIATE_CONTIGUOUS_GATHER(__half)
-            INSTANTIATE_CONTIGUOUS_GATHER(__nv_bfloat16)
-            INSTANTIATE_CONTIGUOUS_GATHER(int8_t)
-            INSTANTIATE_CONTIGUOUS_GATHER(int16_t)
-            INSTANTIATE_CONTIGUOUS_GATHER(int32_t)
-            INSTANTIATE_CONTIGUOUS_GATHER(int64_t)
+            INSTANTIATE_SINGLE_TYPE_UTILS(float)
+            INSTANTIATE_SINGLE_TYPE_UTILS(double)
+            INSTANTIATE_SINGLE_TYPE_UTILS(__half)
+            INSTANTIATE_SINGLE_TYPE_UTILS(__nv_bfloat16)
+            INSTANTIATE_SINGLE_TYPE_UTILS(int8_t)
+            INSTANTIATE_SINGLE_TYPE_UTILS(int16_t)
+            INSTANTIATE_SINGLE_TYPE_UTILS(int32_t)
+            INSTANTIATE_SINGLE_TYPE_UTILS(int64_t)
 
             // floats
             INSTANTIATE_DTYPE_CHANGE(double, float)

@@ -6,6 +6,8 @@
 namespace simplenet {
     namespace cuda {
 
+
+
         // softmax max trick is that you subtract the max value from each element before taking the exp (as it gives the same result as not doing that and makes sure large values don't overflow)
         template<typename T>
         __global__ void softmax_kernel(const T* d_data, T* d_out,  int* shape, int shape_size, int* stride, int stride_size, int dim) {
@@ -24,10 +26,10 @@ namespace simplenet {
             // shared memory for cumulative sum  = number of rows basically
             // example is like 4*5 will need 1 float per row (4 floats)
             // so shape[dim] * sizeof(T) is the size of the shared memory per block
-            extern __shared__ T smemory[]; // needs to be declared outside the kernel in the <<<...>>> call with the shared memory size (has to be shape[dim] * sizeof(T))
+            T* smemory = utils::shared_mem<T>(); // needs to be declared outside the kernel in the <<<...>>> call with the shared memory size (has to be shape[dim] * sizeof(T))
 
             // local max for each thread block (partial max)
-            T local_max = -std::numeric_limits<T>::infinity(); // in register
+            T local_max = -INFINITY; // in register -> macro exists in <float.h>
             for (int i = threadIdx.x; i < shape_dim; i += blockDim.x) {
                 local_max = max(local_max, d_data[row_base+ i * stride_dim]);
             }
@@ -114,8 +116,8 @@ namespace simplenet {
 
 
         // floats
-        INSTANTIATE_SOFTMAX(__nv_bfloat16);
-        INSTANTIATE_SOFTMAX(__half);
+        // INSTANTIATE_SOFTMAX(__nv_bfloat16);
+        // INSTANTIATE_SOFTMAX(__half);
         INSTANTIATE_SOFTMAX(float);
         INSTANTIATE_SOFTMAX(double);
 
