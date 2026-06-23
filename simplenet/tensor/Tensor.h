@@ -1837,7 +1837,7 @@ namespace simplenet{
                     // The max trick is applied here to avoid numerical overflow
                     for (size_t i = 0; i < num_groups; ++i) {
 
-                        size_t row_base = 0, grp = g;
+                        size_t row_base = 0 , grp = i;
                         for (int d = (int)shape.size() - 1; d >= 0; --d) {
                             if (d == dim_to_use) continue;
                             row_base += (grp % shape[d]) * stride[d];
