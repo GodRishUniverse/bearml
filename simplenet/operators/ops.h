@@ -22,6 +22,7 @@ enum class OP_Code : uint16_t {
     OP_ABS,
     OP_SQRT, // TODO: Implement
     OP_MEAN_FOR_GRAD,
+    OP_SOFTMAX,
     // trigonometric operations (unary)
     OP_SIN,
     OP_COS,

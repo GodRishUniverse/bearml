@@ -1801,6 +1801,71 @@ namespace simplenet{
                 return elementwise_unary(t, OP_Code::OP_LOG);
             }
 
+            //---------------------------------------- Softmax ------------------------------------------------------
+            static Tensor softmax(Tensor &t, int64_t dim =-1 ){
+                // default dim is -1, which means softmax over the last dimension
+                if (dim < -1) {
+                    throw std::invalid_argument("dim must be >= -1");
+                }
+                if (dim >= (int64_t)t.shape.size()) {
+                    throw std::invalid_argument("dim must be < number of dimensions");
+                }
+                int dim_to_use = (dim == -1) ? t.shape.size() - 1 : dim;
+
+                Tensor result(t.shape, t.device);
+                if (t.device.is_cuda()) {
+                    cuda::launch_softmax_kernel<T>(
+                        t.data,
+                        result.data,
+                        t.getShape(),
+                        t.getStrides(),
+                        t.sizeOfTensor(),
+                        dim_to_use
+                    );
+                } else {
+                    // CPU softmax
+                    size_t size = t.sizeOfTensor();
+
+                    const auto& shape  = t.getShape();
+                    const auto& stride = t.getStrides();
+
+                    size_t num_groups = size / shape[dim_to_use];
+                    int stride_dim = stride[dim_to_use];
+                    std::vector<T> sum_values(num_groups, T(0));
+                    std::vector<T> max_values(num_groups, -std::numeric_limits<T>::infinity());
+
+                    // The max trick is applied here to avoid numerical overflow
+                    for (size_t i = 0; i < num_groups; ++i) {
+
+                        size_t row_base = 0, grp = g;
+                        for (int d = (int)shape.size() - 1; d >= 0; --d) {
+                            if (d == dim_to_use) continue;
+                            row_base += (grp % shape[d]) * stride[d];
+                            grp /= shape[d];
+                        }
+
+                        for (size_t j = 0; j < shape[dim_to_use]; ++j) {
+                            size_t index = row_base + j * stride_dim;
+                            max_values[i] = std::max(max_values[i], t.data[index]);
+                        }
+
+                        for (size_t j = 0; j < shape[dim_to_use]; ++j) {
+                            size_t index = row_base + j * stride_dim;
+                            result.data[index] = exp(t.data[index]-max_values[i]);
+                            sum_values[i] += result.data[index];
+                        }
+
+                        for (size_t j = 0; j < shape[dim_to_use]; ++j) {
+                            size_t index = row_base + j * stride_dim;
+                            result.data[index]/=sum_values[i];
+                        }
+                    }
+
+                }
+
+                return result;
+            }
+
 
             // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
             void fill(T v){
