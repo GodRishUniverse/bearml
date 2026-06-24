@@ -684,6 +684,17 @@ namespace simplenet{
             return elementwise_unary_node_operators(a, OP_Code::OP_PAD, pad_amount, padding_mode, constant_value);
         }
 
+        // Softmax - TODO
+        template<typename U>
+        friend std::shared_ptr<Node<simplenet::Tensor<U>>> softmax(std::shared_ptr<Node<simplenet::Tensor<U>>> a, int dim){
+            if (!simplenet::is_tensor_v<U>) throw std::invalid_argument("Autograd: softmax cannot be applied to a non-Tensor type.");
+
+            std::shared_ptr<Node<simplenet::Tensor<U>>> node = make_node(simplenet::Tensor<U>::softmax(a->val, dim));
+            //
+            //
+            return node;
+        }
+
 
     };
 
