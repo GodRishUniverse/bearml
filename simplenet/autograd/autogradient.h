@@ -687,11 +687,45 @@ namespace simplenet{
         // Softmax - TODO
         template<typename U>
         friend std::shared_ptr<Node<simplenet::Tensor<U>>> softmax(std::shared_ptr<Node<simplenet::Tensor<U>>> a, int dim){
-            if (!simplenet::is_tensor_v<U>) throw std::invalid_argument("Autograd: softmax cannot be applied to a non-Tensor type.");
+            // the node value type T must be exactly the Tensor<U> this overload constructs
+            if constexpr (!std::is_same_v<T, simplenet::Tensor<U>>) {
+                static_assert(std::is_same_v<T, simplenet::Tensor<U>>,
+                    "Autograd: softmax requires the node value type T to match Tensor<U>.");
+            }
 
             std::shared_ptr<Node<simplenet::Tensor<U>>> node = make_node(simplenet::Tensor<U>::softmax(a->val, dim));
-            //
-            //
+
+            node->inputs = {a};
+            a->outputs.push_back(node);
+
+            // normalize dim once (forward already validated the range); accumulate() needs a non-negative axis
+            int rank = static_cast<int>(a->val.getShape().size());
+            int dim_to_use = (dim == -1) ? rank - 1 : dim;
+
+            std::weak_ptr<Node<T>> weak_a = a;
+            std::weak_ptr<Node<T>> weak_node = node;
+
+            // the local derivative is the full Jacobian matrix as we have
+            // f_i(x) = exp(x_i) / sum(exp(x))
+            // del f_i(x) / del x_j = f_i(x)(1-f_i(x))
+            // J = [[ f_i(x)(1-f_i(x)) if i == k else -f_i(x)f_k(x) ]]
+            // This is because \nabla_i f_i(x) = f_i(x)(1-f_i(x)) but \nabla_j f_i(x) = -f_i(x)f_j(x) because numerator
+            // here becomes 0 so only negative term remains after u' calculation in quotient rule
+            //     grad_input = s hadamard ( g - sum_dim(g hadamard s) ) where s = softmax output (node->val)
+            node->backward_fn = [weak_node, weak_a, dim_to_use]() {
+                std::shared_ptr<Node<T>> node_locked = weak_node.lock();
+                std::shared_ptr<Node<T>> a_locked = weak_a.lock();
+                if (!node_locked || !a_locked) return;
+
+                const T& s = node_locked->val;   // softmax output
+                const T& g = node_locked->grad;  // grad from upstream
+
+                T gs = simplenet::linear_algebra::hadamard(g, s);
+                T row_sum = gs.accumulate(dim_to_use, simplenet::reductions::ReductionOps::SUM, true);
+                T grad_input = simplenet::linear_algebra::hadamard(s, g - row_sum);
+
+                accumulate_grad(a_locked->grad, grad_input, a_locked->val);
+            };
             return node;
         }
 

@@ -486,6 +486,45 @@ TEST(AutogradTensorTest, MeanBackward) {
     }
 }
 
+TEST(AutogradTensorTest, SoftmaxBackward1D) {
+    TensorD ta({3}); ta.set(1.0, {0}); ta.set(2.0, {1}); ta.set(3.0, {2});
+    auto a = Node<TensorD>::make_node(ta);
+    auto c = softmax(a, 0);
+
+    double s0 = c->val.get({0}), s1 = c->val.get({1}), s2 = c->val.get({2});
+    EXPECT_NEAR(s0 + s1 + s2, 1.0, 1e-12); // softmax slice sums to 1
+
+    // seed non-uniform upstream grad g = [1, 0, 0] then run the softmax backward directly
+    c->grad.set(1.0, {0}); c->grad.set(0.0, {1}); c->grad.set(0.0, {2});
+    c->backward();
+
+    // grad_i = s_i (g_i - Σ_j g_j s_j); with g=[1,0,0] the sum is s0
+    double dot = s0;
+    EXPECT_NEAR(a->grad.get({0}), s0 * (1.0 - dot), 1e-12);
+    EXPECT_NEAR(a->grad.get({1}), s1 * (0.0 - dot), 1e-12);
+    EXPECT_NEAR(a->grad.get({2}), s2 * (0.0 - dot), 1e-12);
+}
+
+TEST(AutogradTensorTest, SoftmaxBackward2DDim1) {
+    TensorD ta({2, 3}); ta.linspace(1.0, 7.0); // softmax over each row (dim=1)
+    auto a = Node<TensorD>::make_node(ta);
+    auto c = softmax(a, 1);
+
+    // distinct per-element upstream grad to exercise the reduce-along-dim + broadcast
+    double g[2][3] = {{0.5, -1.0, 2.0}, {1.5, 0.0, -0.5}};
+    for (int r = 0; r < 2; r++)
+        for (int j = 0; j < 3; j++)
+            c->grad.set(g[r][j], {r, j});
+    c->backward();
+
+    for (int r = 0; r < 2; r++) {
+        double s[3] = { c->val.get({r,0}), c->val.get({r,1}), c->val.get({r,2}) };
+        double dot = g[r][0]*s[0] + g[r][1]*s[1] + g[r][2]*s[2]; // Σ_j g_j s_j per row
+        for (int j = 0; j < 3; j++)
+            EXPECT_NEAR(a->grad.get({r, j}), s[j] * (g[r][j] - dot), 1e-12);
+    }
+}
+
 TEST(AutogradTensorTest, TransposeBackward) {
     TensorD ta({2, 3}); ta.linspace(1.0, 7.0);
     auto a = Node<TensorD>::make_node(ta);
