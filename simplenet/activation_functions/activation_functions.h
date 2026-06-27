@@ -71,8 +71,10 @@ namespace simplenet {
 
         template <typename T = simplenet::TensorD>
         class Softmax : public Module<T>{
+
+            int dim;
             public:
-                Softmax(int random_seed =42, Device dev = Device(DeviceType::CPU, 0)) : Module<T>(random_seed, dev){
+                Softmax(int dim, int random_seed =42, Device dev = Device(DeviceType::CPU, 0)) : Module<T>(random_seed, dev), dim(dim){
 
                 }
 
@@ -88,10 +90,8 @@ namespace simplenet {
                     if (x->val.getDevice() != this->device) {
                         x->val = x->val.to(this->device); // move to device if not already on it
                     }
-                    // use softmax kernel : TODO
-                    std::shared_ptr<simplenet::Node<T>> node_x = exp(x);
-                    auto softmax = node_x / node_x.sum();
-                    return softmax;
+                    std::shared_ptr<simplenet::Node<T>> softmax_node = softmax(x, this->dim);
+                    return softmax_node;
                 }
 
                 std::shared_ptr<simplenet::Node<T>> forward(T& x) override{
@@ -99,10 +99,8 @@ namespace simplenet {
                         x = x.to(this->device); // move to device if not already on it
                     }
                     std::shared_ptr<simplenet::Node<T>> node_x = simplenet::Node<T>::make_node(x);
-                    // TODO: softmax kernel
-                    auto exp_node = exp( node_x);
-                    auto softmax = exp_node / exp_node.sum();
-                    return softmax;
+                    std::shared_ptr<simplenet::Node<T>>  softmax_node = softmax(node_x, this->dim);
+                    return softmax_node;
                 }
 
                 T get_detached_value(T& t)override {
