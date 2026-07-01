@@ -19,7 +19,7 @@ namespace simplenet {
 
         // Module is generic over the tensor element type. Default stays TensorD so
         // existing TensorD-based layers keep working via Module<> / Module<TensorD>.
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class Module{
             protected:
                 // Protected members can be called by derived classes
@@ -117,7 +117,7 @@ namespace simplenet {
         };
 
         // inherits operations and also gets structure from Module class
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class Linear : public Module<T>{
             private:
                 std::shared_ptr<simplenet::Node<T>> W;  // Weight matrix as a node for autogradient
@@ -203,7 +203,7 @@ namespace simplenet {
 
         };
 
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class ReLU : public Module<T>{
             public:
                 ReLU(int random_seed =42, Device dev =  Device(DeviceType::CPU, 0)) : Module<T>(random_seed, dev){

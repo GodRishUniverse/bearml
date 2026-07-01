@@ -23,17 +23,17 @@ class Model : public simplenet::neural_network::Model_Construct{
 
     }
 
-    std::shared_ptr<simplenet::Node<simplenet::TensorD>> forward(std::vector<simplenet::TensorD> inputs) override {
+    std::shared_ptr<simplenet::Node<simplenet::Tensorf>> forward(std::vector<simplenet::Tensorf> inputs) override {
         // assuming only x is passed in
-        auto x = simplenet::Node<simplenet::TensorD>::make_node(inputs[0]);
+        auto x = simplenet::Node<simplenet::Tensorf>::make_node(inputs[0]);
 
         auto f1 = this->layer1(x);
         auto f2 = this->nonlinearity(f1);
         return this->layer2(f2);
     }
 
-    std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> parameters() override {
-        std::vector<std::shared_ptr<simplenet::Node<simplenet::TensorD>>> params;
+    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensorf>>> parameters() override {
+        std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensorf>>> params;
 
         // collect parameters from layer1
         auto l1_params = layer1.parameters();
@@ -276,7 +276,7 @@ int main() {
 
     Model testmodel = Model(2, 5, dev);
 
-    simplenet::TensorD tester2({1,2});
+    simplenet::Tensorf tester2({1,2});
     tester2.linspace(1,2);
     tester2.to_(dev);
 

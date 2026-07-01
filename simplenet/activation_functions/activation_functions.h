@@ -19,7 +19,7 @@ namespace simplenet {
 
 
         // inherits from module -> need to test it
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class Sigmoid : public Module<T>{
             public:
                 Sigmoid(int random_seed =42, Device dev = Device(DeviceType::CPU, 0)) : Module<T>(random_seed, dev){
@@ -70,7 +70,7 @@ namespace simplenet {
         };
 
 
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class Softmax : public Module<T>{
 
             int dim;
@@ -122,7 +122,7 @@ namespace simplenet {
 
 
         // leaky relu
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class LeakyReLU : public Module<T>{
             private:
                 double negative_slope;
@@ -178,7 +178,7 @@ namespace simplenet {
 
 
         // inherits from module -> need to test it
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class Tanh : public Module<T>{
             public:
                 Tanh(int random_seed =42, Device device = Device(DeviceType::CPU, 0)) : Module<T>(random_seed, device){
@@ -232,7 +232,7 @@ namespace simplenet {
 
 
         // inherits from module -> need to test it
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class GELU : public Module<T>{
             public:
                 GELU(int random_seed =42, Device device = Device(DeviceType::CPU, 0)) : Module<T>(random_seed, device){
@@ -290,7 +290,7 @@ namespace simplenet {
 
 
         // inherits from module -> need to test it
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class SiLU : public Module<T>{
             public:
                 SiLU(int random_seed =42, Device device = Device(DeviceType::CPU, 0)) : Module<T>(random_seed, device){
@@ -347,7 +347,7 @@ namespace simplenet {
 
 
         // inherits from module -> need to test it
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class SoftPlus : public Module<T>{
             public:
                 SoftPlus(int random_seed =42, Device device = Device(DeviceType::CPU, 0)) : Module<T>(random_seed, device){

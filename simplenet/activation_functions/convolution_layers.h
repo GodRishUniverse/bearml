@@ -69,7 +69,7 @@ namespace simplenet {
 
         // TODO: need to figure out how I can implement convolution layers (and pooling)
         // template copied from pytorch doc - https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
-        template <typename T = simplenet::TensorD>
+        template <typename T = simplenet::Tensorf>
         class Conv2D : public Module<T> {
         private:
             int in_channels_;
