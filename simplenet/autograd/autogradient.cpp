@@ -92,3 +92,4 @@ namespace simplenet {
 
 template double simplenet::autogradient::backward<double>(std::shared_ptr<simplenet::Node<double>>, bool);
 template simplenet::Tensor<double> simplenet::autogradient::backward<simplenet::Tensor<double>>(std::shared_ptr<simplenet::Node<simplenet::Tensor<double>>>, bool);
+template simplenet::Tensor<float> simplenet::autogradient::backward<simplenet::Tensor<float>>(std::shared_ptr<simplenet::Node<simplenet::Tensor<float>>>, bool);

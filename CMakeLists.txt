@@ -17,7 +17,10 @@ project(SimpleNet CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(CMAKE_CXX_STANDARD 20)
+# Host TUs use C++23 so std::bfloat16_t (<stdfloat>) is available for the
+# supported-scalar checks. NVCC stays at C++17 (it does not support C++23), so
+# .cu files never see std::bfloat16_t and rely on __nv_bfloat16 instead.
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CUDA_STANDARD 17)
 
 # User-facing switch. ON by default, but auto-disabled below if no CUDA

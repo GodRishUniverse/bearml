@@ -15,6 +15,13 @@
 
 #include <span>
 
+// C++23 fixed-width floating types (std::bfloat16_t). Only available on the host (CPU)
+// (g++13+ have C++23 mode); NVCC compiles .cu at C++17 so this stays excluded there.
+// __STDCPP_BFLOAT16_T__ is defined by the compiler only when std::bfloat16_t exists.
+#if __has_include(<stdfloat>)
+    #include <stdfloat>
+#endif
+
 #include "devices/device_type.h"
 #include "devices/device_allocator.h"
 
@@ -73,6 +80,23 @@ namespace simplenet{
 
     // forward declaration of the class template - needed by the free-function declarations below
     template <typename T> class Tensor;
+
+    // is_supported_float_v<E> is true iff E is a floating scalar we accept for
+    // reduction accumulation and optimizer parameters: float, double, or bfloat16.
+    // bfloat16 is recognised as C++23 std::bfloat16_t on the host and as
+    // __nv_bfloat16 inside CUDA translation units (each guarded so the other side
+    // still compiles). Deliberately excludes integer element types (e.g. TensorI).
+    // Declared before class Tensor so inline members (e.g. mean) can use it.
+    template<typename E>
+    inline constexpr bool is_supported_float_v =
+        std::is_same_v<E, float> || std::is_same_v<E, double>
+#if defined(__STDCPP_BFLOAT16_T__)
+        || std::is_same_v<E, std::bfloat16_t>
+#endif
+#if defined(SIMPLENET_USE_CUDA)
+        || std::is_same_v<E, __nv_bfloat16>
+#endif
+        ;
 
     // forward declaration
     namespace linear_algebra {
@@ -1776,17 +1800,24 @@ namespace simplenet{
 
             //----------------------------------------Mean ------------------------------------------------------
             static Tensor mean(Tensor &t ){
+                // sum_kernel accumulates into a buffer of the tensor's own element
+                // type, so restrict to floating types (reject int tensors) at compile time.
+                static_assert(simplenet::is_supported_float_v<T>,
+                    "Tensor::mean supports only float, double, or bfloat16 element types");
+
                 Tensor result({1}, t.device);
-                T sum = T(0);
                 if (t.device == DeviceType::CUDA) {
+                    // Reduce straight into result's own T buffer; the kernel is templated
+                    // on the element type, so no separate accumulator tensor is needed.
                     cuda::launch_sum_kernel(t.data, result.data, t.sizeOfTensor());
-                    result.to_(Device::cpu()); // send to CPU to get the sum as GPU direct memory access is NOT SET UP
-                    result.set(static_cast<T>(result.data[0] / static_cast<double>(t.sizeOfTensor())), {0}); // set the mean value
-                    result.to_(t.device); // send back to GPU
+                    result.to_(Device::cpu()); // GPU direct memory access is NOT SET UP
+                    result.set(static_cast<T>(static_cast<double>(result.data[0]) / static_cast<double>(t.sizeOfTensor())), {0}); // set the mean value
+                    result.to_(t.device); // send back to the original device
                 }else {
                     size_t sizeTensor = t.sizeOfTensor();
+                    double sum = 0.0; // accumulate in double on CPU to avoid float cancellation
                     for (size_t i =0; i<sizeTensor; i++){
-                       sum += t.data[i];
+                       sum += static_cast<double>(t.data[i]);
 
                     }
                     result.set(static_cast<T>(sum / static_cast<double>(t.sizeOfTensor())), {0}) ;
@@ -2309,6 +2340,12 @@ namespace simplenet{
     template<typename>   struct tensor_element {};
     template<typename E> struct tensor_element<Tensor<E>> { using type = E; };
     template<typename U> using tensor_element_t = typename tensor_element<U>::type;
+
+    // Convenience: true iff U is Tensor<E> with a supported floating element type.
+    // (is_supported_float_v itself is declared before class Tensor, above.)
+    template<typename U>
+    inline constexpr bool is_supported_float_tensor_v =
+        is_tensor_v<U> && is_supported_float_v<tensor_element_t<U>>;
 }
 
 // linear_algebra friend templates - definitions included here so they are visible

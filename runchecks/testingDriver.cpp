@@ -288,15 +288,15 @@ int main() {
     // cout << "Pred grad: " << pred->grad << endl;
 
 
-    simplenet::TensorD actual({1,5});
+    simplenet::Tensorf actual({1,5});
     actual.linspace(1,5);
     actual.to_(dev);
     simplenet::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.1);
 
     // Sample - works gets closer to the ideal values
-    for (int i =0;i <100; i++){
+    for (int i =0;i <10; i++){
         optim.zero_grad();
-        auto ac = simplenet::Node<simplenet::TensorD>::make_node(actual);
+        auto ac = simplenet::Node<simplenet::Tensorf>::make_node(actual);
 
         auto loss = simplenet::neural_network::loss_functions::l1_loss(ac, pred);
         simplenet::autogradient::backward(loss);

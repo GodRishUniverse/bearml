@@ -15,9 +15,8 @@ namespace simplenet {
             template<typename T>
             std::shared_ptr<simplenet::Node<T>> l1_loss(std::shared_ptr<simplenet::Node<T>> actual, std::shared_ptr<simplenet::Node<T>> predictions){
 
-                if (!simplenet::is_tensor_v<T>) {
-                    throw std::runtime_error("T must be a tensor type!");
-                }
+                static_assert(simplenet::is_tensor_v<T>,
+                    "loss functions require a Tensor type (e.g. Tensorf / TensorD)");
 
                 if (actual->val.getShape() != predictions->val.getShape()){
                     throw std::runtime_error("Shapes of actual and predictions do not match!");
@@ -33,9 +32,8 @@ namespace simplenet {
             // Mean Squared error - TODO: check this if it works now
             template<typename T>
             std::shared_ptr<simplenet::Node<T>> l2_loss( std::shared_ptr<simplenet::Node<T>> actual,  std::shared_ptr<simplenet::Node<T>> predictions){
-                if (!simplenet::is_tensor_v<T>) {
-                    throw std::runtime_error("T must be a tensor type!");
-                }
+                static_assert(simplenet::is_tensor_v<T>,
+                    "loss functions require a Tensor type (e.g. Tensorf / TensorD)");
 
                 if (actual->val.getShape() != predictions->val.getShape()){
                     throw std::runtime_error("Shapes of actual and predictions do not match!");
@@ -54,9 +52,8 @@ namespace simplenet {
             template<typename T>
             std::shared_ptr<simplenet::Node<T>> log_loss(std::shared_ptr<simplenet::Node<T>> actual, std::shared_ptr<simplenet::Node<T>> predictions){
 
-                if (!simplenet::is_tensor_v<T>) {
-                    throw std::runtime_error("T must be a tensor type!");
-                }
+                static_assert(simplenet::is_tensor_v<T>,
+                    "loss functions require a Tensor type (e.g. Tensorf / TensorD)");
 
                 if (actual->val.getShape() != predictions->val.getShape()){
                     throw std::runtime_error("Shapes of actual and predictions do not match!");

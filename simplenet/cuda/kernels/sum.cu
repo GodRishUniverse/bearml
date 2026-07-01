@@ -6,14 +6,14 @@ namespace simplenet {
     namespace cuda {
 
         template<typename T>
-        __global__ void sum_kernel(const T* d_data, double* result, int64_t size) {
+        __global__ void sum_kernel(const T* d_data, T* result, int64_t size) {
             for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x;  idx < size; idx += blockDim.x * gridDim.x) {
-                atomicAdd(result, static_cast<double>(d_data[idx]));
+                atomicAdd(result, static_cast<T>(d_data[idx]));
             }
         }
 
         template<typename T>
-        void launch_sum_kernel(T *d_data, double *result, int64_t size, cudaStream_t stream) {
+        void launch_sum_kernel(T *d_data, T *result, int64_t size, cudaStream_t stream) {
             bool own_stream = (stream == nullptr);
             if (own_stream) {
                 CUDA_CHECK(cudaStreamCreate(&stream));
