@@ -670,7 +670,7 @@ TEST(LossTest, ShapeMismatchThrows) {
 // Linear Layer Tests
 
 TEST(LinearTest, OutputShape) {
-    neural_network::Linear<> layer(5, 10);
+    neural_network::Linear<TensorD> layer(5, 10);
     TensorD input({1, 5});
     input.fill(1.0);
     auto x = Node<TensorD>::make_node(input);
@@ -679,7 +679,7 @@ TEST(LinearTest, OutputShape) {
 }
 
 TEST(LinearTest, Parameters) {
-    neural_network::Linear<> layer(3, 4);
+    neural_network::Linear<TensorD> layer(3, 4);
     auto params = layer.parameters();
     EXPECT_EQ(params.size(), 2u); // weight + bias
     EXPECT_EQ(params[0]->val.getShape(), (std::vector<int>{3, 4})); // weight
@@ -687,7 +687,7 @@ TEST(LinearTest, Parameters) {
 }
 
 TEST(LinearTest, BackwardProducesGradients) {
-    neural_network::Linear<> layer(3, 2);
+    neural_network::Linear<TensorD> layer(3, 2);
     TensorD input({1, 3});
     input.fill(1.0);
     auto x = Node<TensorD>::make_node(input);
@@ -702,7 +702,7 @@ TEST(LinearTest, BackwardProducesGradients) {
 // ReLU Tests
 
 TEST(ReLUTest, ForwardPositive) {
-    neural_network::ReLU<> relu;
+    neural_network::ReLU<TensorD> relu;
     TensorD input({4});
     input.set(-2.0, {0}); input.set(0.0, {1}); input.set(3.0, {2}); input.set(-1.0, {3});
     auto x = Node<TensorD>::make_node(input);
@@ -721,7 +721,7 @@ TEST(SGDTest, StepUpdatesParams) {
     auto w = Node<TensorD>::make_node(tw);
     w->grad = TensorD({2}); w->grad.fill(1.0); // manually set grad
 
-    neural_network::optimizers::SGD sgd({w}, 0.1);
+    neural_network::optimizers::SGD<TensorD> sgd({w}, 0.1);
     sgd.step();
     // w = w - lr * grad = 5 - 0.1*1 = 4.9
     EXPECT_NEAR(w->val.get({0}), 4.9, 1e-10);
@@ -733,7 +733,7 @@ TEST(SGDTest, ZeroGrad) {
     auto w = Node<TensorD>::make_node(tw);
     w->grad = TensorD({3}); w->grad.fill(5.0);
 
-    neural_network::optimizers::SGD sgd({w}, 0.01);
+    neural_network::optimizers::SGD<TensorD> sgd({w}, 0.01);
     sgd.zero_grad();
     for (int i = 0; i < 3; i++) {
         EXPECT_DOUBLE_EQ(w->grad.get({i}), 0.0);

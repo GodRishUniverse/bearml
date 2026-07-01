@@ -287,9 +287,9 @@ namespace simplenet {
 
                     case OP_Code::OP_ABS: {
                         if constexpr (std::is_same_v<T, double>) {
-                            result = ::abs(a[thread_idx]);
+                            result = ::fabs(a[thread_idx]);
                         } else {
-                            result = static_cast<T>(::logf(static_cast<float>(a[thread_idx])));
+                            result = static_cast<T>(::fabsf(static_cast<float>(a[thread_idx])));
                         }
                         break;
                     }

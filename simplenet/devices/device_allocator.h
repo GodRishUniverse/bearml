@@ -24,11 +24,15 @@ namespace simplenet {
     class CPUAllocator : public DeviceAllocator {
     public:
         void* allocate(size_t bytes) override {
-            return new double[bytes / sizeof(double)];
+            // Allocate raw, max-aligned bytes. Must NOT assume a double element type:
+            // `new double[bytes/sizeof(double)]` floors to a multiple of 8 bytes and
+            // under-allocates for element types like float (e.g. 5 floats = 20 bytes
+            // would only get 16), corrupting the tail element.
+            return ::operator new(bytes);
         }
 
         void deallocate(void* ptr) override {
-            delete[] static_cast<double*>(ptr);
+            ::operator delete(ptr);
         }
 
         void copy_to_device(void* destination, const void* source, size_t bytes) override {

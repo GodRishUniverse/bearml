@@ -1882,7 +1882,7 @@ namespace simplenet{
 
                         for (size_t j = 0; j < shape[dim_to_use]; ++j) {
                             size_t index = row_base + j * stride_dim;
-                            result.data[index] = exp(t.data[index]-max_values[i]);
+                            result.data[index] = std::exp(t.data[index]-max_values[i]);
                             sum_values[i] += result.data[index];
                         }
 
