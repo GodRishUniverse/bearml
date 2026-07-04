@@ -103,7 +103,7 @@ namespace simplenet {
                 std::vector<int64_t> batch_strides_b(b_view.strides.begin(),
                     b_view.strides.begin() + batch_shape.size());
 
-                cuda::launch_gemm_broadcasted<T>(
+                cuda::launch_gemm_broadcasted<cuda_type_trait_t<T>>(
                     a_ref.data, b_ref.data, result.data,
                     a_rows, a_cols, b_cols,
                     T(1), T(0),
@@ -192,7 +192,7 @@ namespace simplenet {
             if (a.device == DeviceType::CUDA) {
                 Tensor<T> C(a.shape, a.device);
 
-                cuda::launch_elementwise_broadcast<T>(a.data, other.data, C.data, a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
+                cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(a.data, other.data, C.data, a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
                 return C;
             }
 
@@ -221,22 +221,22 @@ namespace simplenet {
             if (a.device.type == DeviceType::CUDA) {
                 switch (op) {
                     case CompareOp::GT: // greater than
-                        simplenet::cuda::launch_comparison_kernel<T>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        simplenet::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::GE: // greater than or equal to
-                        simplenet::cuda::launch_comparison_kernel<T>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        simplenet::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::LT: // less than
-                        simplenet::cuda::launch_comparison_kernel<T>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        simplenet::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::LE: // less than or equal to
-                        simplenet::cuda::launch_comparison_kernel<T>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        simplenet::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::EQ: // equal to
-                        simplenet::cuda::launch_comparison_kernel<T>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        simplenet::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::NE: // not equal to
-                        simplenet::cuda::launch_comparison_kernel<T>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        simplenet::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
                         break;
                     default:
                         throw std::invalid_argument("Invalid compare op");

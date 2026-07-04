@@ -58,7 +58,7 @@ namespace simplenet {
                         }
                     } else {
                         // CUDA
-                        simplenet::cuda::launch_padd_with_constant<T>(input.data, output.data, batch_size, input_shape[input_shape.size() - 2], input_shape[input_shape.size() - 1], pad_amount, constant_value);
+                        simplenet::cuda::launch_padd_with_constant<cuda_type_trait_t<T>>(input.data, output.data, batch_size, input_shape[input_shape.size() - 2], input_shape[input_shape.size() - 1], pad_amount, constant_value);
                     }
                     break;
                 default:
