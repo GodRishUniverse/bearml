@@ -370,36 +370,36 @@ int main() {
 
      // ---------------- transpose / permute view checks ----------------
      // build a 2x3 with values 1..6 on cpu so we can read values back
-     simplenet::TensorD mat ({2,3});
-     mat.linspace(1.0, 6.0); // [[1,2,3],[4,5,6]]
-     cout << "MAT (2x3)" << endl;
-     cout << mat << endl;
+     // simplenet::TensorD mat ({2,3});
+     // mat.linspace(1.0, 6.0); // [[1,2,3],[4,5,6]]
+     // cout << "MAT (2x3)" << endl;
+     // cout << mat << endl;
 
      // transpose: should be O(1) view with shape (3,2), strides swapped, layout STRIDED
-     simplenet::TensorD matT = mat.transpose();
-     cout << "MAT.transpose() shape=" << matT.getShape()[0] << "x" << matT.getShape()[1]
-          << "  strides=[" << matT.getStrides()[0] << "," << matT.getStrides()[1] << "]"
-          << "  layout=" << (matT.layout() == simplenet::utils::Layout::ROW_MAJOR ? "ROW"
-                            : matT.layout() == simplenet::utils::Layout::COL_MAJOR ? "COL" : "STRIDED")
-          << "  shares_data=" << ((matT.getStridesColMajor().size() == mat.getShape().size()) ? "yes" : "no") << endl;
-     cout << matT << endl;  // print uses strides; expect [[1,4],[2,5],[3,6]]
+     // simplenet::TensorD matT = mat.transpose();
+     // cout << "MAT.transpose() shape=" << matT.getShape()[0] << "x" << matT.getShape()[1]
+     //      << "  strides=[" << matT.getStrides()[0] << "," << matT.getStrides()[1] << "]"
+     //      << "  layout=" << (matT.layout() == simplenet::utils::Layout::ROW_MAJOR ? "ROW"
+     //                        : matT.layout() == simplenet::utils::Layout::COL_MAJOR ? "COL" : "STRIDED")
+     //      << "  shares_data=" << ((matT.getStridesColMajor().size() == mat.getShape().size()) ? "yes" : "no") << endl;
+     // cout << matT << endl;  // print uses strides; expect [[1,4],[2,5],[3,6]]
 
      // densifying the view should give the same values in row-major layout
-     simplenet::TensorD matT_dense = matT.contiguous();
-     cout << "MAT.transpose().contiguous() layout="
-          << (matT_dense.layout() == simplenet::utils::Layout::ROW_MAJOR ? "ROW"
-             : matT_dense.layout() == simplenet::utils::Layout::COL_MAJOR ? "COL" : "STRIDED") << endl;
-     cout << matT_dense << endl;
+     // simplenet::TensorD matT_dense = matT.contiguous();
+     // cout << "MAT.transpose().contiguous() layout="
+     //      << (matT_dense.layout() == simplenet::utils::Layout::ROW_MAJOR ? "ROW"
+     //         : matT_dense.layout() == simplenet::utils::Layout::COL_MAJOR ? "COL" : "STRIDED") << endl;
+     // cout << matT_dense << endl;
 
-     // permute on a 3D tensor: (2,3,4) permuted with order {2,0,1} -> shape (4,2,3)
-     simplenet::TensorD cube ({2,3,4});
-     cube.linspace(1.0, 24.0);
-     simplenet::TensorD cubeP = cube.permute({2,0,1});
-     cout << "CUBE.permute({2,0,1}) shape=" << cubeP.getShape()[0] << "x"
-          << cubeP.getShape()[1] << "x" << cubeP.getShape()[2]
-          << "  layout=" << (cubeP.layout() == simplenet::utils::Layout::ROW_MAJOR ? "ROW"
-                            : cubeP.layout() == simplenet::utils::Layout::COL_MAJOR ? "COL" : "STRIDED") << endl;
-     cout << cubeP << endl;
+     // // permute on a 3D tensor: (2,3,4) permuted with order {2,0,1} -> shape (4,2,3)
+     // simplenet::TensorD cube ({2,3,4});
+     // cube.linspace(1.0, 24.0);
+     // simplenet::TensorD cubeP = cube.permute({2,0,1});
+     // cout << "CUBE.permute({2,0,1}) shape=" << cubeP.getShape()[0] << "x"
+     //      << cubeP.getShape()[1] << "x" << cubeP.getShape()[2]
+     //      << "  layout=" << (cubeP.layout() == simplenet::utils::Layout::ROW_MAJOR ? "ROW"
+     //                        : cubeP.layout() == simplenet::utils::Layout::COL_MAJOR ? "COL" : "STRIDED") << endl;
+     // cout << cubeP << endl;
 
      // cout << "IM2COL " << endl;
      // cout << simplenet::linear_algebra::im2col_2d(tens, 3, 1, 0, 1) << endl;
@@ -414,9 +414,16 @@ int main() {
 
      // // we need to use simplenet ops (shouldn't these be in linalg?)
      // cout << simplenet::Tensor::tan(mat_inv) << endl;
-     simplenet::TensorD t({5});
-     t.linspace(0.0, 8.0);
-     cout << t << endl;
+     // simplenet::TensorD t({5});
+     // t.linspace(0.0, 8.0);
+     // cout << t << endl;
+     //
+     //
+
+
+     // Testing BF float in cpp23
+     simplenet::TensorBF bf_tens = simplenet::TensorBF({3, 4, 5}, dev);
+     cout << bf_tens << endl;
 
 
 }

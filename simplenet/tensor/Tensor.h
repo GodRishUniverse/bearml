@@ -98,6 +98,19 @@ namespace simplenet{
 #endif
         ;
 
+    // simplenet::cuda_type_trait<U>::type maps a host element type U to the CUDA
+    // kernel type used to launch it (defaults to U itself; overridden for the
+    // handful of types whose device representation differs from the host one).
+    // Declared before class Tensor (like is_supported_float_v above) so inline
+    // members can use it — must be visible before its first use, since it's a
+    // free namespace-scope template rather than a member of Tensor.
+    template <typename U> struct cuda_type_trait{ using type = U; };
+    #if defined(__STDCPP_BFLOAT16_T__)
+        template<> struct cuda_type_trait<std::bfloat16_t> { using type = __nv_bfloat16; };
+    #endif
+    template<> struct cuda_type_trait<int16_t> { using type = __half; };
+    template <typename U> using cuda_type_trait_t = typename cuda_type_trait<U>::type;
+
     // forward declaration
     namespace linear_algebra {
        template <typename T> Tensor<T> batchedMatMul(const Tensor<T>& a, const Tensor<T>& b); // Forward declare the friend function
@@ -374,7 +387,7 @@ namespace simplenet{
                             h_shape[d]   = (size_t)other.shape[d];
                             h_strides[d] = (size_t)other.strides[d];
                         }
-                        cuda::utils::launch_contiguous_gather<T>(
+                        cuda::utils::launch_contiguous_gather<cuda_type_trait_t<T>>(
                             other.data, this->data, other.data_offset,
                             h_shape.data(), h_strides.data(), (size_t)nd, full_size);
                     } else {
@@ -530,7 +543,7 @@ namespace simplenet{
                     const size_t n = sizeOfTensor();
 
                     if (this->device.is_cuda()){
-                        cuda::utils::launch_dtype_change<T, T2>(this->data + data_offset, new_tensor.data, n);
+                        cuda::utils::launch_dtype_change<cuda_type_trait_t<T>, cuda_type_trait_t<T2>>(this->data + data_offset, new_tensor.data, n);
                     } else {
                         for (size_t i = 0; i < n; ++i) {
                             new_tensor.data[i] = static_cast<T2>(this->data[data_offset + i]);
@@ -931,7 +944,7 @@ namespace simplenet{
                 if (A.device.type == DeviceType::CUDA) {
                     if (A.shape == B.shape) {
                         Tensor C(A.shape, A.device);
-                        cuda::launch_elementwise_contiguous<T>(A.data, B.data, C.data, C.getShape(), op);
+                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(A.data, B.data, C.data, C.getShape(), op);
                         return C;
                     }
                     auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
@@ -944,7 +957,7 @@ namespace simplenet{
 
                     Tensor C(outShape, A.device);
 
-                    cuda::launch_elementwise_broadcast<T>(aView.data, bView.data, C.data,
+                    cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(aView.data, bView.data, C.data,
                         aView.getStrides(), bView.getStrides(), C.getShape(), op);
                     return C;
                 }
@@ -965,7 +978,7 @@ namespace simplenet{
             static Tensor elementwise_scalar(const Tensor& A, T b, OP_Code op, LHS_RHS_Code side) {
                 Tensor C(A.shape, A.device);
                 if (A.device.type == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<T>(A.data, b, C.data, A.shape, op, side);
+                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(A.data, b, C.data, A.shape, op, side);
                     return C;
                 }
                 size_t N = A.sizeOfTensor();
@@ -1024,7 +1037,7 @@ namespace simplenet{
 
                         Tensor oView = makeBroadcastView(other, outShape);
 
-                        cuda::launch_elementwise_broadcast<T>(data, other.data, data,
+                        cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(data, other.data, data,
                             getStrides(), oView.getStrides(), outShape, op);
 
                         return *this;
@@ -1054,7 +1067,7 @@ namespace simplenet{
                 } else {
                     // CUDA
                     if (device.type == DeviceType::CUDA) {
-                        cuda::launch_elementwise_contiguous<T>(data, other.data, data, shape, op);
+                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(data, other.data, data, shape, op);
                         return *this;
                     }
                     size_t N = sizeOfTensor();
@@ -1075,7 +1088,7 @@ namespace simplenet{
             // in-place scalar-Tensor operator
             Tensor& inplace_scalar(T b, OP_Code op) {
                 if (device.type == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<T>(this->data, b, this->data, shape, op, LHS_RHS_Code::OP_RHS);
+                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(this->data, b, this->data, shape, op, LHS_RHS_Code::OP_RHS);
                     return *this;
                 }
                 size_t N = sizeOfTensor();
@@ -1107,7 +1120,7 @@ namespace simplenet{
             static Tensor elementwise_unary(const Tensor& A, OP_Code op) {
                 if (A.device.type == DeviceType::CUDA) {
                     Tensor C(A.shape, A.device);
-                    cuda::launch_elementwise_unary<T>(
+                    cuda::launch_elementwise_unary<cuda_type_trait_t<T>>(
                         A.data,
                         C.data,
                         C.getShape(),
@@ -1237,7 +1250,7 @@ namespace simplenet{
                         // 1D row-major vec of length K, viewed as (1,K): row_stride doesn't matter (only one row), col_stride=1
                         // 1D row-major vec of length K, viewed as (K,1): row_stride=1, col_stride doesn't matter (only one col)
                         Tensor result({1}, a.device);
-                        cuda::launch_gemm_contiguous<T>(
+                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
                             a.data, b.data, result.data,
                             1,    // batchsize
                             1,    // m (rows of a treated as row vector)
@@ -1270,7 +1283,7 @@ namespace simplenet{
                         // A's strides come straight from the tensor (handles transposed/permuted A view natively).
                         // B is 1D row-major contiguous → viewed as (m,1): row_stride=1, col_stride=1 (single col).
                         Tensor result({a_shape[0]}, a.device);
-                        cuda::launch_gemm_contiguous<T>(
+                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
                             a.data, b.data, result.data,
                             1,           // batchsize
                             a_shape[0],  // m
@@ -1308,7 +1321,7 @@ namespace simplenet{
                         // A is 1D row-major contiguous → viewed as (1,m): row_stride=m (single row), col_stride=1.
                         // B's strides come straight from the tensor (handles transposed/permuted B view).
                         Tensor result({1,b_shape[1]}, a.device);
-                        cuda::launch_gemm_contiguous<T>(
+                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
                             a.data, b.data, result.data,
                             1,           // batchsize
                             1,           // m
@@ -1363,7 +1376,7 @@ namespace simplenet{
                         // a_use.strides[0] is the M-axis stride, a_use.strides[1] is the K-axis stride.
                         // For row-major (M,K) that's (K, 1); for col-major it's (1, M). The kernel doesn't
                         // care which — it just uses both to compute a[row * row_stride + k * col_stride].
-                        cuda::launch_gemm_contiguous<T>(
+                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
                             a_use.data, b_use.data, result.data,
                             1,           // batchsize
                             a_shape[0],  // m
@@ -1451,7 +1464,7 @@ namespace simplenet{
             friend bool operator==(const Tensor &a, const Tensor &b){
                 if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
                     if (a.getDevice().type == DeviceType::CUDA && b.getDevice().type == DeviceType::CUDA){
-                        return cuda::launch_check_equal_kernel<T>(a.data, b.data, a.sizeOfTensor()); // need to test this
+                        return cuda::launch_check_equal_kernel<cuda_type_trait_t<T>>(a.data, b.data, a.sizeOfTensor()); // need to test this
                     }
                     // NOTE: std::abs is better for doubles
                     for (size_t i = 0; i<a.sizeOfTensor(); i++){
@@ -1580,7 +1593,7 @@ namespace simplenet{
                 T* flat_data = new_t.data;
 
                 if (this->device.type == DeviceType::CUDA) {
-                    cuda::launch_accumulate_kernel<T>(this->data, flat_data, this->shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
+                    cuda::launch_accumulate_kernel<cuda_type_trait_t<T>>(this->data, flat_data, this->shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
 
                 } else {
 
@@ -1728,7 +1741,7 @@ namespace simplenet{
                 }
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
-                    cuda::launch_elementwise_contiguous<T>(
+                    cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
                         t.data, s.data, result.data,
                         t.getShape(), OP_Code::OP_MAX
                     );
@@ -1769,7 +1782,7 @@ namespace simplenet{
                 }
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
-                    cuda::launch_elementwise_contiguous<T>(
+                    cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
                         t.data, s.data, result.data,
                         t.getShape(), OP_Code::OP_MIN
                     );
@@ -1809,6 +1822,7 @@ namespace simplenet{
                 if (t.device == DeviceType::CUDA) {
                     // Reduce straight into result's own T buffer; the kernel is templated
                     // on the element type, so no separate accumulator tensor is needed.
+                    // TODO: fix the type
                     cuda::launch_sum_kernel(t.data, result.data, t.sizeOfTensor());
                     result.to_(Device::cpu()); // GPU direct memory access is NOT SET UP
                     result.set(static_cast<T>(static_cast<double>(result.data[0]) / static_cast<double>(t.sizeOfTensor())), {0}); // set the mean value
@@ -1845,7 +1859,7 @@ namespace simplenet{
 
                 Tensor result(t.shape, t.device);
                 if (t.device.is_cuda()) {
-                    cuda::launch_softmax_kernel<T>(
+                    cuda::launch_softmax_kernel<cuda_type_trait_t<T>>(
                         t.data,
                         result.data,
                         t.getShape(),
@@ -1902,7 +1916,7 @@ namespace simplenet{
             void fill(T v){
                 // CUDA fill
                 if (!this->device.is_cpu()) {
-                    cuda::launch_fill<T>(
+                    cuda::launch_fill<cuda_type_trait_t<T>>(
                         this->data,
                         v,
                         this->shape
@@ -1930,6 +1944,7 @@ namespace simplenet{
                 }
 
                 //CUDA support
+                // TODO: fix the type
                 return cuda::launch_check_zero_kernel(t.data, t.sizeOfTensor());
 
             }
@@ -1964,7 +1979,7 @@ namespace simplenet{
                         cur+=step;
                     }
                 } else {
-                    cuda::launch_linspace_kernel<T>(this->data, static_cast<T>(start), static_cast<T>(step), long_size);
+                    cuda::launch_linspace_kernel<cuda_type_trait_t<T>>(this->data, static_cast<T>(start), static_cast<T>(step), long_size);
                 }
                 return *this;
             }
@@ -2092,7 +2107,7 @@ namespace simplenet{
                         h_shape[d]   = (size_t)t.shape[d];
                         h_strides[d] = (size_t)t.strides[d];
                     }
-                    cuda::utils::launch_contiguous_gather<T>(
+                    cuda::utils::launch_contiguous_gather<cuda_type_trait_t<T>>(
                         t.data, result.data, t.data_offset,
                         h_shape.data(), h_strides.data(), (size_t)nd, n);
                 } else {
@@ -2251,7 +2266,7 @@ namespace simplenet{
                     CUDA_CHECK(cudaMemcpy(d_shapes, h_shape_ptrs.data(),
                                           n * sizeof(int*), cudaMemcpyHostToDevice));
 
-                    cuda::launch_concat_kernel<T>(d_allInputs, d_shapes, n, result.data,
+                    cuda::launch_concat_kernel<cuda_type_trait_t<T>>(d_allInputs, d_shapes, n, result.data,
                                                        outerDim, innerDim, dim, concatDim);
 
                     for (int* d_shape : h_shape_ptrs) CUDA_CHECK(cudaFree(d_shape));
@@ -2324,9 +2339,13 @@ namespace simplenet{
     // dtype aliases - the supported element types for Tensor<T>
     using TensorD  = Tensor<double>;          // 64-bit float (default / legacy precision)
     using Tensorf  = Tensor<float>;           // 32-bit float
+    #if defined(__STDCPP_BFLOAT16_T__)
+        using TensorBF = Tensor<std::bfloat16_t>; // bfloat16
+    #endif
+
     using TensorI  = Tensor<int>;             // 32-bit signed int
 
-
+    // https://accu.org/journals/overload/9/43/frogley_442/ (C++ traits)
     // trait: is_tensor_v<U> is true iff U is some Tensor<E> specialization.
     // Used by autograd so Node<T> stays generic over Tensor<T> (any element
     // type) instead of hard-coding a concrete alias like TensorD.
@@ -2346,6 +2365,7 @@ namespace simplenet{
     template<typename U>
     inline constexpr bool is_supported_float_tensor_v =
         is_tensor_v<U> && is_supported_float_v<tensor_element_t<U>>;
+
 }
 
 // linear_algebra friend templates - definitions included here so they are visible

@@ -14,7 +14,7 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 
 ### Prerequisites
 **Only tested on Fedora Linux at the moment**
-- C++23 or higher (as we have std::bfloat_t)
+- C++23 or higher (as we have std::bfloat_t) - but if you change to C++20 - **it should still work but for std::bfloat_t on CPU only we need C++23 or higher**
 - NVCC (NVIDIA CUDA Compiler) uses C++17 mode by default, so C++23 features are not available in CUDA code
 - CMake 3.30+
 - CUDA Toolkit 13.0 - optional (again will have to make CUDA version optional or support multiple versions)
