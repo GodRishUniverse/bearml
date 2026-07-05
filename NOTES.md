@@ -1,4 +1,4 @@
-# SimpleNet: a `mini-pytorch` in pure C++/CUDA
+# BearML: a `mini-pytorch` in pure C++/CUDA
 
 Deep Learning Framework: Implementing Neural Networks in C++
 
@@ -21,8 +21,8 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 ### Building
 
 ```bash
-git clone https://github.com/GodRishUniverse/SimpleNet.git;
-cd SimpleNet;
+git clone https://github.com/GodRishUniverse/BearML.git;
+cd BearML;
 mkdir build && cd build;
 cmake ..;
 make;
@@ -248,7 +248,7 @@ This repository is open to contribute to. Please make an issue before submitting
 
 To clone please do the following: (for submodules)
 ```bash
-git clone --recursive https://github.com/GodRishUniverse/SimpleNet.git
+git clone --recursive https://github.com/GodRishUniverse/BearML.git
 ```
 
 ### Citations [will formalize]

@@ -9,7 +9,7 @@
 #define MATRIX_H
 
 // TODO: Templatify Matrix class so that it can work with any data type
-namespace simplenet{
+namespace bearml{
 
 
     template<typename T> class Matrix;

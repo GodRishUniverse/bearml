@@ -1,9 +1,9 @@
 // Need to go over -> https://google.github.io/googletest/primer.html
 
 #include "gtest/gtest.h"
-#include "simplenet.h"
+#include "bearml.h"
 
-using namespace simplenet; // our namespace for simplenet types
+using namespace bearml; // our namespace for bearml types
 using NodeT = std::shared_ptr<Node<TensorD>>; // aliases defined for ease of reading
 using NodeD = std::shared_ptr<Node<double>>; // aliases defined for ease of reading
 

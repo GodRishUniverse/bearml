@@ -1,6 +1,8 @@
-# SimpleNet: a `mini-pytorch` in pure C++/CUDA
+# BearML 🐻: a `mini-pytorch` in pure C++/CUDA
 
 Deep Learning Framework: Implementing Neural Networks in C++
+
+Bare-metal deep learning, hence the bear.
 
 ## Why?
 
@@ -27,8 +29,8 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 ### Building
 
 ```bash
-git clone --recursive https://github.com/GodRishUniverse/SimpleNet.git
-cd SimpleNet
+git clone --recursive https://github.com/GodRishUniverse/BearML.git
+cd BearML
 mkdir build && cd build
 cmake ..
 make
@@ -50,7 +52,7 @@ Unit tests can be run with:
 
 ## Core Components
 
-### Tensor (`simplenet::Tensor<T>`)
+### Tensor (`bearml::Tensor<T>`)
 
 The fundamental data structure. `Tensor` is a **class template** parameterized on the
 element type. It is multi-dimensional, device-aware (CPU/CUDA), and supports broadcasting.
@@ -63,15 +65,15 @@ element type. It is multi-dimensional, device-aware (CPU/CUDA), and supports bro
 | `Tensorf` | `Tensor<float>`  | 32-bit float                    |
 | `TensorI` | `Tensor<int>`    | 32-bit signed int               |
 
-Use an alias (e.g. `simplenet::Tensorf`) or the explicit form `simplenet::Tensor<float>`.
+Use an alias (e.g. `bearml::Tensorf`) or the explicit form `bearml::Tensor<float>`.
 The examples below use `Tensorf`; substitute another alias for a different dtype.
 
 ```cpp
-#include "simplenet.h"
+#include "bearml.h"
 
 // Create tensors
-simplenet::Tensorf a({2, 3, 4});         // 2x3x4 tensor, zeros on CPU
-simplenet::Tensorf b({3, 4});            // 3x4 tensor
+bearml::Tensorf a({2, 3, 4});         // 2x3x4 tensor, zeros on CPU
+bearml::Tensorf b({3, 4});            // 3x4 tensor
 
 // Fill with data
 a.linspace(1, 10);                       // fill with linearly spaced values
@@ -88,7 +90,7 @@ auto g = a * 3.5;
 
 // Shape operations
 a.reshape({6, 4});
-auto t = simplenet::Tensorf::transpose(a, 0, 1);
+auto t = bearml::Tensorf::transpose(a, 0, 1);
 auto flat = a.flatten(0, -1, true);      // flatten dimensions
 a.squeeze(0);                            // remove dimension of size 1
 
@@ -96,22 +98,22 @@ a.squeeze(0);                            // remove dimension of size 1
 auto s = a.sum(1, false);               // sum along axis 1
 
 // Comparisons
-auto mask = simplenet::linear_algebra::mask_of_greater_than(a, b, 1.0, 0.0);
+auto mask = bearml::linear_algebra::mask_of_greater_than(a, b, 1.0, 0.0);
 
 // Slicing
 auto sliced = a.slice("1, 1:5:2");       // numpy-style slicing
-auto cont = simplenet::Tensorf::contiguous(sliced);
+auto cont = bearml::Tensorf::contiguous(sliced);
 
 // Concatenation
-auto cat = simplenet::Tensorf::concat({a, b}, 0);
+auto cat = bearml::Tensorf::concat({a, b}, 0);
 
 // Math functions
-auto t_out = simplenet::Tensorf::tan(a);
+auto t_out = bearml::Tensorf::tan(a);
 
 // Print
 std::cout << a << std::endl;
 a.printShape();
-simplenet::Tensorf::setPrintPrecision(4);  // set decimal precision
+bearml::Tensorf::setPrintPrecision(4);  // set decimal precision
 ```
 
 ### Device Management
@@ -119,15 +121,15 @@ simplenet::Tensorf::setPrintPrecision(4);  // set decimal precision
 Tensors can be moved between CPU and CUDA devices.
 
 ```cpp
-simplenet::Device cpu_dev = simplenet::Device::cpu();
-simplenet::Device gpu_dev = simplenet::Device::cuda(0);  // GPU 0
+bearml::Device cpu_dev = bearml::Device::cpu();
+bearml::Device gpu_dev = bearml::Device::cuda(0);  // GPU 0
 
-simplenet::Tensorf t({3, 4});
+bearml::Tensorf t({3, 4});
 t.to_(gpu_dev);              // move to GPU in-place
 auto t_cpu = t.to(cpu_dev);  // create a copy on CPU
 ```
 
-### Autograd (`simplenet::Node<T>`)
+### Autograd (`bearml::Node<T>`)
 
 Reverse-mode automatic differentiation via a computational graph. `Node<T>` is generic
 over its value type: it works on scalar `double` and on any `Tensor<U>` (e.g. `Tensorf`,
@@ -136,21 +138,21 @@ hardcoded tensor dtype.
 
 ```cpp
 // Scalar autodiff
-auto x = simplenet::Node<double>::make_node(4.0);
-auto y = simplenet::Node<double>::make_node(2.0);
+auto x = bearml::Node<double>::make_node(4.0);
+auto y = bearml::Node<double>::make_node(2.0);
 auto z = x * y + x;     // z = x*y + x
 // dz/dx = y + 1 = 3, dz/dy = x = 4
 
-simplenet::autogradient::backward(z);
+bearml::autogradient::backward(z);
 std::cout << x->grad << std::endl;  // 3.0
 std::cout << y->grad << std::endl;  // 4.0
 
 // Tensor autodiff
-simplenet::Tensorf a({2, 3});
+bearml::Tensorf a({2, 3});
 a.linspace(1, 6);
-auto node_a = simplenet::Node<simplenet::Tensorf>::make_node(a);
+auto node_a = bearml::Node<bearml::Tensorf>::make_node(a);
 auto result = node_a * node_a;  // element-wise square
-simplenet::autogradient::backward(result);
+bearml::autogradient::backward(result);
 // node_a->grad now contains 2*a
 ```
 
@@ -158,7 +160,7 @@ simplenet::autogradient::backward(result);
 
 PyTorch-style module system with polymorphism.
 
-**Base class:** `simplenet::neural_network::Module` (abstract)
+**Base class:** `bearml::neural_network::Module` (abstract)
 - `forward()` - forward pass (pure virtual)
 - `parameters()` - returns trainable parameters
 - Xavier and He initialization built in
@@ -171,15 +173,15 @@ PyTorch-style module system with polymorphism.
 - `Tanh()` - hyperbolic tangent
 
 ```cpp
-simplenet::Device dev = simplenet::Device::cuda(0);
+bearml::Device dev = bearml::Device::cuda(0);
 
 // Create layers
-simplenet::neural_network::Linear fc1(784, 128, "Xavier", dev);
-simplenet::neural_network::ReLU relu;
-simplenet::neural_network::Linear fc2(128, 10, "He", dev);
+bearml::neural_network::Linear fc1(784, 128, "Xavier", dev);
+bearml::neural_network::ReLU relu;
+bearml::neural_network::Linear fc2(128, 10, "He", dev);
 
 // Forward pass through layers
-auto x = simplenet::Node<simplenet::Tensorf>::make_node(input);
+auto x = bearml::Node<bearml::Tensorf>::make_node(input);
 auto h = fc1(x);
 auto h_act = relu(h);
 auto out = fc2(h_act);
@@ -190,26 +192,26 @@ auto out = fc2(h_act);
 Base class for defining custom models (analogous to `torch.nn.Module`).
 
 ```cpp
-class MyModel : public simplenet::neural_network::Model_Construct {
+class MyModel : public bearml::neural_network::Model_Construct {
 public:
-    simplenet::neural_network::Linear layer1;
-    simplenet::neural_network::Tanh activation;
-    simplenet::neural_network::Linear layer2;
+    bearml::neural_network::Linear layer1;
+    bearml::neural_network::Tanh activation;
+    bearml::neural_network::Linear layer2;
 
-    MyModel(int in_size, int out_size, simplenet::Device dev = simplenet::Device::cpu())
+    MyModel(int in_size, int out_size, bearml::Device dev = bearml::Device::cpu())
         : layer1(in_size, 64, "Xavier", dev),
           activation(42, dev),
           layer2(64, out_size, "Xavier", dev) {}
 
-    std::shared_ptr<simplenet::Node<simplenet::Tensorf>> forward(
-            std::vector<simplenet::Tensorf> inputs) override {
-        auto x = simplenet::Node<simplenet::Tensorf>::make_node(inputs[0]);
+    std::shared_ptr<bearml::Node<bearml::Tensorf>> forward(
+            std::vector<bearml::Tensorf> inputs) override {
+        auto x = bearml::Node<bearml::Tensorf>::make_node(inputs[0]);
         auto h = layer1(x);
         auto h_act = activation(h);
         return layer2(h_act);
     }
 
-    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensorf>>> parameters() override {
+    std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> parameters() override {
         auto params = layer1.parameters();
         auto l2_params = layer2.parameters();
         params.insert(params.end(), l2_params.begin(), l2_params.end());
@@ -220,7 +222,7 @@ public:
 
 ### Loss Functions
 
-Located in `simplenet::neural_network::loss_functions`:
+Located in `bearml::neural_network::loss_functions`:
 
 | Function | Description |
 |----------|-------------|
@@ -229,13 +231,13 @@ Located in `simplenet::neural_network::loss_functions`:
 | `log_loss(actual, predictions)` | Binary Cross-Entropy (Log Loss) |
 
 ```cpp
-auto actual_node = simplenet::Node<simplenet::Tensorf>::make_node(actual);
-auto loss = simplenet::neural_network::loss_functions::l1_loss(actual_node, predictions);
+auto actual_node = bearml::Node<bearml::Tensorf>::make_node(actual);
+auto loss = bearml::neural_network::loss_functions::l1_loss(actual_node, predictions);
 ```
 
 ### Optimizers
 
-Located in `simplenet::neural_network::optimizers`:
+Located in `bearml::neural_network::optimizers`:
 
 | Optimizer | Parameters |
 |-----------|------------|
@@ -243,18 +245,18 @@ Located in `simplenet::neural_network::optimizers`:
 | `Adam(params, lr, beta1, beta2, eps)` | LR, momentum decay, RMSProp decay, epsilon |
 
 ```cpp
-simplenet::neural_network::optimizers::SGD optim(model.parameters(), 0.01);
+bearml::neural_network::optimizers::SGD optim(model.parameters(), 0.01);
 // or
-simplenet::neural_network::optimizers::Adam optim(model.parameters(), 0.001);
+bearml::neural_network::optimizers::Adam optim(model.parameters(), 0.001);
 
 for (int epoch = 0; epoch < 100; epoch++) {
     optim.zero_grad();
 
     auto pred = model.forward({input});
-    auto actual_node = simplenet::Node<simplenet::Tensorf>::make_node(target);
-    auto loss = simplenet::neural_network::loss_functions::l2_loss(actual_node, pred);
+    auto actual_node = bearml::Node<bearml::Tensorf>::make_node(target);
+    auto loss = bearml::neural_network::loss_functions::l2_loss(actual_node, pred);
 
-    simplenet::autogradient::backward(loss);
+    bearml::autogradient::backward(loss);
     optim.step();
 
     std::cout << "Epoch " << epoch << " Loss: " << loss->val << std::endl;
@@ -284,30 +286,30 @@ Kernels are dispatched automatically when tensors are on a CUDA device. The host
 ## End-to-End Training Example
 
 ```cpp
-#include "simplenet.h"
+#include "bearml.h"
 #include <iostream>
 
-class Model : public simplenet::neural_network::Model_Construct {
+class Model : public bearml::neural_network::Model_Construct {
 public:
-    simplenet::neural_network::Linear layer1;
-    simplenet::neural_network::Tanh nonlinearity;
-    simplenet::neural_network::Linear layer2;
+    bearml::neural_network::Linear layer1;
+    bearml::neural_network::Tanh nonlinearity;
+    bearml::neural_network::Linear layer2;
 
-    Model(int in_shape, int out_shape, simplenet::Device dev = simplenet::Device::cpu())
+    Model(int in_shape, int out_shape, bearml::Device dev = bearml::Device::cpu())
         : layer1(in_shape, out_shape, "Xavier", dev),
           nonlinearity(42, dev),
           layer2(out_shape, out_shape, "Xavier", dev) {}
 
-    std::shared_ptr<simplenet::Node<simplenet::Tensorf>> forward(
-            std::vector<simplenet::Tensorf> inputs) override {
-        auto x = simplenet::Node<simplenet::Tensorf>::make_node(inputs[0]);
+    std::shared_ptr<bearml::Node<bearml::Tensorf>> forward(
+            std::vector<bearml::Tensorf> inputs) override {
+        auto x = bearml::Node<bearml::Tensorf>::make_node(inputs[0]);
         auto f1 = layer1(x);
         auto f2 = nonlinearity(f1);
         return layer2(f2);
     }
 
-    std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensorf>>> parameters() override {
-        std::vector<std::shared_ptr<simplenet::Node<simplenet::Tensorf>>> params;
+    std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> parameters() override {
+        std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> params;
         auto l1 = layer1.parameters();
         params.insert(params.end(), l1.begin(), l1.end());
         auto l2 = layer2.parameters();
@@ -317,28 +319,28 @@ public:
 };
 
 int main() {
-    simplenet::Device dev = simplenet::Device::cuda(0);
+    bearml::Device dev = bearml::Device::cuda(0);
 
     Model model(2, 5, dev);
 
-    simplenet::Tensorf input({1, 2});
+    bearml::Tensorf input({1, 2});
     input.linspace(1, 2);
     input.to_(dev);
 
-    simplenet::Tensorf target({1, 5});
+    bearml::Tensorf target({1, 5});
     target.linspace(1, 5);
     target.to_(dev);
 
-    simplenet::neural_network::optimizers::SGD optim(model.parameters(), 0.1);
+    bearml::neural_network::optimizers::SGD optim(model.parameters(), 0.1);
 
     for (int i = 0; i < 10; i++) {
         optim.zero_grad();
 
         auto pred = model.forward({input});
-        auto actual_node = simplenet::Node<simplenet::Tensorf>::make_node(target);
-        auto loss = simplenet::neural_network::loss_functions::l1_loss(actual_node, pred);
+        auto actual_node = bearml::Node<bearml::Tensorf>::make_node(target);
+        auto loss = bearml::neural_network::loss_functions::l1_loss(actual_node, pred);
 
-        simplenet::autogradient::backward(loss);
+        bearml::autogradient::backward(loss);
         optim.step();
 
         std::cout << "Loss: " << loss->val << std::endl;
@@ -456,8 +458,8 @@ This repository is open to contributions. Please make an issue before submitting
 
 1. Fork and clone the repository (with submodules):
    ```bash
-   git clone --recursive https://github.com/GodRishUniverse/SimpleNet.git
-   cd SimpleNet
+   git clone --recursive https://github.com/GodRishUniverse/BearML.git
+   cd BearML
    ```
 
 2. Create a build directory and build:
@@ -481,32 +483,32 @@ This repository is open to contributions. Please make an issue before submitting
 
 **Adding a new CUDA kernel:**
 
-1. Create `your_kernel.cu` and `your_kernel.cuh` in `simplenet/cuda/kernels/`.
+1. Create `your_kernel.cu` and `your_kernel.cuh` in `bearml/cuda/kernels/`.
 2. In the `.cuh` file, declare the kernel function and the `launch_*` host wrapper. Use the existing pattern with `INSTANTIATE_*` macros for template instantiation.
 3. In the `.cu` file, implement the `__global__` kernel and the `launch_*` function. Follow the existing pattern for stream management (create a stream if `nullptr` is passed, synchronize and destroy if owned).
-4. Add forward declarations in `simplenet/cuda/includes/kernel_links.h` so host code can call your launcher.
-5. Add the `.cu` file to `simplenet/CMakeLists.txt` in the source list.
+4. Add forward declarations in `bearml/cuda/includes/kernel_links.h` so host code can call your launcher.
+5. Add the `.cu` file to `bearml/CMakeLists.txt` in the source list.
 
 **Adding a new layer/activation:**
 
-1. Create your class inheriting from `simplenet::neural_network::Module` in `simplenet/activation_functions/`.
+1. Create your class inheriting from `bearml::neural_network::Module` in `bearml/activation_functions/`.
 2. Implement `forward()`, `parameters()`, `get_detached_value()`, and the `operator()` overloads.
-3. Include it in `simplenet/simplenet.h` if it should be part of the public API.
+3. Include it in `bearml/bearml.h` if it should be part of the public API.
 
 **Adding a new loss function:**
 
-1. Add your function in `simplenet/loss_functions/loss.h` following the existing pattern.
+1. Add your function in `bearml/loss_functions/loss.h` following the existing pattern.
 2. It should take `shared_ptr<Node<Tensor>>` arguments and return the same. Use the autodiff operators (`+`, `-`, `*`, `/`, `hadamard`, etc.) so gradients flow through automatically.
 
 **Adding a new optimizer:**
 
-1. Inherit from `simplenet::neural_network::optimizers::Optimizer` in `simplenet/optimizers/optimizers.h`.
+1. Inherit from `bearml::neural_network::optimizers::Optimizer` in `bearml/optimizers/optimizers.h`.
 2. Implement `step()` and `zero_grad()`.
 3. Add the implementation in `optimizers.cpp`.
 
 **Adding new Tensor operations:**
 
-1. If it's a host-side utility, add it to the appropriate file under `simplenet/tensor/utils/`.
+1. If it's a host-side utility, add it to the appropriate file under `bearml/tensor/utils/`.
 2. If it needs a CUDA kernel, follow the kernel instructions above and add the host dispatch in `cuda_kernels.h/.cpp`.
 3. Add the public method to `Tensor.h` / `Tensor.cpp`.
 

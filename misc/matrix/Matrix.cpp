@@ -4,7 +4,7 @@
 
 // TODO : implementation needed - division (inversion -  should work for constants and matrix inversion ), GEMM
 
-namespace simplenet{
+namespace bearml{
     // matrix addition
     template<typename U>
     Matrix<U> operator+(Matrix<U> &other1,  Matrix<U> &other2) {

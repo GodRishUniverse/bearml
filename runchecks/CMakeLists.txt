@@ -10,5 +10,5 @@ add_executable(test_runner ${TEST_FILES})
 # Link against the src library
 target_link_libraries(test_runner
     PRIVATE
-        simplenet
+        bearml
 )

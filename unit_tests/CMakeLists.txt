@@ -10,7 +10,7 @@ add_executable(unit_tests ${TEST_FILES})
 # Link against the src library
 target_link_libraries(unit_tests
     PRIVATE
-        simplenet
+        bearml
         GTest::gtest
         GTest::gtest_main
 )
