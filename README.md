@@ -1,4 +1,4 @@
-# BearML : a `mini-pytorch` in pure C++/CUDA
+# BearML/bareml: a `mini-pytorch` in pure C++/CUDA
 
 Deep Learning Framework: Implementing Neural Networks in C++
 
