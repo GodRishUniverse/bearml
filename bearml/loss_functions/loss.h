@@ -1,5 +1,6 @@
 #pragma once
 
+#include "operators/ops.h"
 #include "tensor/Tensor.h"
 #include "autograd/autogradient.h"
 #include <stdexcept>
@@ -53,7 +54,7 @@ namespace bearml {
             std::shared_ptr<bearml::Node<T>> log_loss(std::shared_ptr<bearml::Node<T>> actual, std::shared_ptr<bearml::Node<T>> predictions){
 
                 static_assert(bearml::is_tensor_v<T>,
-                    "loss functions require a Tensor type (e.g. Tensorf / TensorD)");
+                    "loss functions require a Tensor type (e.g. Tensorf / TensorD / TensorBF)");
 
                 if (actual->val.getShape() != predictions->val.getShape()){
                     throw std::runtime_error("Shapes of actual and predictions do not match!");
@@ -75,14 +76,29 @@ namespace bearml {
 
             // BCE
             template<typename T>
-            std::shared_ptr<bearml::Node<T>> bce_loss_with_logits(std::shared_ptr<bearml::Node<T>> actual, std::shared_ptr<bearml::Node<T>> predictions, std::string){
+            std::shared_ptr<bearml::Node<T>> bce_loss_with_logits(std::shared_ptr<bearml::Node<T>> actual, std::shared_ptr<bearml::Node<T>> predictions){
                 return log_loss<T>(actual, predictions);
             }
 
 
-            // Cross Entropy
-            void cross_entropy_loss(int actual, int predictions){
-                // Log loss
+            template <typename T>
+            std::shared_ptr<bearml::Node<T>> cross_entropy_loss(std::shared_ptr<bearml::Node<T>> actual, std::shared_ptr<bearml::Node<T>> predictions){
+                static_assert(bearml::is_tensor_v<T>,
+                    "loss functions require a Tensor type (e.g. Tensorf / TensorD / TensorBF)");
+
+                if (actual->val.getShape() != predictions->val.getShape()){
+                    throw std::runtime_error("Shapes of actual and predictions do not match!");
+                }
+
+                int dim = static_cast<int>(actual->val.getShape().size()) - 1; // last dim is class dim
+
+                auto p = bearml::Node<T>::softmax(predictions, dim);
+                auto log_p = bearml::Node<T>::log(p);
+                auto ce = -1.0 * bearml::Node<T>::hadamard(actual, log_p);
+                auto per_sample_loss = bearml::Node<T>::sum(ce, dim); // sum over class dim (keepdims=true)
+                auto loss = mean(per_sample_loss);                    // mean over remaining (batch) dims
+                return loss;
+
             }
 
         }

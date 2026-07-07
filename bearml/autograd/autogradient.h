@@ -414,7 +414,7 @@ namespace bearml{
         }
 
         friend std::shared_ptr<Node<T>> operator/(std::shared_ptr<Node<T>> a, std::shared_ptr<Node<T>> b){
-            return reductions_node_operators(a, b, OP_Code::OP_DIV);
+            return elementwise_binary_node_operators(a, b, OP_Code::OP_DIV);
         };
 
         // ------------------------------------------------- UNARY Operators -------------------------------------------------
@@ -678,6 +678,38 @@ namespace bearml{
             return elementwise_unary_node_operators(a, OP_Code::OP_SQRT);
         }
 
+        // Sum over a single dimension (dim = -1 means the last dimension).
+        // Always reduces with keepdims=true so the backward broadcast below is a
+        // plain rank-matched addition instead of needing a reshape.
+        static std::shared_ptr<Node<T>> sum(std::shared_ptr<Node<T>> a, int dim){
+            if constexpr (!bearml::is_tensor_v<T>) {
+                throw std::invalid_argument("Autograd: sum cannot be applied to a non-Tensor type.");
+            } else {
+                int rank = static_cast<int>(a->val.getShape().size());
+                int dim_to_use = (dim == -1) ? rank - 1 : dim;
+
+                std::shared_ptr<Node<T>> node = make_node(a->val.accumulate(dim_to_use, bearml::reductions::ReductionOps::SUM, true));
+
+                node->inputs = {a};
+                a->outputs.push_back(node);
+
+                std::weak_ptr<Node<T>> weak_a = a;
+                std::weak_ptr<Node<T>> weak_node = node;
+
+                // d(sum_dim(a))/da = 1 for every element that fed the sum, so the
+                // upstream grad just broadcasts back out across the reduced axis
+                node->backward_fn = [weak_a, weak_node]() {
+                    std::shared_ptr<Node<T>> a_locked = weak_a.lock();
+                    std::shared_ptr<Node<T>> node_locked = weak_node.lock();
+                    if (!a_locked || !node_locked) return;
+
+                    T grad_input = T(a_locked->val.getShape(), a_locked->val.getDevice()) + node_locked->grad;
+                    accumulate_grad(a_locked->grad, grad_input, a_locked->val);
+                };
+                return node;
+            }
+        }
+
 
         // Padding
         friend std::shared_ptr<Node<T>> padding(std::shared_ptr<Node<T>> a, int pad_amount, Padding_Op_Code padding_mode, double constant_value) {
@@ -685,7 +717,7 @@ namespace bearml{
         }
 
         // Softmax
-        friend std::shared_ptr<Node<T>> softmax(std::shared_ptr<Node<T>> a, int dim){
+        static std::shared_ptr<Node<T>> softmax(std::shared_ptr<Node<T>> a, int dim){
             if constexpr (!bearml::is_tensor_v<T>) {
                 throw std::invalid_argument("Autograd: softmax cannot be applied to a non-Tensor type.");
             } else {

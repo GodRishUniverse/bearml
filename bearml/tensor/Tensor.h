@@ -12,6 +12,7 @@
 #include <memory>
 #include <type_traits>
 #include <limits>
+#include <bit>
 
 #include <span>
 
@@ -110,6 +111,20 @@ namespace bearml{
     #endif
     template<> struct cuda_type_trait<int16_t> { using type = __half; };
     template <typename U> using cuda_type_trait_t = typename cuda_type_trait<U>::type;
+
+    // Reinterprets a host element pointer as the CUDA kernel type launch_* functions expect.
+    // No-op cast for types where host and device representations coincide (float, double, ints);
+    // bit-reinterpret for the handful (bf16/half) where the host storage type and CUDA type differ.
+    template <typename U>
+    inline cuda_type_trait_t<U>* cuda_ptr(U* p) { return reinterpret_cast<cuda_type_trait_t<U>*>(p); }
+    template <typename U>
+    inline const cuda_type_trait_t<U>* cuda_ptr(const U* p) { return reinterpret_cast<const cuda_type_trait_t<U>*>(p); }
+
+    // Same idea as cuda_ptr but for by-value scalar args (e.g. the constant in
+    // elementwise-with-constant launches) — bit_cast since host and device types
+    // are same-size, same-layout but distinct C++ types.
+    template <typename U>
+    inline cuda_type_trait_t<U> cuda_val(U v) { return std::bit_cast<cuda_type_trait_t<U>>(v); }
 
     // forward declaration
     namespace linear_algebra {
@@ -388,7 +403,7 @@ namespace bearml{
                             h_strides[d] = (size_t)other.strides[d];
                         }
                         cuda::utils::launch_contiguous_gather<cuda_type_trait_t<T>>(
-                            other.data, this->data, other.data_offset,
+                            cuda_ptr(other.data), cuda_ptr(this->data), other.data_offset,
                             h_shape.data(), h_strides.data(), (size_t)nd, full_size);
                     } else {
                         // i walks the DESTINATION in row-major (dst is dense, so we write data[i] in flat order)
@@ -543,7 +558,7 @@ namespace bearml{
                     const size_t n = sizeOfTensor();
 
                     if (this->device.is_cuda()){
-                        cuda::utils::launch_dtype_change<cuda_type_trait_t<T>, cuda_type_trait_t<T2>>(this->data + data_offset, new_tensor.data, n);
+                        cuda::utils::launch_dtype_change<cuda_type_trait_t<T>, cuda_type_trait_t<T2>>(cuda_ptr(this->data + data_offset), cuda_ptr(new_tensor.data), n);
                     } else {
                         for (size_t i = 0; i < n; ++i) {
                             new_tensor.data[i] = static_cast<T2>(this->data[data_offset + i]);
@@ -944,7 +959,7 @@ namespace bearml{
                 if (A.device.type == DeviceType::CUDA) {
                     if (A.shape == B.shape) {
                         Tensor C(A.shape, A.device);
-                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(A.data, B.data, C.data, C.getShape(), op);
+                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(A.data), cuda_ptr(B.data), cuda_ptr(C.data), C.getShape(), op);
                         return C;
                     }
                     auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
@@ -957,7 +972,7 @@ namespace bearml{
 
                     Tensor C(outShape, A.device);
 
-                    cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(aView.data, bView.data, C.data,
+                    cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(cuda_ptr(aView.data), cuda_ptr(bView.data), cuda_ptr(C.data),
                         aView.getStrides(), bView.getStrides(), C.getShape(), op);
                     return C;
                 }
@@ -978,7 +993,7 @@ namespace bearml{
             static Tensor elementwise_scalar(const Tensor& A, T b, OP_Code op, LHS_RHS_Code side) {
                 Tensor C(A.shape, A.device);
                 if (A.device.type == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(A.data, b, C.data, A.shape, op, side);
+                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(cuda_ptr(A.data), cuda_val(b), cuda_ptr(C.data), A.shape, op, side);
                     return C;
                 }
                 size_t N = A.sizeOfTensor();
@@ -1037,7 +1052,7 @@ namespace bearml{
 
                         Tensor oView = makeBroadcastView(other, outShape);
 
-                        cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(data, other.data, data,
+                        cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(cuda_ptr(data), cuda_ptr(other.data), cuda_ptr(data),
                             getStrides(), oView.getStrides(), outShape, op);
 
                         return *this;
@@ -1067,7 +1082,7 @@ namespace bearml{
                 } else {
                     // CUDA
                     if (device.type == DeviceType::CUDA) {
-                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(data, other.data, data, shape, op);
+                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(data), cuda_ptr(other.data), cuda_ptr(data), shape, op);
                         return *this;
                     }
                     size_t N = sizeOfTensor();
@@ -1088,7 +1103,7 @@ namespace bearml{
             // in-place scalar-Tensor operator
             Tensor& inplace_scalar(T b, OP_Code op) {
                 if (device.type == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(this->data, b, this->data, shape, op, LHS_RHS_Code::OP_RHS);
+                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(cuda_ptr(this->data), cuda_val(b), cuda_ptr(this->data), shape, op, LHS_RHS_Code::OP_RHS);
                     return *this;
                 }
                 size_t N = sizeOfTensor();
@@ -1121,8 +1136,8 @@ namespace bearml{
                 if (A.device.type == DeviceType::CUDA) {
                     Tensor C(A.shape, A.device);
                     cuda::launch_elementwise_unary<cuda_type_trait_t<T>>(
-                        A.data,
-                        C.data,
+                        cuda_ptr(A.data),
+                        cuda_ptr(C.data),
                         C.getShape(),
                         op
                     );
@@ -1251,7 +1266,7 @@ namespace bearml{
                         // 1D row-major vec of length K, viewed as (K,1): row_stride=1, col_stride doesn't matter (only one col)
                         Tensor result({1}, a.device);
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            a.data, b.data, result.data,
+                            cuda_ptr(a.data), cuda_ptr(b.data), cuda_ptr(result.data),
                             1,    // batchsize
                             1,    // m (rows of a treated as row vector)
                             a_shape[0], // k (common dim),
@@ -1284,7 +1299,7 @@ namespace bearml{
                         // B is 1D row-major contiguous → viewed as (m,1): row_stride=1, col_stride=1 (single col).
                         Tensor result({a_shape[0]}, a.device);
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            a.data, b.data, result.data,
+                            cuda_ptr(a.data), cuda_ptr(b.data), cuda_ptr(result.data),
                             1,           // batchsize
                             a_shape[0],  // m
                             a_shape[1],  // k (common dim),
@@ -1322,7 +1337,7 @@ namespace bearml{
                         // B's strides come straight from the tensor (handles transposed/permuted B view).
                         Tensor result({1,b_shape[1]}, a.device);
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            a.data, b.data, result.data,
+                            cuda_ptr(a.data), cuda_ptr(b.data), cuda_ptr(result.data),
                             1,           // batchsize
                             1,           // m
                             b_shape[0],  // k (common dim),
@@ -1377,7 +1392,7 @@ namespace bearml{
                         // For row-major (M,K) that's (K, 1); for col-major it's (1, M). The kernel doesn't
                         // care which — it just uses both to compute a[row * row_stride + k * col_stride].
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            a_use.data, b_use.data, result.data,
+                            cuda_ptr(a_use.data), cuda_ptr(b_use.data), cuda_ptr(result.data),
                             1,           // batchsize
                             a_shape[0],  // m
                             a_shape[1],  // k
@@ -1464,7 +1479,7 @@ namespace bearml{
             friend bool operator==(const Tensor &a, const Tensor &b){
                 if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
                     if (a.getDevice().type == DeviceType::CUDA && b.getDevice().type == DeviceType::CUDA){
-                        return cuda::launch_check_equal_kernel<cuda_type_trait_t<T>>(a.data, b.data, a.sizeOfTensor()); // need to test this
+                        return cuda::launch_check_equal_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.data), cuda_ptr(b.data), a.sizeOfTensor()); // need to test this
                     }
                     // NOTE: std::abs is better for doubles
                     for (size_t i = 0; i<a.sizeOfTensor(); i++){
@@ -1593,7 +1608,7 @@ namespace bearml{
                 T* flat_data = new_t.data;
 
                 if (this->device.type == DeviceType::CUDA) {
-                    cuda::launch_accumulate_kernel<cuda_type_trait_t<T>>(this->data, flat_data, this->shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
+                    cuda::launch_accumulate_kernel<cuda_type_trait_t<T>>(cuda_ptr(this->data), cuda_ptr(flat_data), this->shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
 
                 } else {
 
@@ -1742,7 +1757,7 @@ namespace bearml{
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
                     cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
-                        t.data, s.data, result.data,
+                        cuda_ptr(t.data), cuda_ptr(s.data), cuda_ptr(result.data),
                         t.getShape(), OP_Code::OP_MAX
                     );
                     return result;
@@ -1783,7 +1798,7 @@ namespace bearml{
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
                     cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
-                        t.data, s.data, result.data,
+                        cuda_ptr(t.data), cuda_ptr(s.data), cuda_ptr(result.data),
                         t.getShape(), OP_Code::OP_MIN
                     );
                     return result;
@@ -1860,8 +1875,8 @@ namespace bearml{
                 Tensor result(t.shape, t.device);
                 if (t.device.is_cuda()) {
                     cuda::launch_softmax_kernel<cuda_type_trait_t<T>>(
-                        t.data,
-                        result.data,
+                        cuda_ptr(t.data),
+                        cuda_ptr(result.data),
                         t.getShape(),
                         t.getStrides(),
                         t.sizeOfTensor(),
@@ -1917,8 +1932,8 @@ namespace bearml{
                 // CUDA fill
                 if (!this->device.is_cpu()) {
                     cuda::launch_fill<cuda_type_trait_t<T>>(
-                        this->data,
-                        v,
+                        cuda_ptr(this->data),
+                        cuda_val(v),
                         this->shape
                     );
                     return;
@@ -1945,7 +1960,7 @@ namespace bearml{
 
                 //CUDA support
                 // TODO: fix the type
-                return cuda::launch_check_zero_kernel(t.data, t.sizeOfTensor());
+                return cuda::launch_check_zero_kernel(cuda_ptr(t.data), t.sizeOfTensor());
 
             }
 
@@ -1979,7 +1994,7 @@ namespace bearml{
                         cur+=step;
                     }
                 } else {
-                    cuda::launch_linspace_kernel<cuda_type_trait_t<T>>(this->data, static_cast<T>(start), static_cast<T>(step), long_size);
+                    cuda::launch_linspace_kernel<cuda_type_trait_t<T>>(cuda_ptr(this->data), cuda_val(static_cast<T>(start)), cuda_val(static_cast<T>(step)), long_size);
                 }
                 return *this;
             }
@@ -2108,7 +2123,7 @@ namespace bearml{
                         h_strides[d] = (size_t)t.strides[d];
                     }
                     cuda::utils::launch_contiguous_gather<cuda_type_trait_t<T>>(
-                        t.data, result.data, t.data_offset,
+                        cuda_ptr(t.data), cuda_ptr(result.data), t.data_offset,
                         h_shape.data(), h_strides.data(), (size_t)nd, n);
                 } else {
                     // i walks the DESTINATION row-major (so we write result.data[i] in the natural flat order)
@@ -2266,8 +2281,9 @@ namespace bearml{
                     CUDA_CHECK(cudaMemcpy(d_shapes, h_shape_ptrs.data(),
                                           n * sizeof(int*), cudaMemcpyHostToDevice));
 
-                    cuda::launch_concat_kernel<cuda_type_trait_t<T>>(d_allInputs, d_shapes, n, result.data,
-                                                       outerDim, innerDim, dim, concatDim);
+                    cuda::launch_concat_kernel<cuda_type_trait_t<T>>(
+                        reinterpret_cast<cuda_type_trait_t<T>**>(d_allInputs), d_shapes, n, cuda_ptr(result.data),
+                        outerDim, innerDim, dim, concatDim);
 
                     for (int* d_shape : h_shape_ptrs) CUDA_CHECK(cudaFree(d_shape));
                     CUDA_CHECK(cudaFree(d_allInputs));

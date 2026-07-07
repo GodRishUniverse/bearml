@@ -16,7 +16,7 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 
 ### Prerequisites
 **Only tested on Fedora Linux at the moment**
-- C++23 or higher (as we have std::bfloat_t) - but if you change to C++20 - **it should still work but for std::bfloat_t on CPU only we need C++23 or higher**
+- C++20 or higher (**C++23 if you want to use std::bfloat_t**)
 - NVCC (NVIDIA CUDA Compiler) uses C++17 mode by default, so C++23 features are not available in CUDA code
 - CMake 3.30+
 - CUDA Toolkit 13.0 - optional (again will have to make CUDA version optional or support multiple versions)
@@ -63,6 +63,7 @@ element type. It is multi-dimensional, device-aware (CPU/CUDA), and supports bro
 |-----------|------------------|---------------------------------|
 | `TensorD` | `Tensor<double>` | 64-bit float (default / legacy) |
 | `Tensorf` | `Tensor<float>`  | 32-bit float                    |
+| `TensorBF`| `Tensor<std::bfloat_t>`  | 16-bit bfloat16         |
 | `TensorI` | `Tensor<int>`    | 32-bit signed int               |
 
 Use an alias (e.g. `bearml::Tensorf`) or the explicit form `bearml::Tensor<float>`.
@@ -438,6 +439,7 @@ int main() {
     * Lazy evaluation of the computational graph.
     * Operator Fusing (e.g., ReLU + Linear).
     * Strassen's algorithm for large matrices.
+    * Compile-time graph optimization (e.g., `torch.compile` equivalent using **XLA and MLIR**)
 * **Advanced Features:**
     * Mixed precision training -- **High Importance**
     * Dropout.

@@ -91,7 +91,7 @@ namespace bearml {
                     if (x->val.getDevice() != this->device) {
                         x->val = x->val.to(this->device); // move to device if not already on it
                     }
-                    std::shared_ptr<bearml::Node<T>> softmax_node = softmax(x, this->dim);
+                    std::shared_ptr<bearml::Node<T>> softmax_node = bearml::Node<T>::softmax(x, this->dim);
                     return softmax_node;
                 }
 
@@ -100,7 +100,7 @@ namespace bearml {
                         x = x.to(this->device); // move to device if not already on it
                     }
                     std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
-                    std::shared_ptr<bearml::Node<T>>  softmax_node = softmax(node_x, this->dim);
+                    std::shared_ptr<bearml::Node<T>>  softmax_node = bearml::Node<T>::softmax(node_x, this->dim);
                     return softmax_node;
                 }
 

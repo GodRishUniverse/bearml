@@ -489,7 +489,7 @@ TEST(AutogradTensorTest, MeanBackward) {
 TEST(AutogradTensorTest, SoftmaxBackward1D) {
     TensorD ta({3}); ta.set(1.0, {0}); ta.set(2.0, {1}); ta.set(3.0, {2});
     auto a = Node<TensorD>::make_node(ta);
-    auto c = softmax(a, 0);
+    auto c = Node<TensorD>::softmax(a, 0);
 
     double s0 = c->val.get({0}), s1 = c->val.get({1}), s2 = c->val.get({2});
     EXPECT_NEAR(s0 + s1 + s2, 1.0, 1e-12); // softmax slice sums to 1
@@ -508,7 +508,7 @@ TEST(AutogradTensorTest, SoftmaxBackward1D) {
 TEST(AutogradTensorTest, SoftmaxBackward2DDim1) {
     TensorD ta({2, 3}); ta.linspace(1.0, 7.0); // softmax over each row (dim=1)
     auto a = Node<TensorD>::make_node(ta);
-    auto c = softmax(a, 1);
+    auto c = Node<TensorD>::softmax(a, 1);
 
     // distinct per-element upstream grad to exercise the reduce-along-dim + broadcast
     double g[2][3] = {{0.5, -1.0, 2.0}, {1.5, 0.0, -0.5}};
