@@ -414,7 +414,7 @@ int main() {
 * **Autodiff Engine:** Implement for activation functions (Unary and Binary ops).
 * **Sequential Class:** Create a wrapper to stack layers.
 * **Loss Functions:**
-    * Cross Entropy Loss
+    * Cross Entropy Loss (using LogSoftmax - fix needed)
     * Softmax Loss
     * Cross Entropy Loss with Softmax
     * Binary Cross Entropy Loss with Sigmoid
@@ -426,6 +426,7 @@ int main() {
 * **Dataloading Pipeline:** Support for shuffling and batching.
     * Modular design for different types (Images, CSV, etc.).
 * **Model Persistence:** Saving and loading pipelines.
+  * Safetensor file loading as well
 
 ### Testing
 * Unit Tests using `gtest` (framework integrated, tests in progress)
@@ -439,7 +440,7 @@ int main() {
     * Lazy evaluation of the computational graph.
     * Operator Fusing (e.g., ReLU + Linear).
     * Strassen's algorithm for large matrices.
-    * Compile-time graph optimization (e.g., `torch.compile` equivalent using **XLA and MLIR**)
+    * Compile-time graph optimization (e.g., `torch.compile` equivalent using **XLA and MLIR**) - **Need to research**
 * **Advanced Features:**
     * Mixed precision training -- **High Importance**
     * Dropout.
@@ -449,6 +450,11 @@ int main() {
 ### Compatibility and Containerization
 * Provide a Dockerfile for building the project.
 * Add compatibility for `clang` and `msvc` compilers.
+* Add OS agnostic support (e.g., cross-platform compatibility).
+
+### EXPLAINATION
+* Create a website that explains the project and its features.
+* Update readme with explanations of optimizations and features and diagrams
 
 ---
 
