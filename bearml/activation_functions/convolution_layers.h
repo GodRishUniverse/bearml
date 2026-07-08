@@ -69,8 +69,10 @@ namespace bearml {
         }
 
         // TODO: need to figure out how I can implement convolution layers (and pooling)
+        // TODO: we have to support 2 types of convolution operations depending on the input shape (im2col for kernelsize<= 7 and FFT for larger kernels)
+        // Will probably create a separate function for each type of convolution operation and then call it based on the input shape
+        // TODO: backward pass for bothh will be different so will need to implement separately and understand how to identify which backward pass to use
         // template copied from pytorch doc - https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
-        // we have to support 2 types of convolution operations depending on the input shape (im2col for kernelsize<= 7 and FFT for larger kernels)
         template <typename T = bearml::Tensorf>
         class Conv2D : public Module<T> {
         private:
