@@ -5,6 +5,8 @@
 // BearML is a neural network framework written in C++ with CUDA support.
 
 #include "tensor/Tensor.h"
+#include "tensor/StaticTensor.h" // TODO: implement
+#include "tensor/WrapperTensor.h" // TODO: implement
 #include "autograd/autogradient.h"
 #include "activation_functions/modules.h" // has the abstract Modules class and the Linear and ReLU modules
 #include "activation_functions/activation_functions.h" // major activation functions
@@ -18,4 +20,5 @@
 #include "operators/padding_ops.h"
 #include "dataloader/dataloader.h"
 #include "datasets/datasets.h"
+#include "xla/hlobuilder.h" // TODO: implement
 // #include "cuda/includes/"

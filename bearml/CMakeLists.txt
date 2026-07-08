@@ -6,8 +6,8 @@ cmake_minimum_required(VERSION 3.30)
 file(GLOB_RECURSE SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 if(BEARML_CUDA_ENABLED)
-    file(GLOB_RECURSE CUDA_SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.cu")
-    list(APPEND SRC_FILES ${CUDA_SRC_FILES})
+  file(GLOB_RECURSE CUDA_SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.cu")
+  list(APPEND SRC_FILES ${CUDA_SRC_FILES})
 endif()
 
 add_library(bearml ${SRC_FILES})
@@ -16,7 +16,7 @@ add_library(bearml ${SRC_FILES})
 # (kept identical to the CMake option name so the C++ guards and the build
 #  switch never drift apart again).
 if(BEARML_CUDA_ENABLED)
-    target_compile_definitions(bearml PUBLIC BEARML_USE_CUDA)
+  target_compile_definitions(bearml PUBLIC BEARML_USE_CUDA)
 endif()
 
 target_include_directories(bearml
@@ -27,9 +27,11 @@ target_include_directories(bearml
 # Add include directories:
 # - src/ itself (so you can do #include "bearml/tensor/Tensor.h")
 # - eigen (so you can do #include <Eigen/Dense>)
+# - fftw (so you can do #include <fftw3.h> which is required for FFT convolution)
 target_include_directories(bearml PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${PROJECT_SOURCE_DIR}/third_party/eigen-3.4.0
+    ${PROJECT_SOURCE_DIR}/third_party/fftw-3.3.11/api
 )
 
 
@@ -44,11 +46,11 @@ target_link_libraries(bearml PUBLIC Boost::boost)
 
 # Only link the CUDA runtime/driver when CUDA support is enabled.
 if(BEARML_CUDA_ENABLED)
-    target_link_libraries(bearml PUBLIC
+  target_link_libraries(bearml PUBLIC
         CUDA::cudart
         CUDA::cuda_driver
     )
-    set_target_properties(bearml PROPERTIES
+  set_target_properties(bearml PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
     )
 endif()

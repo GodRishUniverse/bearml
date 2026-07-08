@@ -11,6 +11,7 @@
 #include "tensor/Tensor.h"
 #include "modules.h"
 #include "../operators/padding_ops.h"
+#include <fftw3.h> // will allow us to use FFT for convolution
 
 
 #ifndef ACTIVATION_FUNCTIONS_CONVOLUTION
@@ -69,6 +70,7 @@ namespace bearml {
 
         // TODO: need to figure out how I can implement convolution layers (and pooling)
         // template copied from pytorch doc - https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
+        // we have to support 2 types of convolution operations depending on the input shape (im2col for kernelsize<= 7 and FFT for larger kernels)
         template <typename T = bearml::Tensorf>
         class Conv2D : public Module<T> {
         private:
