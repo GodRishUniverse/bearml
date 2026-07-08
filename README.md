@@ -22,6 +22,7 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 - CUDA Toolkit 13.0 - optional (again will have to make CUDA version optional or support multiple versions)
 - GCC 15 (configured as the default compiler)
 - Eigen (included as a third-party submodule, used for CPU BLAS)
+- FFTW3 (included as a third-party submodule, used for FFT convolution) - **NOT IMPLEMENTED YET**
 - Boost (for string manipulation utilities)
 - Google Test (included as a third-party submodule, used for unit tests)
 - Tested on Fedora 44 with GCC 15 and CUDA Toolkit 13.0 so far ... **TODO: make OS agnostic**
