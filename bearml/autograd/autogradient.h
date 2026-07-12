@@ -490,7 +490,7 @@ namespace bearml{
             std::weak_ptr<Node<T>> weak_a = a;
             std::weak_ptr<Node<T>> weak_node = node;
 
-            node->backward_fn = [weak_a, weak_node, op, pad_amount, padding_mode, constant_value]() {
+            node->backward_fn = [weak_a, weak_node, op, pad_amount, padding_mode]() {
                 auto a_locked = weak_a.lock();
                 auto node_locked = weak_node.lock();
 
@@ -600,8 +600,9 @@ namespace bearml{
                     case OP_Code::OP_PAD:
                         if constexpr (bearml::is_tensor_v<T>) {
                             // we do the negative padding to match the gradient accumulation logic
-                            accumulate_grad(a_locked->grad, bearml::neural_network::padding(node_locked->grad, -pad_amount, padding_mode, constant_value), a_locked->val);
+                            accumulate_grad(a_locked->grad, bearml::neural_network::padding(node_locked->grad, -pad_amount, padding_mode), a_locked->val);
                         }
+                        break;
                     default:
                         throw std::invalid_argument("Autograd: OP Code does not exist - in elementwise_unary.");
                 }
