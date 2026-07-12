@@ -566,4 +566,5 @@ Rishabh Agarwal ([@GodRishUniverse](https://github.com/GodRishUniverse))
 >
 > [2] [max() derivative formula](https://math.stackexchange.com/questions/368432/derivative-of-max-function)
 >
+> [3] [convolution derivative formula](https://math.stackexchange.com/questions/177239/derivative-of-convolution)
 >

@@ -68,9 +68,33 @@ namespace bearml {
             return output;
         }
 
+        // we have to support 2 types of convolution operations depending on the input shape (im2col for kernelsize<= 7 and FFT for larger kernels)
+        // Wow we have measure theory and lebesgue inttegrals to get the derivative oof a convolution!!!
+        // Interesting - https://math.stackexchange.com/questions/177239/derivative-of-convolution
+        // I haven't delved into this theory yet so will use this as a baseline
+        // TODO: do more research on the derivative of convolution
+
+        // derivative of conv(f,g) is conv(f',g) where f and g are vectors (1d)
+        template <typename T>
+        Tensor<T> conv1d(...) {
+            // TODO
+        }
+
+
+        template <typename T>
+        Tensor<T> conv2d(...) {
+            // TODO
+        }
+
+
+        template <typename T>
+        Tensor<T> conv3d(...) {
+            // TODO
+        }
+
         // TODO: need to figure out how I can implement convolution layers (and pooling)
         // template copied from pytorch doc - https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
-        // we have to support 2 types of convolution operations depending on the input shape (im2col for kernelsize<= 7 and FFT for larger kernels)
+
         template <typename T = bearml::Tensorf>
         class Conv2D : public Module<T> {
         private:
