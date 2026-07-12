@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <random>
 #include <memory>
+#include <algorithm>
 
 #include "autograd/autogradient.h"
 #include "tensor/Tensor.h"
@@ -32,12 +33,28 @@ namespace bearml {
                 throw std::invalid_argument("Padding requires at least 2D input");
             }
             // add pad_amount to the shape
-            output_shape[output_shape.size() - 2] += 2 * pad_amount; // add 2*pad_amount rows
-            output_shape[output_shape.size() - 1] += 2 * pad_amount; // add 2*pad_amount columns
+            output_shape[output_shape.size() - 2] += 2 * pad_amount; // add 2*pad_amount rows (or subtract if pad_amount is negative)
+            output_shape[output_shape.size() - 1] += 2 * pad_amount; // add 2*pad_amount columns (or subtract if pad_amount is negative)
 
             bearml::Tensor<T> output(output_shape, input.getDevice());
 
             long long int batch_size = input.sizeOfTensor() / (input_shape[input_shape.size() - 2] * input_shape[input_shape.size() - 1]);
+
+            int in_rows  = input_shape[input_shape.size() - 2];
+            int in_cols  = input_shape[input_shape.size() - 1];
+            int out_rows = output_shape[output_shape.size() - 2];
+            int out_cols = output_shape[output_shape.size() - 1];
+
+            // Only the region where input and (possibly cropped) output overlap gets copied;
+            // walking the full input range and offsetting by pad_amount only works when
+            // pad_amount >= 0 -- for pad_amount < 0 (cropping) that walks off both ends of
+            // output's allocation. Clamping to the overlap keeps every write in-bounds either way.
+            // Computed once here (rather than separately per-backend) since CPU and CUDA
+            // dispatch below both need the exact same overlap window.
+            int r_start = std::max(0, -pad_amount);
+            int r_end   = std::min(in_rows, out_rows - pad_amount);
+            int c_start = std::max(0, -pad_amount);
+            int c_end   = std::min(in_cols, out_cols - pad_amount);
 
             switch (padding_mode) {
                 case Padding_Op_Code::PAD_CONSTANT:
@@ -49,17 +66,17 @@ namespace bearml {
                         for (int i = 0; i < output.sizeOfTensor(); i++) {
                             output.data[i] = constant_value;
                         }
-                        // then copy the input values into the padded region
+
                         for (int batch = 0; batch < batch_size; batch++) {
-                            for (int r = 0; r < input_shape[input_shape.size() - 2]; r++) {
-                                for (int c = 0; c < input_shape[input_shape.size() - 1]; c++) {
-                                    output.data[batch * output_shape[output_shape.size() - 1] * output_shape[output_shape.size() - 2] + (r+pad_amount)*output_shape[output_shape.size() - 1] + (c+pad_amount)] = input.data[batch * input_shape[input_shape.size() - 2] * input_shape[input_shape.size() - 1] + r * input_shape[input_shape.size() - 1] + c];
+                            for (int r = r_start; r < r_end; r++) {
+                                for (int c = c_start; c < c_end; c++) {
+                                    output.data[batch * out_cols * out_rows + (r+pad_amount)*out_cols + (c+pad_amount)] = input.data[batch * in_rows * in_cols + r * in_cols + c];
                                 }
                             }
                         }
                     } else {
                         // CUDA
-                        bearml::cuda::launch_padd_with_constant<cuda_type_trait_t<T>>(cuda_ptr(input.data), cuda_ptr(output.data), batch_size, input_shape[input_shape.size() - 2], input_shape[input_shape.size() - 1], pad_amount, cuda_val(constant_value));
+                        bearml::cuda::launch_padd_with_constant<cuda_type_trait_t<T>>(cuda_ptr(input.data), cuda_ptr(output.data), batch_size, in_rows, in_cols, out_rows, out_cols, pad_amount, r_start, r_end, c_start, c_end, cuda_val(constant_value));
                     }
                     break;
                 default:

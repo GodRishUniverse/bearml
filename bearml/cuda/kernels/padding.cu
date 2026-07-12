@@ -13,23 +13,33 @@ namespace bearml {
             int batch_size,
             int in_rows,
             int in_cols,
-            int padding
+            int out_rows,
+            int out_cols,
+            int padding,
+            int r_start,
+            int r_end,
+            int c_start,
+            int c_end
         ) {
-                const int out_rows  = in_rows + 2 * padding;
-                const int out_cols  = in_cols + 2 * padding;
-                const int in_plane  = in_rows * in_cols;
-                const int out_plane = out_rows * out_cols;
-                const int64_t total_in = (int64_t )batch_size * in_plane;
+                const int in_plane   = in_rows * in_cols;
+                const int out_plane  = out_rows * out_cols;
+                const int copy_rows  = r_end - r_start;
+                const int copy_cols  = c_end - c_start;
+                const int64_t total_copy = (int64_t)batch_size * copy_rows * copy_cols;
 
-                for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total_in; idx += (int64_t) blockDim.x * gridDim.x) {
-                    int batch = idx / in_plane; // get the batch index of the current element
-                    int rem   = idx - batch * in_plane; // same as idx % in_plane but more efficient - uses mod arithmetic
+                // Only iterate the region where input and (possibly cropped) output overlap.
+                // Walking the full input range and offsetting by `padding` only stays in-bounds
+                // for padding >= 0; for padding < 0 (cropping) it writes off both ends of d_out.
+                for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < total_copy; idx += (int64_t) blockDim.x * gridDim.x) {
+                    int batch = idx / (copy_rows * copy_cols);
+                    int rem   = idx - batch * (copy_rows * copy_cols);
 
-                    int row   = rem / in_cols;
-                    int col   = rem - row * in_cols;
+                    int row   = r_start + rem / copy_cols;
+                    int col   = c_start + rem - (row - r_start) * copy_cols;
 
-                    int64_t out_idx = (int64_t)batch * out_plane+ (int64_t)(row + padding) * out_cols + (col + padding);
-                    d_out[out_idx] = d_in[idx]; // copy the value from the input to the output with padding
+                    int64_t in_idx  = (int64_t)batch * in_plane + row * in_cols + col;
+                    int64_t out_idx = (int64_t)batch * out_plane + (int64_t)(row + padding) * out_cols + (col + padding);
+                    d_out[out_idx] = d_in[in_idx];
                 }
         }
 
@@ -41,7 +51,13 @@ namespace bearml {
             int batch_size,
             int in_rows,
             int in_cols,
+            int out_rows,
+            int out_cols,
             int padding,
+            int r_start,
+            int r_end,
+            int c_start,
+            int c_end,
             T constant,
             cudaStream_t stream
         ) {
@@ -51,13 +67,12 @@ namespace bearml {
             }
 
             // we fill first with constant value (use our fill kernel)
-            std::vector<int> res_shape = {batch_size, in_rows + 2 * padding, in_cols + 2 * padding};
+            std::vector<int> res_shape = {batch_size, out_rows, out_cols};
             launch_fill<T>(d_out, constant, res_shape, stream);
 
-
             dim3 block(THREAD_COUNT); // Threads per block
-            dim3 grid = get_blocks((size_t)batch_size * in_rows * in_cols, THREAD_COUNT); // Number of blocks
-            padd_with_constant_kernel<T><<<grid, block, 0, stream>>>(d_in, d_out, batch_size, in_rows, in_cols, padding);
+            dim3 grid = get_blocks((size_t)batch_size * (r_end - r_start) * (c_end - c_start), THREAD_COUNT); // Number of blocks
+            padd_with_constant_kernel<T><<<grid, block, 0, stream>>>(d_in, d_out, batch_size, in_rows, in_cols, out_rows, out_cols, padding, r_start, r_end, c_start, c_end);
 
             CUDA_CHECK(cudaGetLastError()); // this checks for Launch errors
 

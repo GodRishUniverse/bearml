@@ -5,6 +5,7 @@
 // #include "loss_functions/loss.h"
 // #include "optimizers/optimizers.h"
 // #include "devices/device_type.h"
+#include "activation_functions/convolution_layers.h"
 #include "bearml.h"
 #include <iostream>
 #include <vector>
@@ -422,8 +423,15 @@ int main() {
 
 
      // Testing BF float in cpp23
-     bearml::TensorBF bf_tens = bearml::TensorBF({3, 4, 5}, dev);
-     cout << bf_tens << endl;
+     bearml::Tensorf f_tens = bearml::Tensorf({3, 4, 5}, dev);
+     float end_v = 3.0f * 20.0f;
+     float start_v = 1.0f;
+     f_tens.linspace(start_v, end_v);
+     cout << f_tens << endl;
+
+     auto padded2 = bearml::neural_network::padding(f_tens, -1);
+     cout << padded2 << endl;
+
 
 
 }
