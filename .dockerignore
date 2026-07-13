@@ -1,0 +1,9 @@
+.git
+.github
+.cache
+.claude
+.clangd
+build/
+build_unit_tests/
+compile_commands.json
+Documentation/

@@ -568,3 +568,5 @@ Rishabh Agarwal ([@GodRishUniverse](https://github.com/GodRishUniverse))
 >
 > [3] [convolution derivative formula](https://math.stackexchange.com/questions/177239/derivative-of-convolution)
 >
+> [4] [intuitive convolution](https://betterexplained.com/articles/intuitive-convolution/)
+>

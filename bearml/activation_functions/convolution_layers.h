@@ -90,6 +90,8 @@ namespace bearml {
         // Interesting - https://math.stackexchange.com/questions/177239/derivative-of-convolution
         // I haven't delved into this theory yet so will use this as a baseline
         // TODO: do more research on the derivative of convolution
+        //
+        // Intuition - https://betterexplained.com/articles/intuitive-convolution/https://betterexplained.com/articles/intuitive-convolution/
 
         // derivative of conv(f,g) is conv(f',g) where f and g are vectors (1d)
         template <typename T>

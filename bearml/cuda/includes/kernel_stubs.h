@@ -43,6 +43,7 @@ namespace bearml {
     BEARML_CUDA_STUB(launch_comparison_kernel)
     BEARML_CUDA_STUB(launch_accumulate_kernel)
     BEARML_CUDA_STUB(launch_sum_kernel)
+    BEARML_CUDA_STUB(launch_softmax_kernel)
     BEARML_CUDA_STUB(launch_fill)
     BEARML_CUDA_STUB(launch_linspace_kernel)
     BEARML_CUDA_STUB(launch_transpose_kernel)

@@ -106,10 +106,12 @@ namespace bearml{
     // members can use it — must be visible before its first use, since it's a
     // free namespace-scope template rather than a member of Tensor.
     template <typename U> struct cuda_type_trait{ using type = U; };
-    #if defined(__STDCPP_BFLOAT16_T__)
+    #if defined(BEARML_USE_CUDA) && defined(__STDCPP_BFLOAT16_T__)
         template<> struct cuda_type_trait<std::bfloat16_t> { using type = __nv_bfloat16; };
     #endif
-    template<> struct cuda_type_trait<int16_t> { using type = __half; };
+    #if defined(BEARML_USE_CUDA)
+        template<> struct cuda_type_trait<int16_t> { using type = __half; };
+    #endif
     template <typename U> using cuda_type_trait_t = typename cuda_type_trait<U>::type;
 
     // Reinterprets a host element pointer as the CUDA kernel type launch_* functions expect.
