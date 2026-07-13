@@ -39,6 +39,33 @@ make
 
 Please edit the CMake files according to your liking.
 
+### Building with Docker/Podman
+
+A `Dockerfile` is provided so you don't need GCC 15/CMake/Boost/etc. installed
+locally. It builds a CPU-only image by default (see the commented-out CUDA
+block in the `Dockerfile` if you have an NVIDIA GPU, driver, and the NVIDIA
+Container Toolkit on the host).
+
+```bash
+git clone --recursive https://github.com/GodRishUniverse/BearML.git
+cd BearML
+
+# Docker
+docker build -t bearml .
+docker run --rm -it bearml
+
+# Podman
+podman build -t bearml .
+podman run --rm -it bearml
+```
+
+This drops you into a shell inside the container with the project already
+built at `/bearml/build`. From there:
+```bash
+./build/runchecks/test_runner    # main testing driver
+./build/unit_tests/unit_tests    # gtest-based unit tests
+```
+
 ### Running
 
 After building, the test driver is available at:
@@ -449,7 +476,7 @@ int main() {
 * **Cleanup:** Removing Eigen operations **(Long-term)**.
 
 ### Compatibility and Containerization
-* Provide a Dockerfile for building the project.
+* ~~Provide a Dockerfile for building the project.~~ Done (CPU-only by default, see `Dockerfile`) - still needs a proper CUDA-enabled base image/variant.
 * Add compatibility for `clang` and `msvc` compilers.
 * Add OS agnostic support (e.g., cross-platform compatibility).
 
