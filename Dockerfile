@@ -7,11 +7,14 @@
 # useful at all). See the "CUDA support" note below to add it.
 FROM fedora:44
 
-# gcc15 / gcc15-c++ provide /usr/bin/gcc-15 and /usr/bin/g++-15, the exact
-# compiler paths hardcoded in the top-level CMakeLists.txt.
+# gcc15 / gcc15-c++ provide /usr/bin/gcc-15 and /usr/bin/g++-15, the default
+# host compiler resolved by the top-level CMakeLists.txt. `clang` is also
+# installed so the image can build with -DBEARML_COMPILER=clang (see the
+# build RUN below); it's only ever used for host code, never for .cu files.
 RUN dnf install -y \
         gcc15 \
         gcc15-c++ \
+        clang \
         cmake \
         make \
         boost-devel \
@@ -46,6 +49,13 @@ RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBEARML_USE_CUDA=OFF \
 # and run with GPU access: `docker build ... && docker run --gpus all ...`
 #
 # RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBEARML_USE_CUDA=ON \
+#     && cmake --build build -j"$(nproc)"
+#
+# Clang build: comment out the CPU-only RUN above and uncomment this one to
+# build host code with clang/clang++ instead of gcc-15 (CUDA .cu files, if
+# enabled, still compile via g++-15 regardless of this flag).
+#
+# RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBEARML_USE_CUDA=OFF -DBEARML_COMPILER=clang \
 #     && cmake --build build -j"$(nproc)"
 
 # Verification binaries, built above, ready to run:

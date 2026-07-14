@@ -1,15 +1,39 @@
 cmake_minimum_required(VERSION 3.30)
 
-set(CMAKE_CUDA_HOST_COMPILER /usr/bin/gcc-15)
-set(CMAKE_C_COMPILER /usr/bin/gcc-15)
-set(CMAKE_CXX_COMPILER /usr/bin/g++-15)
+# Host toolchain switch. Must be resolved before project() since that's what
+# fixes CMAKE_C/CXX_COMPILER. Pass -DBEARML_COMPILER=clang to opt in.
+set(BEARML_COMPILER "gcc" CACHE STRING "Host compiler toolchain: gcc or clang")
+set_property(CACHE BEARML_COMPILER PROPERTY STRINGS gcc clang)
 
+if(BEARML_COMPILER STREQUAL "clang")
+  find_program(BEARML_C_COMPILER_PATH NAMES clang)
+  find_program(BEARML_CXX_COMPILER_PATH NAMES clang++)
+  if(NOT BEARML_C_COMPILER_PATH OR NOT BEARML_CXX_COMPILER_PATH)
+    message(FATAL_ERROR "BEARML_COMPILER=clang but clang/clang++ not found on PATH")
+  endif()
+elseif(BEARML_COMPILER STREQUAL "gcc")
+  find_program(BEARML_C_COMPILER_PATH NAMES gcc-15 gcc)
+  find_program(BEARML_CXX_COMPILER_PATH NAMES g++-15 g++)
+  if(NOT BEARML_C_COMPILER_PATH OR NOT BEARML_CXX_COMPILER_PATH)
+    message(FATAL_ERROR "BEARML_COMPILER=gcc but gcc/g++ not found on PATH")
+  endif()
+else()
+  message(FATAL_ERROR "BEARML_COMPILER must be 'gcc' or 'clang', got '${BEARML_COMPILER}'")
+endif()
+
+set(CMAKE_C_COMPILER ${BEARML_C_COMPILER_PATH})
+set(CMAKE_CXX_COMPILER ${BEARML_CXX_COMPILER_PATH})
+
+# nvcc needs a gcc-compatible host compiler; clang host support is version-
+# fragile, so CUDA TUs always compile against gcc-15 even in a clang build.
 # check_language(CUDA) below runs nvcc in an isolated try_compile that does NOT
 # inherit CMAKE_CUDA_HOST_COMPILER. Without this, nvcc defaults to /usr/bin/g++
 # (gcc 16 on Fedora 44) and bails with "unsupported GNU version! gcc versions
 # later than 15 are not supported", making the probe report NOTFOUND. Setting
 # CUDAHOSTCXX in the environment is the documented escape hatch.
-set(ENV{CUDAHOSTCXX} "/usr/bin/g++-15")
+find_program(BEARML_CUDA_HOST_COMPILER_PATH NAMES g++-15 g++)
+set(CMAKE_CUDA_HOST_COMPILER ${BEARML_CUDA_HOST_COMPILER_PATH})
+set(ENV{CUDAHOSTCXX} "${BEARML_CUDA_HOST_COMPILER_PATH}")
 
 # CUDA is declared as an OPTIONAL language so the project still configures
 # on machines without a CUDA toolkit / GPU (CPU-only builds).

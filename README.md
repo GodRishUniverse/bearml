@@ -20,7 +20,7 @@ Inspired by [llm.c](https://github.com/karpathy/llm.c) from Andrej Karpathy and 
 - NVCC (NVIDIA CUDA Compiler) uses C++17 mode by default, so C++23 features are not available in CUDA code
 - CMake 3.30+
 - CUDA Toolkit 13.0 - optional (again will have to make CUDA version optional or support multiple versions)
-- GCC 15 (configured as the default compiler)
+- GCC 15 (default host compiler) or Clang (pass `-DBEARML_COMPILER=clang`) - CUDA `.cu` files always compile against g++-15 as the nvcc host compiler regardless of this setting, since nvcc's clang host support is version-fragile
 - Eigen (included as a third-party submodule, used for CPU BLAS)
 - FFTW3 (included as a third-party submodule, used for FFT convolution) - **NOT IMPLEMENTED YET**
 - Boost (for string manipulation utilities)
@@ -36,6 +36,13 @@ mkdir build && cd build
 cmake ..
 make
 ```
+
+To build with Clang instead of GCC for host code:
+```bash
+cmake -DBEARML_COMPILER=clang ..
+make
+```
+CUDA `.cu` files still compile through g++-15 as nvcc's host compiler in this mode; only host-side C++/C compilation switches to clang/clang++.
 
 Please edit the CMake files according to your liking.
 
@@ -477,7 +484,7 @@ int main() {
 
 ### Compatibility and Containerization
 * ~~Provide a Dockerfile for building the project.~~ Done (CPU-only by default, see `Dockerfile`) - still needs a proper CUDA-enabled base image/variant.
-* Add compatibility for `clang` and `msvc` compilers.
+* ~~Add compatibility for `clang` compiler.~~ Done (`-DBEARML_COMPILER=clang`, host code only; CUDA still built via g++-15). MSVC still to do.
 * Add OS agnostic support (e.g., cross-platform compatibility).
 
 ### EXPLAINATION
@@ -551,10 +558,14 @@ This repository is open to contributions. Please make an issue before submitting
 ### Build Configuration
 
 The project uses CMake with the following defaults (see top-level `CMakeLists.txt`):
-- C++ standard: C++20
-- CUDA standard: C++17
-- Compiler: GCC 14 (`/usr/bin/gcc-14`)
+- C++ standard: C++23 (host), C++17 (CUDA)
+- Host compiler: GCC 15, found via `find_program(NAMES gcc-15 gcc)` / `g++-15 g++`
 - CUDA Toolkit: 13.0
+
+Pass `-DBEARML_COMPILER=clang` to build host code with Clang/Clang++ instead
+(`find_program(NAMES clang)` / `clang++`). CUDA `.cu` files always compile
+against g++-15 as the nvcc host compiler either way. Set `-DBEARML_USE_CUDA=OFF`
+for a CPU-only build.
 
 You may need to adjust the compiler paths and CUDA toolkit version for your system.
 

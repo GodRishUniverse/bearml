@@ -526,7 +526,7 @@ namespace bearml {
             int num_rows_in_patch = num_channels*kernel_size*kernel_size; // C_in * K * K
             int patch_size = H_out * W_out; // H_out * W_out
 
-            std::vector<int> patch_shape = {batch_size, num_rows_in_patch, patch_size};
+            std::vector<int> patch_shape = {static_cast<int>(batch_size), num_rows_in_patch, patch_size};
             Tensor<T> patch(patch_shape, a.getDevice());
 
             // TODO: implement for CUDA

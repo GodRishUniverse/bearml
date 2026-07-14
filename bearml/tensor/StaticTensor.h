@@ -10,9 +10,11 @@
 // TODO: need to think about how to implement this and design this so that we can use it correctly especially - it should mirror Tensor EXACTLY
 namespace bearml {
     // TODO: check how to implement this and design this
+
     template <typename T>
     class StaticTensor : public Tensor<T> {
         public:
+            // we need incoming op and output op to know how to fuse
 
     };
 }
