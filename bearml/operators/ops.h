@@ -34,6 +34,9 @@ enum class OP_Code : uint16_t {
 
     // ARB
     OP_PAD
+
+    // OP NULL
+    NO_OP // No operation
 };
 #endif
 
