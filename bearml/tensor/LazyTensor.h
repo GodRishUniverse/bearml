@@ -9,7 +9,12 @@
 #include <memory>
 #include <vector>
 
-// TODO: need to think about how to implement this and design this so that we can use it correctly especially - it should mirror Tensor EXACTLY
+//
+//
+// These notes were added to help me build intuition but I think doing it froom scratch and barebones approach is better and so see `ir.h`
+//
+//
+//
 // On working on that ->
 // - We need to compute the forward graph here (do not compute or allocate anything)
 // - then when we have the graph, we can use materialize to compute the actual tensor values -
@@ -50,6 +55,8 @@
 //   of laziness if it happens by accident - e.g. printing a LazyTensor for debugging inside a loop forces that
 //   node and everything upstream of it to materialize on every single iteration, which means nothing ever gets a
 //   chance to batch multiple ops together before running them
+//
+
 namespace bearml {
 
     // Uh Idk I need to design this properly
