@@ -1,4 +1,5 @@
 #pragma once
+#include "tensor/Storage.h"
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -196,20 +197,20 @@ namespace bearml{
             std::vector<int> shape;
             std::vector<int> strides; // will be used in permute and in GEMM
             std::vector<int> strides_col_major; // TODO: use this to make all ops transpose friendly and avoid copy operations
-            T * data; // need to change to Tensor<T> where T can be custom data types like int8, float16, float32, float64 (double)
-            bool owns_data;  // NEEDED To not cause the double destructor deletion of the broadcasting methods
+            std::shared_ptr<Storage> storage_; // the storage for this tensor - will handle
+
             Device device;
-            std::unique_ptr<DeviceAllocator> allocator_; // the device allocator we will be using for moving -> we only want a unique allocator
+
             size_t data_offset;
             bool is_sliced_view;
 
             // default constructor - added for edge cases - private ONLY -> cpu only allocation
-            Tensor() : data(nullptr), owns_data(false), device(Device(DeviceType::CPU, -1)) , allocator_(nullptr), data_offset(0), is_sliced_view(false){};
+            Tensor() :  device(Device(DeviceType::CPU, -1)) , data_offset(0), is_sliced_view(false){};
 
             static Tensor makeBroadcastView(const Tensor &t, const std::vector<int>& newShape) {
                 Tensor v;            // default-constructed
                 v.device = t.device; // same device (broadcasting)
-                v.data    = t.data;
+                v.storage_ = t.storage_;
                 v.shape   = newShape;
                 v.data_offset = t.data_offset;
                 v.strides = utils::computeBroadcastStrides(t.shape, t.strides, newShape); // no need to change this

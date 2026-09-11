@@ -5,6 +5,11 @@
 #include "device_type.h"
 #include <cstring>
 #include <stdexcept>
+#include <mutex>
+#include <unordered_map>
+#include <memory>
+
+
 
 namespace bearml {
 
@@ -98,12 +103,18 @@ namespace bearml {
 
     // factory function
     // returns the type of allocator
-    inline DeviceAllocator* get_allocator(const Device& device) {
+    inline DeviceAllocator& get_allocator(const Device& device) {
         if (device.is_cpu()) {
-            return new CPUAllocator();
+            static CPUAllocator cpu_allocator;
+            return cpu_allocator;
         } else {
 #if defined(BEARML_USE_CUDA)
-            return new CUDAAllocator(device.device_id);
+            static std::mutex mu; // static mutex so all threads see same mutex
+            static std::unordered_map<int, std::unique_ptr<CUDAAllocator>> gpus; // static map so all threads see same gpus which have unique cuda allocators to them
+            std::lock_guard<std::mutex> lock(mu); // in-built locking mechanism is cpp that ensures that we unlock after we return from this function (or exception)
+            auto& slot = gpus[device.device_id];
+            if (!slot) slot = std::make_unique<CUDAAllocator>(device.device_id); // if no allocator for this device, create one
+            return *slot; // return appropriate allocator
 #else
             throw std::runtime_error(
                 "Requested a CUDA device but BearML was built without CUDA "
