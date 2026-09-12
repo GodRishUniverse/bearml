@@ -300,22 +300,21 @@ namespace bearml{
                 return std::all_of(t.shape.begin(), t.shape.end(), [](int dim) { return dim == 1; });
             }
 
-            // TODO: refactor to use Scalar<T> directly and use proper storage mechanism
             static Scalar<T> getScalarValue(const Tensor& t){
                 if (!isScalar(t)) {
                     throw std::runtime_error("Cannot get scalar value from non-scalar tensor");
                 }
 
-                Scalar<T> result;
+                // data_offset matters: a scalar-shaped slice/broadcast view does not start at
+                // element 0 of the storage it shares
+                T value;
                 if (t.device.is_cpu()) {
-                    result = t.at(0);
+                    value = t.at(t.data_offset);
                 } else {
                     // we copy to the host (cpu) to get the scalar value
-                    t.storage_->allocator()->copy_to_host(&result, t.mutable_data(), sizeof(T));
+                    t.storage_->allocator().copy_to_host(&value, t.const_data() + t.data_offset, sizeof(T));
                 }
-                return result;
-
-                // return t.data[0];
+                return Scalar<T>(value);
             }
 
             std::vector<int> flatten_(int start_dim =0, int end_dim = -1, bool keepdims=false)
@@ -386,50 +385,38 @@ namespace bearml{
                 }
                 computeStrides(); // compute strides
 
-                this->storage_->allocator().reset(get_allocator(this->device));
+                allocate_storage();
 
                 size_t sizeTensor = sizeOfTensor();
                 size_t bytes = sizeTensor*sizeof(T);
-                this->storage_->raw_data() = static_cast<T*>(this->storage_->allocator()->allocate(bytes));
 
                 // initialize to zero
                 if (this->device.is_cpu()) {
-                    std::fill_n(this->storage_->raw_data() , sizeTensor, 0.0);
+                    std::fill_n(this->mutable_data(), sizeTensor, T(0));
                 } else {
                     // Zero initialize on GPU
-                    CUDA_CHECK(cudaMemset(this->storage_->raw_data(, 0, bytes));
+                    CUDA_CHECK(cudaMemset(this->mutable_data(), 0, bytes));
                 }
 
             };
 
 
             // copy constructor
-            Tensor(const Tensor& other) : shape(other.shape), data_offset(0), is_sliced_view(false){ // we own the data when we copy;
+            // device comes from other: a copy always lands on the source's device, cross-device
+            // needs an explicit .to(). It has to be set before we allocate, since the storage
+            // picks its allocator from it.
+            Tensor(const Tensor& other) : shape(other.shape), device(other.device), data_offset(0), is_sliced_view(false){ // we own the data when we copy;
                 computeStrides();
-                this->storage_->allocator().reset(get_allocator(other.device));
+                allocate_storage();
                 size_t full_size = sizeOfTensor();
                 size_t bytes = full_size * sizeof(T);
-                this->mutable_data() =static_cast<T*>(this->storage_->allocator()->allocate(bytes));
 
                 if (other.is_contiguous()) {
-                    if (this->device == other.device) {
-                        // cpu to cpu or gpu to gpu
-                        this->storage_->allocator()->copy_device_to_device(this->mutable_data(), other.mutable_data() + other.data_offset, bytes);
-                    } else {
-                        if (this->device.is_cpu()) {
-                            // from device to cpu
-                            other.storage_->allocator()->copy_to_host(this->mutable_data(), other.mutable_data() + other.data_offset, bytes);
-                        } else {
-                            // from cpu to device
-                            this->storage_->allocator()->copy_to_device(this->mutable_data(), other.mutable_data() + other.data_offset, bytes);
-                        }
-                    }
-                    this->device = other.device;
+                    // same device on both sides, so this is memcpy on cpu / D2D on gpu
+                    this->storage_->allocator().copy_device_to_device(this->mutable_data(), other.const_data() + other.data_offset, bytes);
                 } else {
                     // other is a strided view (transpose / permute / slice / broadcast).
                     // gather it into our freshly allocated dst, which is row-major for `shape`.
-                    // We stay on other's device — cross-device copies still require an explicit .to().
-                    this->device = other.device;
                     const int nd = (int)other.shape.size();
                     if (other.device.type == DeviceType::CUDA) {
                         // device kernel wants shape/strides on the device; pack them into size_t and hand off
@@ -440,7 +427,7 @@ namespace bearml{
                             h_strides[d] = (size_t)other.strides[d];
                         }
                         cuda::utils::launch_contiguous_gather<cuda_type_trait_t<T>>(
-                            cuda_ptr(other.mutable_data()), cuda_ptr(this->mutable_data()), other.data_offset,
+                            cuda_ptr(const_cast<T*>(other.const_data())), cuda_ptr(this->mutable_data()), other.data_offset,
                             h_shape.data(), h_strides.data(), (size_t)nd, full_size);
                     } else {
                         // i walks the DESTINATION in row-major (dst is dense, so we write data[i] in flat order)
