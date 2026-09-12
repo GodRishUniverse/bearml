@@ -40,6 +40,8 @@
 #include "utils/slice.h"
 #include "utils/ordering.h"
 
+#include "Scalar.h"
+
 #include "reductions/reduction_ops.h"
 
 // #include <cmath>
@@ -215,8 +217,6 @@ namespace bearml{
                 v.data_offset = t.data_offset;
                 v.strides = utils::computeBroadcastStrides(t.shape, t.strides, newShape); // no need to change this
                 v.strides_col_major = compute_col_major_strides(newShape); // cached canonical col-major strides for this shape
-                v.owns_data = false; // we do not want the broadcasted tensors to own the data that it points - so we do not double delete
-                v.allocator_ = nullptr; // we do not have an allocator for the views
                 v.is_sliced_view = t.is_sliced_view;
                 return v;
             }
@@ -225,13 +225,11 @@ namespace bearml{
                 utils::SliceReturn sliceResult) {
                 Tensor v;
                 v.device     = t.device;
-                v.data       = t.data;
+                v.storage_      = t.storage_;
                 v.data_offset = sliceResult.offset;
                 v.shape      = sliceResult.shape;
                 v.strides    = sliceResult.strides;
-                v.strides_col_major = compute_col_major_strides(sliceResult.shape); // cached canonical col-major strides for this shape
-                v.owns_data  = false;       // parent owns the storage
-                v.allocator_ = nullptr;
+                v.strides_col_major = compute_col_major_strides(sliceResult.shape); // cached canonical col-major strides for this shape;
                 v.is_sliced_view = true;
                 return v;
             }
@@ -243,13 +241,11 @@ namespace bearml{
             static Tensor makeStrideView(const Tensor& t){
                 Tensor v;
                 v.device            = t.device;
-                v.data              = t.data;
+                v.storage_              = t.storage_;
                 v.data_offset       = t.data_offset;
                 v.shape             = t.shape;
                 v.strides           = t.strides;
                 v.strides_col_major = t.strides_col_major;
-                v.owns_data         = false;          // parent (or its owner) holds the storage
-                v.allocator_        = nullptr;
                 v.is_sliced_view    = t.is_sliced_view;
                 return v;
             }
@@ -257,27 +253,21 @@ namespace bearml{
 
             static bool isScalar(const Tensor& t) {
                 if (t.shape.empty()) return true;
-
-                // for (int dim : t.shape) {
-                //     if (dim != 1) return false;
-                // }
-                // return true;
-
-                // the below code is the same as above but now uses stl
                 return std::all_of(t.shape.begin(), t.shape.end(), [](int dim) { return dim == 1; });
             }
 
-            static T getScalarValue(const Tensor& t){
+            // TODO: refactor to use Scalar<T> directly and use proper storage mechanism
+            static Scalar<T> getScalarValue(const Tensor& t){
                 if (!isScalar(t)) {
                     throw std::runtime_error("Cannot get scalar value from non-scalar tensor");
                 }
 
-                T result;
+                Scalar<T> result;
                 if (t.device.is_cpu()) {
                     result = t.data[0];
                 } else {
                     // we copy to the host (cpu) to get the scalar value
-                    t.allocator_->copy_to_host(&result, t.data, sizeof(T));
+                    t.storage_->allocator()->copy_to_host(&result, t.data, sizeof(T));
                 }
                 return result;
 
@@ -331,7 +321,7 @@ namespace bearml{
         public:
 
             // constructor when size and data are provided -> copies on same device as I want to ensure the programmer has explicit knowledge of where the tensor is and should use .to before doing "cross-devices" copies
-            Tensor(std::vector<int> sizePassed, const Device& device = Device::cpu()) :shape(sizePassed),  owns_data(true), device(device), data_offset(0), is_sliced_view(false){ // we own the data here
+            Tensor(std::vector<int> sizePassed, const Device& device = Device::cpu()) :shape(sizePassed), device(device), data_offset(0), is_sliced_view(false){ // we own the data here
                 // shape cannot have 0 or negatives in it
                 if (utils::negOrZeroInSizeCheck(this->shape)){
                     throw std::invalid_argument("Size cannot have a negative or zero");
@@ -352,42 +342,42 @@ namespace bearml{
                 }
                 computeStrides(); // compute strides
 
-                this->allocator_.reset(get_allocator(this->device));
+                this->storage_->allocator().reset(get_allocator(this->device));
 
                 size_t sizeTensor = sizeOfTensor();
                 size_t bytes = sizeTensor*sizeof(T);
-                this->data = static_cast<T*>(allocator_->allocate(bytes));
+                this->storage_->raw_data() = static_cast<T*>(this->storage_->allocator()->allocate(bytes));
 
                 // initialize to zero
                 if (this->device.is_cpu()) {
-                    std::fill_n(this->data, sizeTensor, 0.0);
+                    std::fill_n(this->storage_->raw_data() , sizeTensor, 0.0);
                 } else {
                     // Zero initialize on GPU
-                    CUDA_CHECK(cudaMemset(this->data, 0, bytes));
+                    CUDA_CHECK(cudaMemset(this->storage_->raw_data(, 0, bytes));
                 }
 
             };
 
 
             // copy constructor
-            Tensor(const Tensor& other) : owns_data(true), shape(other.shape), data_offset(0), is_sliced_view(false){ // we own the data when we copy;
+            Tensor(const Tensor& other) : shape(other.shape), data_offset(0), is_sliced_view(false){ // we own the data when we copy;
                 computeStrides();
-                this->allocator_.reset(get_allocator(other.device));
+                this->storage_->allocator().reset(get_allocator(other.device));
                 size_t full_size = sizeOfTensor();
                 size_t bytes = full_size * sizeof(T);
-                this->data =static_cast<T*>(allocator_->allocate(bytes));
+                this->data =static_cast<T*>(this->storage_->allocator()->allocate(bytes));
 
                 if (other.is_contiguous()) {
                     if (this->device == other.device) {
                         // cpu to cpu or gpu to gpu
-                        allocator_->copy_device_to_device(this->data, other.data + other.data_offset, bytes);
+                        this->storage_->allocator()->copy_device_to_device(this->data, other.data + other.data_offset, bytes);
                     } else {
                         if (this->device.is_cpu()) {
                             // from device to cpu
-                            other.allocator_->copy_to_host(this->data, other.data + other.data_offset, bytes);
+                            other.storage_->allocator()->copy_to_host(this->data, other.data + other.data_offset, bytes);
                         } else {
                             // from cpu to device
-                            this->allocator_->copy_to_device(this->data, other.data + other.data_offset, bytes);
+                            this->storage_->allocator()->copy_to_device(this->data, other.data + other.data_offset, bytes);
                         }
                     }
                     this->device = other.device;
