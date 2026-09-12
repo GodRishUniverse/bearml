@@ -6,15 +6,15 @@
 
 namespace bearml {
 
-
-
-
+    // Owns one contiguous allocation on one device. Tensors hold a shared_ptr to it, so
+    // views (broadcast/slice/permute) share the pointer instead of each tracking ownership.
     class Storage {
     private:
            void * data_ = nullptr; // untyped pointer to the data
            size_t num_bytes_;
            Device device_;
-           std::unique_ptr<DeviceAllocator> allocator_; // the device allocator we will be using for moving -> we only want a unique allocator
+           // get_allocator() hands back a per-device singleton - so the uniqueness is guaranteed there
+           DeviceAllocator* allocator_;
     public:
         Storage(size_t nbytes, const Device& device) :
             num_bytes_(nbytes),
@@ -38,9 +38,7 @@ namespace bearml {
             }
         }
 
-        void* raw_data() const {
-            return data_;
-        }
+        void* raw_data() const { return data_; }
 
         template <typename T>
         T* data() const {

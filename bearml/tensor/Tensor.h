@@ -206,6 +206,50 @@ namespace bearml{
             size_t data_offset;
             bool is_sliced_view;
 
+            // number of elements the storage can hold - the tensor's own shape can be smaller (views)
+            size_t storage_elements() const {
+                return storage_ ? storage_->number_of_bytes() / sizeof(T) : 0;
+            }
+
+            // Debug-only: every at() goes through here, so an out-of-range flat index from a bad
+            // stride/offset computation fails at the access instead of corrupting a neighbour.
+            void check_in_storage(size_t flat) const {
+#ifndef NDEBUG
+                if (flat >= storage_elements()) {
+                    throw std::out_of_range("Tensor element " + std::to_string(flat) +
+                        " is outside its storage (" + std::to_string(storage_elements()) + " elements)");
+                }
+#endif
+            }
+
+            // allocates fresh storage for the current shape/device - the only place a Tensor takes memory
+            void allocate_storage() {
+                storage_ = std::make_shared<Storage>(sizeOfTensor() * sizeof(T), this->device);
+            }
+
+        public:
+
+            // Element access. Takes a flat index into the storage (callers add data_offset, as they
+            // already did) - bounds-checked in Debug builds.
+            T& at(size_t flat) {
+                check_in_storage(flat);
+                return storage_->data<T>()[flat];
+            }
+
+            const T& at(size_t flat) const {
+                check_in_storage(flat);
+                return storage_->data<T>()[flat];
+            }
+
+            // The only raw-pointer escapes, for the boundaries that cannot take anything else:
+            // CUDA kernel launches, Eigen::Map, and the allocator's memcpy family. The pointer is
+            // borrowed from the storage - it stays valid as long as this tensor (or any view
+            // sharing the storage) is alive, and nothing here owns it.
+            T* mutable_data() { return storage_ ? storage_->data<T>() : nullptr; }
+            const T* const_data() const { return storage_ ? storage_->data<T>() : nullptr; }
+
+        private:
+
             // default constructor - added for edge cases - private ONLY -> cpu only allocation
             Tensor() :  device(Device(DeviceType::CPU, -1)) , data_offset(0), is_sliced_view(false){};
 
@@ -264,10 +308,10 @@ namespace bearml{
 
                 Scalar<T> result;
                 if (t.device.is_cpu()) {
-                    result = t.data[0];
+                    result = t.at(0);
                 } else {
                     // we copy to the host (cpu) to get the scalar value
-                    t.storage_->allocator()->copy_to_host(&result, t.data, sizeof(T));
+                    t.storage_->allocator()->copy_to_host(&result, t.mutable_data(), sizeof(T));
                 }
                 return result;
 
@@ -365,19 +409,19 @@ namespace bearml{
                 this->storage_->allocator().reset(get_allocator(other.device));
                 size_t full_size = sizeOfTensor();
                 size_t bytes = full_size * sizeof(T);
-                this->data =static_cast<T*>(this->storage_->allocator()->allocate(bytes));
+                this->mutable_data() =static_cast<T*>(this->storage_->allocator()->allocate(bytes));
 
                 if (other.is_contiguous()) {
                     if (this->device == other.device) {
                         // cpu to cpu or gpu to gpu
-                        this->storage_->allocator()->copy_device_to_device(this->data, other.data + other.data_offset, bytes);
+                        this->storage_->allocator()->copy_device_to_device(this->mutable_data(), other.mutable_data() + other.data_offset, bytes);
                     } else {
                         if (this->device.is_cpu()) {
                             // from device to cpu
-                            other.storage_->allocator()->copy_to_host(this->data, other.data + other.data_offset, bytes);
+                            other.storage_->allocator()->copy_to_host(this->mutable_data(), other.mutable_data() + other.data_offset, bytes);
                         } else {
                             // from cpu to device
-                            this->storage_->allocator()->copy_to_device(this->data, other.data + other.data_offset, bytes);
+                            this->storage_->allocator()->copy_to_device(this->mutable_data(), other.mutable_data() + other.data_offset, bytes);
                         }
                     }
                     this->device = other.device;
@@ -396,7 +440,7 @@ namespace bearml{
                             h_strides[d] = (size_t)other.strides[d];
                         }
                         cuda::utils::launch_contiguous_gather<cuda_type_trait_t<T>>(
-                            cuda_ptr(other.data), cuda_ptr(this->data), other.data_offset,
+                            cuda_ptr(other.mutable_data()), cuda_ptr(this->mutable_data()), other.data_offset,
                             h_shape.data(), h_strides.data(), (size_t)nd, full_size);
                     } else {
                         // i walks the DESTINATION in row-major (dst is dense, so we write data[i] in flat order)
@@ -409,7 +453,7 @@ namespace bearml{
                                 tmp /= (size_t)other.shape[d];                 // strip that axis from tmp for the next iteration
                                 src += coord * (size_t)other.strides[d];       // step in source storage by source's own stride along axis d
                             }
-                            this->data[i] = other.data[src];
+                            this->at(i) = other.at(src);
                         }
                     }
                 }
@@ -419,8 +463,8 @@ namespace bearml{
             // copy assignment operator
             Tensor& operator=(const Tensor& other) {
                 if (this != &other) {
-                    if (this->owns_data && this->data && this->allocator_) {
-                        allocator_->deallocate(this->data);
+                    if (this->owns_data && this->mutable_data() && this->allocator_) {
+                        allocator_->deallocate(this->mutable_data());
                     }
                     this->shape = other.shape;
                     this->device = other.device;
@@ -432,17 +476,17 @@ namespace bearml{
 
                     this->allocator_.reset(get_allocator(device));
                     size_t bytes = sizeOfTensor() * sizeof(T);
-                    this->data =static_cast<T*>(allocator_->allocate(bytes));
+                    this->mutable_data() =static_cast<T*>(allocator_->allocate(bytes));
                     if (this->device == other.device) {
                         // cpu to cpu or gpu to gpu
-                        allocator_->copy_device_to_device(this->data, other.data, bytes);
+                        allocator_->copy_device_to_device(this->mutable_data(), other.mutable_data(), bytes);
                     } else {
                         if (this->device.is_cpu()) {
                             // from device to cpu
-                            other.allocator_->copy_to_host(this->data, other.data, bytes);
+                            other.allocator_->copy_to_host(this->mutable_data(), other.mutable_data(), bytes);
                         } else {
                             // from cpu to device
-                            this->allocator_->copy_to_device(this->data, other.data, bytes);
+                            this->allocator_->copy_to_device(this->mutable_data(), other.mutable_data(), bytes);
                         }
                     }
                 }
@@ -450,12 +494,12 @@ namespace bearml{
             }
 
             // move constructor
-            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), strides_col_major(std::move(other.strides_col_major)), device(other.device), data(other.data), allocator_(std::move(other.allocator_)), data_offset(other.data_offset){
+            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), strides_col_major(std::move(other.strides_col_major)), device(other.device), data(other.mutable_data()), allocator_(std::move(other.allocator_)), data_offset(other.data_offset){
                 // this->shape = other.shape;
                 // this->data = other.data;
                 // this->device = other.device;
                 // this->strides = other.strides;
-                other.data = nullptr;
+                other.mutable_data() = nullptr;
                 other.owns_data = false;
                 other.is_sliced_view = false;
             }
@@ -464,19 +508,19 @@ namespace bearml{
             Tensor& operator=(Tensor&& other) noexcept {
                 if (this != &other) {
 
-                    if (this->owns_data && this->data && this->allocator_) {
-                        allocator_->deallocate(this->data);
+                    if (this->owns_data && this->mutable_data() && this->allocator_) {
+                        allocator_->deallocate(this->mutable_data());
                     }
 
                     this->shape = std::move(other.shape);
-                    this->data = other.data;
+                    this->mutable_data() = other.mutable_data();
                     this->device = other.device;
                     this->strides = std::move(other.strides);
                     this->strides_col_major = std::move(other.strides_col_major);
                     this->allocator_ = std::move(other.allocator_);
                     this->owns_data = other.owns_data;
                     this->data_offset = other.data_offset;
-                    other.data = nullptr;
+                    other.mutable_data() = nullptr;
                     other.owns_data = false;
                     other.is_sliced_view = false;
                 }
@@ -486,8 +530,8 @@ namespace bearml{
             // destructor
             ~Tensor(){
                 // standard cleanup
-                if (this->owns_data && this->data && this->allocator_) {
-                    allocator_->deallocate(this->data);
+                if (this->owns_data && this->mutable_data() && this->allocator_) {
+                    allocator_->deallocate(this->mutable_data());
                 }
             }
 
@@ -500,10 +544,10 @@ namespace bearml{
                 size_t bytes = sizeOfTensor() * sizeof(T);
                 if (targetDevice.is_cpu()) {
                     // GPU -> CPU
-                    allocator_->copy_to_host(result.data, data, bytes);
+                    allocator_->copy_to_host(result.mutable_data(), mutable_data(), bytes);
                 } else {
                     // CPU -> GPU
-                    allocator_->copy_to_device(result.data, data, bytes);
+                    allocator_->copy_to_device(result.mutable_data(), mutable_data(), bytes);
                 }
                 return result;
             }
@@ -519,16 +563,16 @@ namespace bearml{
 
                 // transfer data
                 if (targetDevice.is_cpu()) {
-                    allocator_->copy_to_host(new_data, data, bytes);
+                    allocator_->copy_to_host(new_data, mutable_data(), bytes);
                 } else {
-                    new_allocator->copy_to_device(new_data, data, bytes);
+                    new_allocator->copy_to_device(new_data, mutable_data(), bytes);
                 }
 
                 if (owns_data) {
-                    allocator_->deallocate(data);
+                    allocator_->deallocate(mutable_data());
                 }
 
-                data = new_data;
+                mutable_data() = new_data;
                 device = targetDevice;
                 allocator_ = std::move(new_allocator); // new unique pointer setting
                 owns_data = true;
@@ -551,10 +595,10 @@ namespace bearml{
                     const size_t n = sizeOfTensor();
 
                     if (this->device.is_cuda()){
-                        cuda::utils::launch_dtype_change<cuda_type_trait_t<T>, cuda_type_trait_t<T2>>(cuda_ptr(this->data + data_offset), cuda_ptr(new_tensor.data), n);
+                        cuda::utils::launch_dtype_change<cuda_type_trait_t<T>, cuda_type_trait_t<T2>>(cuda_ptr(this->mutable_data() + data_offset), cuda_ptr(new_tensor.mutable_data()), n);
                     } else {
                         for (size_t i = 0; i < n; ++i) {
-                            new_tensor.data[i] = static_cast<T2>(this->data[data_offset + i]);
+                            new_tensor.at(i) = static_cast<T2>(this->at(data_offset + i));
                         }
                     }
 
@@ -630,7 +674,7 @@ namespace bearml{
                 size_t off = 0;
                 for (size_t d = 0; d < shape.size(); ++d)
                     off += index[d] * this->strides[d];
-                return data[this->data_offset+ off];
+                return at(this->data_offset+ off);
             }
 
             T get(std::span<int> index) const {
@@ -648,7 +692,7 @@ namespace bearml{
                 size_t off = 0;
                 for (size_t d = 0; d < shape.size(); ++d)
                     off += index[d] * this->strides[d];
-                return data[this->data_offset+ off];
+                return at(this->data_offset+ off);
             }
 
 
@@ -664,7 +708,7 @@ namespace bearml{
                     throw std::runtime_error("set_using_bulk_copy only supports contiguous tensors");
                 }
                 // Makes it device-agnostic: destination first, then source, then bytes
-                this->allocator_->copy_to_device(this->data + this->data_offset, values.data(), values.size() * sizeof(T));
+                this->allocator_->copy_to_device(this->mutable_data() + this->data_offset, values.data(), values.size() * sizeof(T));
             }
 
             void set(T val, std::vector<int> index) const {
@@ -739,7 +783,7 @@ namespace bearml{
                 for (size_t d = 0; d < shape.size(); ++d)
                     off += index[d] * strides[d];
 
-                data[this->data_offset+ off] = val;
+                at(this->data_offset+ off) = val;
             }
 
             // TODO: refactor
@@ -750,7 +794,7 @@ namespace bearml{
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
                 }
 
-                data[offset+row*(this->shape[this->shape.size()-1])+col] = val;
+                at(offset+row*(this->shape[this->shape.size()-1])+col) = val;
             }
 
             // helper function
@@ -850,7 +894,7 @@ namespace bearml{
                       os << "[";
                       for (size_t i = 0; i < t.shape[dim]; ++i) {
                           os << std::setw(9) << std::setprecision(print_precision)
-                             << t.data[offset + i * t.strides[dim]];
+                             << t.at(offset + i * t.strides[dim]);
                           if (i + 1 < t.shape[dim]) os << ", ";
                       }
                       os << "]";
@@ -889,7 +933,7 @@ namespace bearml{
                 if (tensor.device.is_cpu()) {
                     // No copy: walk the view in place.
                     if (tensor.shape.empty()) {
-                        os << tensor.data[tensor.data_offset];
+                        os << tensor.at(tensor.data_offset);
                     } else {
                         print_recursive(os, tensor, 0, tensor.data_offset, 0);
                     }
@@ -897,7 +941,7 @@ namespace bearml{
                     // copy constructor used here
                     Tensor host = tensor.to(Device::cpu());
                     if (host.shape.empty()) {
-                        os << host.data[host.data_offset];
+                        os << host.at(host.data_offset);
                     } else {
                         print_recursive(os, host, 0, host.data_offset, 0);
                     }
@@ -924,7 +968,7 @@ namespace bearml{
                 if (A.shape == B.shape) {
                     Tensor C(A.shape, A.device);
                     for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                        C.data[i] = fn(A.data[i], B.data[i]);
+                        C.at(i) = fn(A.at(i), B.at(i));
                     return C;
                 }
                 // broadcast path
@@ -941,7 +985,7 @@ namespace bearml{
                         offA += coord * aView.strides[d];
                         offB += coord * bView.strides[d];
                     }
-                    C.data[idx] = fn(A.data[offA], B.data[offB]);
+                    C.at(idx) = fn(A.at(offA), B.at(offB));
                 }
                 return C;
             }
@@ -952,7 +996,7 @@ namespace bearml{
                 if (A.device.type == DeviceType::CUDA) {
                     if (A.shape == B.shape) {
                         Tensor C(A.shape, A.device);
-                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(A.data), cuda_ptr(B.data), cuda_ptr(C.data), C.getShape(), op);
+                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(A.mutable_data()), cuda_ptr(B.mutable_data()), cuda_ptr(C.mutable_data()), C.getShape(), op);
                         return C;
                     }
                     auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
@@ -965,7 +1009,7 @@ namespace bearml{
 
                     Tensor C(outShape, A.device);
 
-                    cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(cuda_ptr(aView.data), cuda_ptr(bView.data), cuda_ptr(C.data),
+                    cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(cuda_ptr(aView.mutable_data()), cuda_ptr(bView.mutable_data()), cuda_ptr(C.mutable_data()),
                         aView.getStrides(), bView.getStrides(), C.getShape(), op);
                     return C;
                 }
@@ -986,7 +1030,7 @@ namespace bearml{
             static Tensor elementwise_scalar(const Tensor& A, T b, OP_Code op, LHS_RHS_Code side) {
                 Tensor C(A.shape, A.device);
                 if (A.device.type == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(cuda_ptr(A.data), cuda_val(b), cuda_ptr(C.data), A.shape, op, side);
+                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(cuda_ptr(A.mutable_data()), cuda_val(b), cuda_ptr(C.mutable_data()), A.shape, op, side);
                     return C;
                 }
                 size_t N = A.sizeOfTensor();
@@ -994,16 +1038,16 @@ namespace bearml{
                     // A op b
                     switch(op) {
                         case OP_Code::OP_ADD:
-                            for (size_t i=0;i<N;++i) C.data[i]=A.data[i]+b;
+                            for (size_t i=0;i<N;++i) C.at(i)=A.at(i)+b;
                             break;
                         case OP_Code::OP_SUB:
-                            for (size_t i=0;i<N;++i) C.data[i]=A.data[i]-b;
+                            for (size_t i=0;i<N;++i) C.at(i)=A.at(i)-b;
                             break;
                         case OP_Code::OP_MUL:
-                            for (size_t i=0;i<N;++i) C.data[i]=A.data[i]*b;
+                            for (size_t i=0;i<N;++i) C.at(i)=A.at(i)*b;
                             break;
                         case OP_Code::OP_DIV:
-                            for (size_t i=0;i<N;++i) C.data[i]=A.data[i]/b;
+                            for (size_t i=0;i<N;++i) C.at(i)=A.at(i)/b;
                             break;
                         default:
                             throw std::invalid_argument("OP Code not supported for scalar op.");
@@ -1012,16 +1056,16 @@ namespace bearml{
                     // b op A
                     switch(op) {
                         case OP_Code::OP_ADD:
-                            for (size_t i=0;i<N;++i) C.data[i]=b+A.data[i];
+                            for (size_t i=0;i<N;++i) C.at(i)=b+A.at(i);
                             break;
                         case OP_Code::OP_SUB:
-                            for (size_t i=0;i<N;++i) C.data[i]=b-A.data[i];
+                            for (size_t i=0;i<N;++i) C.at(i)=b-A.at(i);
                             break;
                         case OP_Code::OP_MUL:
-                            for (size_t i=0;i<N;++i) C.data[i]=b*A.data[i];
+                            for (size_t i=0;i<N;++i) C.at(i)=b*A.at(i);
                             break;
                         case OP_Code::OP_DIV:
-                            for (size_t i=0;i<N;++i) C.data[i]=b/A.data[i];
+                            for (size_t i=0;i<N;++i) C.at(i)=b/A.at(i);
                             break;
                         default:
                             throw std::invalid_argument("OP Code not supported for scalar op.");
@@ -1045,7 +1089,7 @@ namespace bearml{
 
                         Tensor oView = makeBroadcastView(other, outShape);
 
-                        cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(cuda_ptr(data), cuda_ptr(other.data), cuda_ptr(data),
+                        cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(cuda_ptr(mutable_data()), cuda_ptr(other.mutable_data()), cuda_ptr(mutable_data()),
                             getStrides(), oView.getStrides(), outShape, op);
 
                         return *this;
@@ -1063,10 +1107,10 @@ namespace bearml{
                         }
                         switch(op) {
                             case OP_Code::OP_ADD:
-                                data[idx] += oView.data[offO];
+                                at(idx) += oView.at(offO);
                                 break;
                             case OP_Code::OP_SUB:
-                                data[idx] -= oView.data[offO];
+                                at(idx) -= oView.at(offO);
                                 break;
                             default:
                                 throw std::invalid_argument("Unsupported in-place broadcast op");
@@ -1075,16 +1119,16 @@ namespace bearml{
                 } else {
                     // CUDA
                     if (device.type == DeviceType::CUDA) {
-                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(data), cuda_ptr(other.data), cuda_ptr(data), shape, op);
+                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(mutable_data()), cuda_ptr(other.mutable_data()), cuda_ptr(mutable_data()), shape, op);
                         return *this;
                     }
                     size_t N = sizeOfTensor();
                     switch(op) {
                         case OP_Code::OP_ADD:
-                            for (size_t i=0;i<N;++i) data[i]+=other.data[i];
+                            for (size_t i=0;i<N;++i) at(i)+=other.at(i);
                             break;
                         case OP_Code::OP_SUB:
-                            for (size_t i=0;i<N;++i) data[i]-=other.data[i];
+                            for (size_t i=0;i<N;++i) at(i)-=other.at(i);
                             break;
                         default:
                             throw std::invalid_argument("Unsupported in-place contiguous op");
@@ -1096,16 +1140,16 @@ namespace bearml{
             // in-place scalar-Tensor operator
             Tensor& inplace_scalar(T b, OP_Code op) {
                 if (device.type == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(cuda_ptr(this->data), cuda_val(b), cuda_ptr(this->data), shape, op, LHS_RHS_Code::OP_RHS);
+                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(cuda_ptr(this->mutable_data()), cuda_val(b), cuda_ptr(this->mutable_data()), shape, op, LHS_RHS_Code::OP_RHS);
                     return *this;
                 }
                 size_t N = sizeOfTensor();
                 switch(op) {
                     case OP_Code::OP_ADD:
-                        for (size_t i=0;i<N;++i) data[i]+=b;
+                        for (size_t i=0;i<N;++i) at(i)+=b;
                         break;
                     case OP_Code::OP_SUB:
-                        for (size_t i=0;i<N;++i) data[i]-=b;
+                        for (size_t i=0;i<N;++i) at(i)-=b;
                         break;
                     default:
                         throw std::invalid_argument("Unsupported in-place scalar op");
@@ -1121,7 +1165,7 @@ namespace bearml{
             static Tensor elementwise_unary_cpu(const Tensor& A, Func fn) {
                 Tensor C(A.shape, A.device);
                 for (size_t i = 0, N = A.sizeOfTensor(); i < N; ++i)
-                    C.data[i] = fn(A.data[i]);
+                    C.at(i) = fn(A.at(i));
                 return C;
             }
 
@@ -1129,8 +1173,8 @@ namespace bearml{
                 if (A.device.type == DeviceType::CUDA) {
                     Tensor C(A.shape, A.device);
                     cuda::launch_elementwise_unary<cuda_type_trait_t<T>>(
-                        cuda_ptr(A.data),
-                        cuda_ptr(C.data),
+                        cuda_ptr(A.mutable_data()),
+                        cuda_ptr(C.mutable_data()),
                         C.getShape(),
                         op
                     );
@@ -1259,7 +1303,7 @@ namespace bearml{
                         // 1D row-major vec of length K, viewed as (K,1): row_stride=1, col_stride doesn't matter (only one col)
                         Tensor result({1}, a.device);
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a.data), cuda_ptr(b.data), cuda_ptr(result.data),
+                            cuda_ptr(a.mutable_data()), cuda_ptr(b.mutable_data()), cuda_ptr(result.mutable_data()),
                             1,    // batchsize
                             1,    // m (rows of a treated as row vector)
                             a_shape[0], // k (common dim),
@@ -1272,11 +1316,11 @@ namespace bearml{
                         return result;
                     }
 
-                    Eigen::Map<const VectorXT<T>> vec_a(a.data, a_shape[0]);
-                    Eigen::Map<const VectorXT<T>> vec_b(b.data, b_shape[0]);
+                    Eigen::Map<const VectorXT<T>> vec_a(a.mutable_data(), a_shape[0]);
+                    Eigen::Map<const VectorXT<T>> vec_b(b.mutable_data(), b_shape[0]);
 
                     Tensor output({1});
-                    output.data[0] = vec_a.dot(vec_b);
+                    output.at(0) = vec_a.dot(vec_b);
                     return output;
                 }
 
@@ -1292,7 +1336,7 @@ namespace bearml{
                         // B is 1D row-major contiguous → viewed as (m,1): row_stride=1, col_stride=1 (single col).
                         Tensor result({a_shape[0]}, a.device);
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a.data), cuda_ptr(b.data), cuda_ptr(result.data),
+                            cuda_ptr(a.mutable_data()), cuda_ptr(b.mutable_data()), cuda_ptr(result.mutable_data()),
                             1,           // batchsize
                             a_shape[0],  // m
                             a_shape[1],  // k (common dim),
@@ -1308,11 +1352,11 @@ namespace bearml{
                     // Eigen's RowMajor Map can't read a col-major view directly; densify if needed.
                     // The CUDA path above already handles layout natively via per-operand strides.
                     Tensor a_use = a.is_row_major_contiguous() ? a : Tensor::contiguous(a);
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.data, a_shape[0], a_shape[1]);
-                    Eigen::Map<const VectorXT<T>> vec_b(b.data, b_shape[0]);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
+                    Eigen::Map<const VectorXT<T>> vec_b(b.mutable_data(), b_shape[0]);
 
                     Tensor result({a_shape[0]});
-                    Eigen::Map<VectorXT<T>> result_vec(result.data, a_shape[0]);
+                    Eigen::Map<VectorXT<T>> result_vec(result.mutable_data(), a_shape[0]);
                     result_vec = mat_a * vec_b;
 
                     return result;
@@ -1330,7 +1374,7 @@ namespace bearml{
                         // B's strides come straight from the tensor (handles transposed/permuted B view).
                         Tensor result({1,b_shape[1]}, a.device);
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a.data), cuda_ptr(b.data), cuda_ptr(result.data),
+                            cuda_ptr(a.mutable_data()), cuda_ptr(b.mutable_data()), cuda_ptr(result.mutable_data()),
                             1,           // batchsize
                             1,           // m
                             b_shape[0],  // k (common dim),
@@ -1347,11 +1391,11 @@ namespace bearml{
                     // (The earlier `mat_b * vec_a` form only typechecked when B was square.)
                     // Densify b first if it's a col-major / strided view so the RowMajor Map is correct.
                     Tensor b_use = b.is_row_major_contiguous() ? b : Tensor::contiguous(b);
-                    Eigen::Map<const VectorXT<T>> vec_a(a.data, a_shape[0]);
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.data, b_shape[0], b_shape[1]);
+                    Eigen::Map<const VectorXT<T>> vec_a(a.mutable_data(), a_shape[0]);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
 
                     Tensor result({b_shape[1]});
-                    Eigen::Map<VectorXT<T>> result_vec(result.data, b_shape[1]);
+                    Eigen::Map<VectorXT<T>> result_vec(result.mutable_data(), b_shape[1]);
                     result_vec = mat_b.transpose() * vec_a;
 
                     return result;
@@ -1385,7 +1429,7 @@ namespace bearml{
                         // For row-major (M,K) that's (K, 1); for col-major it's (1, M). The kernel doesn't
                         // care which — it just uses both to compute a[row * row_stride + k * col_stride].
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a_use.data), cuda_ptr(b_use.data), cuda_ptr(result.data),
+                            cuda_ptr(a_use.mutable_data()), cuda_ptr(b_use.mutable_data()), cuda_ptr(result.mutable_data()),
                             1,           // batchsize
                             a_shape[0],  // m
                             a_shape[1],  // k
@@ -1402,24 +1446,24 @@ namespace bearml{
                     // RowMajor or ColMajor for THIS shape". So pick the Map type from the layout flag.
                     // Eigen happily multiplies a RowMajor matrix by a ColMajor one and vice versa.
                     Tensor result({a_shape[0], b_shape[1]});
-                    Eigen::Map<MatrixRowMajorT<T>> result_mat(result.data, a_shape[0], b_shape[1]);
+                    Eigen::Map<MatrixRowMajorT<T>> result_mat(result.mutable_data(), a_shape[0], b_shape[1]);
 
                     using ColMajorT = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
                     if (a_layout == Layout::ROW_MAJOR && b_layout == Layout::ROW_MAJOR) {
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.data, a_shape[0], a_shape[1]);
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.data, b_shape[0], b_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
                         result_mat = mat_a * mat_b;
                     } else if (a_layout == Layout::ROW_MAJOR /* && b is COL_MAJOR */) {
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.data, a_shape[0], a_shape[1]);
-                        Eigen::Map<const ColMajorT>          mat_b(b_use.data, b_shape[0], b_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const ColMajorT>          mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
                         result_mat = mat_a * mat_b;
                     } else if (b_layout == Layout::ROW_MAJOR /* && a is COL_MAJOR */) {
-                        Eigen::Map<const ColMajorT>          mat_a(a_use.data, a_shape[0], a_shape[1]);
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.data, b_shape[0], b_shape[1]);
+                        Eigen::Map<const ColMajorT>          mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
                         result_mat = mat_a * mat_b;
                     } else { // both col-major
-                        Eigen::Map<const ColMajorT> mat_a(a_use.data, a_shape[0], a_shape[1]);
-                        Eigen::Map<const ColMajorT> mat_b(b_use.data, b_shape[0], b_shape[1]);
+                        Eigen::Map<const ColMajorT> mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const ColMajorT> mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
                         result_mat = mat_a * mat_b;
                     }
 
@@ -1472,11 +1516,11 @@ namespace bearml{
             friend bool operator==(const Tensor &a, const Tensor &b){
                 if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
                     if (a.getDevice().type == DeviceType::CUDA && b.getDevice().type == DeviceType::CUDA){
-                        return cuda::launch_check_equal_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.data), cuda_ptr(b.data), a.sizeOfTensor()); // need to test this
+                        return cuda::launch_check_equal_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.mutable_data()), cuda_ptr(b.mutable_data()), a.sizeOfTensor()); // need to test this
                     }
                     // NOTE: std::abs is better for doubles
                     for (size_t i = 0; i<a.sizeOfTensor(); i++){
-                        if ((std::abs(a.data[i]-b.data[i])) >= Tensor::MIN_DIFF){ // check if the error is greater than 10^-15
+                        if ((std::abs(a.at(i)-b.at(i))) >= Tensor::MIN_DIFF){ // check if the error is greater than 10^-15
                             return false;
                         }
                     }
@@ -1539,7 +1583,7 @@ namespace bearml{
                 if (shape.size()==1 && dim ==0){
                     // no need to check keep dims as if keepdims is false then it will be a scalar anyways
                     Tensor new_t({1}, this->device);
-                    new_t.data[0] = (op == reductions::ReductionOps::PROD) ? T(1)
+                    new_t.at(0) = (op == reductions::ReductionOps::PROD) ? T(1)
                                              : (op == reductions::ReductionOps::MAX)  ? std::numeric_limits<T>::lowest()
                                              : (op == reductions::ReductionOps::MIN)  ?  std::numeric_limits<T>::max()
                                              : T(0); // even for argmin/argmax initial value is 0
@@ -1547,31 +1591,31 @@ namespace bearml{
                     // opposite extreme (the index in new_t.data[0] stays 0 by default)
                     T value = (op == reductions::ReductionOps::ARG_MAX) ? std::numeric_limits<T>::lowest()
                             : (op == reductions::ReductionOps::ARG_MIN) ? std::numeric_limits<T>::max()
-                            : new_t.data[0]; // for argmin/argmax
+                            : new_t.at(0); // for argmin/argmax
                     for (size_t i =0; i < sizeOfTensor(); i++){
                         switch (op) {
                             case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
-                                new_t.data[0] += data[i];
+                                new_t.at(0) += at(i);
                                 break;
                             case reductions::ReductionOps::PROD:
-                                new_t.data[0] *= data[i];
+                                new_t.at(0) *= at(i);
                                 break;
                             case reductions::ReductionOps::MAX:
-                                new_t.data[0] = std::max(new_t.data[0] , data[i]);
+                                new_t.at(0) = std::max(new_t.at(0) , at(i));
                                 break;
                             case reductions::ReductionOps::MIN:
-                                new_t.data[0] = std::min(new_t.data[0] , data[i]);
+                                new_t.at(0) = std::min(new_t.at(0) , at(i));
                                 break;
                             case reductions::ReductionOps::ARG_MAX:
-                                if (data[i] > value) {
-                                    new_t.data[0] = i;
-                                    value = data[i];
+                                if (at(i) > value) {
+                                    new_t.at(0) = i;
+                                    value = at(i);
                                 }
                                 break;
                             case reductions::ReductionOps::ARG_MIN:
-                                if (data[i] < value) {
-                                    new_t.data[0] = i;
-                                    value = data[i];
+                                if (at(i) < value) {
+                                    new_t.at(0) = i;
+                                    value = at(i);
                                 }
                                 break;
                             default:
@@ -1580,7 +1624,7 @@ namespace bearml{
                     }
                     // for mean, divide by the number of elements (get scalar value)
                     if (op == reductions::ReductionOps::MEAN) {
-                        new_t.data[0] /= sizeOfTensor();
+                        new_t.at(0) /= sizeOfTensor();
                     }
                     new_t.to_(this->device);
                     return new_t;
@@ -1598,10 +1642,10 @@ namespace bearml{
                 ll offset_old{offset_new_shape*oldDim};
 
                 Tensor new_t(newShape, this->device);
-                T* flat_data = new_t.data;
+                T* flat_data = new_t.mutable_data();
 
                 if (this->device.type == DeviceType::CUDA) {
-                    cuda::launch_accumulate_kernel<cuda_type_trait_t<T>>(cuda_ptr(this->data), cuda_ptr(flat_data), this->shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
+                    cuda::launch_accumulate_kernel<cuda_type_trait_t<T>>(cuda_ptr(this->mutable_data()), cuda_ptr(flat_data), this->shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
 
                 } else {
 
@@ -1621,7 +1665,7 @@ namespace bearml{
 
                             for (int idx = 0; idx<oldDim; idx++){
                                 // edited from this->data to copy_tensor.data
-                                T elem = copy_tensor.data[v + idx * offset_new_shape + s];
+                                T elem = copy_tensor.at(v + idx * offset_new_shape + s);
                                 switch (op) {
                                     case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
                                         val += elem;
@@ -1727,13 +1771,13 @@ namespace bearml{
                 if (t.device == DeviceType::CUDA) {
                     // Create a scalar tensor on CUDA filled with val
                     Tensor scalar_t(t.getShape());
-                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.data[i] = val;
+                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.at(i) = val;
                     scalar_t.to_(t.device);
                     return Tensor::max(t, scalar_t);
                 }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = std::max({t.data[i], val});
+                    a.at(i) = std::max({t.at(i), val});
                 }
                 return a;
             }
@@ -1750,14 +1794,14 @@ namespace bearml{
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
                     cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
-                        cuda_ptr(t.data), cuda_ptr(s.data), cuda_ptr(result.data),
+                        cuda_ptr(t.mutable_data()), cuda_ptr(s.mutable_data()), cuda_ptr(result.mutable_data()),
                         t.getShape(), OP_Code::OP_MAX
                     );
                     return result;
                 }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = std::max({t.data[i], s.data[i]});
+                    a.at(i) = std::max({t.at(i), s.at(i)});
                 }
                 return a;
             }
@@ -1768,13 +1812,13 @@ namespace bearml{
                 // std::cout <<"MIN" <<std::endl;
                 if (t.device == DeviceType::CUDA) {
                     Tensor scalar_t(t.getShape());
-                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.data[i] = val;
+                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.at(i) = val;
                     scalar_t.to_(t.device);
                     return Tensor::min(t, scalar_t);
                 }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = std::min({t.data[i], val});
+                    a.at(i) = std::min({t.at(i), val});
                 }
                 return a;
             }
@@ -1791,14 +1835,14 @@ namespace bearml{
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
                     cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
-                        cuda_ptr(t.data), cuda_ptr(s.data), cuda_ptr(result.data),
+                        cuda_ptr(t.mutable_data()), cuda_ptr(s.mutable_data()), cuda_ptr(result.mutable_data()),
                         t.getShape(), OP_Code::OP_MIN
                     );
                     return result;
                 }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.data[i] = std::min({t.data[i], s.data[i]});
+                    a.at(i) = std::min({t.at(i), s.at(i)});
                 }
                 return a;
             }
@@ -1831,15 +1875,15 @@ namespace bearml{
                     // Reduce straight into result's own T buffer; the kernel is templated
                     // on the element type, so no separate accumulator tensor is needed.
                     // TODO: fix the type
-                    cuda::launch_sum_kernel(t.data, result.data, t.sizeOfTensor());
+                    cuda::launch_sum_kernel(t.mutable_data(), result.mutable_data(), t.sizeOfTensor());
                     result.to_(Device::cpu()); // GPU direct memory access is NOT SET UP
-                    result.set(static_cast<T>(static_cast<double>(result.data[0]) / static_cast<double>(t.sizeOfTensor())), {0}); // set the mean value
+                    result.set(static_cast<T>(static_cast<double>(result.at(0)) / static_cast<double>(t.sizeOfTensor())), {0}); // set the mean value
                     result.to_(t.device); // send back to the original device
                 }else {
                     size_t sizeTensor = t.sizeOfTensor();
                     double sum = 0.0; // accumulate in double on CPU to avoid float cancellation
                     for (size_t i =0; i<sizeTensor; i++){
-                       sum += static_cast<double>(t.data[i]);
+                       sum += static_cast<double>(t.at(i));
 
                     }
                     result.set(static_cast<T>(sum / static_cast<double>(t.sizeOfTensor())), {0}) ;
@@ -1868,8 +1912,8 @@ namespace bearml{
                 Tensor result(t.shape, t.device);
                 if (t.device.is_cuda()) {
                     cuda::launch_softmax_kernel<cuda_type_trait_t<T>>(
-                        cuda_ptr(t.data),
-                        cuda_ptr(result.data),
+                        cuda_ptr(t.mutable_data()),
+                        cuda_ptr(result.mutable_data()),
                         t.getShape(),
                         t.getStrides(),
                         t.sizeOfTensor(),
@@ -1899,18 +1943,18 @@ namespace bearml{
 
                         for (size_t j = 0; j < shape[dim_to_use]; ++j) {
                             size_t index = row_base + j * stride_dim;
-                            max_values[i] = std::max(max_values[i], t.data[index]);
+                            max_values[i] = std::max(max_values[i], t.at(index));
                         }
 
                         for (size_t j = 0; j < shape[dim_to_use]; ++j) {
                             size_t index = row_base + j * stride_dim;
-                            result.data[index] = std::exp(t.data[index]-max_values[i]);
-                            sum_values[i] += result.data[index];
+                            result.at(index) = std::exp(t.at(index)-max_values[i]);
+                            sum_values[i] += result.at(index);
                         }
 
                         for (size_t j = 0; j < shape[dim_to_use]; ++j) {
                             size_t index = row_base + j * stride_dim;
-                            result.data[index]/=sum_values[i];
+                            result.at(index)/=sum_values[i];
                         }
                     }
 
@@ -1925,7 +1969,7 @@ namespace bearml{
                 // CUDA fill
                 if (!this->device.is_cpu()) {
                     cuda::launch_fill<cuda_type_trait_t<T>>(
-                        cuda_ptr(this->data),
+                        cuda_ptr(this->mutable_data()),
                         cuda_val(v),
                         this->shape
                     );
@@ -1934,7 +1978,7 @@ namespace bearml{
 
                 // CPU fill
                 for (size_t i =0;i<sizeOfTensor(); i++){
-                    this->data[i] = v;
+                    this->at(i) = v;
                 }
             }
 
@@ -1944,7 +1988,7 @@ namespace bearml{
                 if (t.device.is_cpu()) {
                     // we only have to check if there is at least one of the numbers that is non-zero
                     for (size_t i =0;i<t.sizeOfTensor(); i++){
-                        if (std::abs(t.data[i]) > 1e-12) {
+                        if (std::abs(t.at(i)) > 1e-12) {
                             return true;
                         }
                     }
@@ -1953,7 +1997,7 @@ namespace bearml{
 
                 //CUDA support
                 // TODO: fix the type
-                return cuda::launch_check_zero_kernel(cuda_ptr(t.data), t.sizeOfTensor());
+                return cuda::launch_check_zero_kernel(cuda_ptr(t.mutable_data()), t.sizeOfTensor());
 
             }
 
@@ -1983,11 +2027,11 @@ namespace bearml{
                 double step = (static_cast<double>(end)-cur)/(size);
                 if (this->device.is_cpu()) {
                     for (size_t i =0; i < long_size ; i++){
-                        this->data[i] = static_cast<T>(cur);
+                        this->at(i) = static_cast<T>(cur);
                         cur+=step;
                     }
                 } else {
-                    cuda::launch_linspace_kernel<cuda_type_trait_t<T>>(cuda_ptr(this->data), cuda_val(static_cast<T>(start)), cuda_val(static_cast<T>(step)), long_size);
+                    cuda::launch_linspace_kernel<cuda_type_trait_t<T>>(cuda_ptr(this->mutable_data()), cuda_val(static_cast<T>(start)), cuda_val(static_cast<T>(step)), long_size);
                 }
                 return *this;
             }
@@ -2116,7 +2160,7 @@ namespace bearml{
                         h_strides[d] = (size_t)t.strides[d];
                     }
                     cuda::utils::launch_contiguous_gather<cuda_type_trait_t<T>>(
-                        cuda_ptr(t.data), cuda_ptr(result.data), t.data_offset,
+                        cuda_ptr(t.mutable_data()), cuda_ptr(result.mutable_data()), t.data_offset,
                         h_shape.data(), h_strides.data(), (size_t)nd, n);
                 } else {
                     // i walks the DESTINATION row-major (so we write result.data[i] in the natural flat order)
@@ -2130,7 +2174,7 @@ namespace bearml{
                             src += coord * (size_t)t.strides[d];        // step in source storage by source's own stride along axis d
                                                                         // -> for transpose this is the swapped dim's stride, for broadcast it's 0, for slice it's the parent's stride
                         }
-                        result.data[i] = t.data[src]; // dst is dense, so flat index == i; src lands wherever the source's strides put us
+                        result.at(i) = t.at(src); // dst is dense, so flat index == i; src lands wherever the source's strides put us
                     }
                 }
                 return result;
@@ -2252,7 +2296,7 @@ namespace bearml{
 
                     for (size_t i = 0; i < n; ++i) {
                         const Tensor& t = tensors.begin()[i];
-                        h_data[i] = t.data; // get the raw data pointer
+                        h_data[i] = t.mutable_data(); // get the raw data pointer
 
                         int* d_shape = nullptr;
                         size_t shape_size = t.getShape().size();
@@ -2275,7 +2319,7 @@ namespace bearml{
                                           n * sizeof(int*), cudaMemcpyHostToDevice));
 
                     cuda::launch_concat_kernel<cuda_type_trait_t<T>>(
-                        reinterpret_cast<cuda_type_trait_t<T>**>(d_allInputs), d_shapes, n, cuda_ptr(result.data),
+                        reinterpret_cast<cuda_type_trait_t<T>**>(d_allInputs), d_shapes, n, cuda_ptr(result.mutable_data()),
                         outerDim, innerDim, dim, concatDim);
 
                     for (int* d_shape : h_shape_ptrs) CUDA_CHECK(cudaFree(d_shape));
@@ -2290,7 +2334,7 @@ namespace bearml{
                             // we copy the data for each tensor into the result tensor
                             // outer*concatDim * innerDim moves the pointer to the correct position in the result tensor
                             // offset * innerDim is the offset that will be copied from the source tensor using (o*src_cat_dim*innerDim)
-                            std::memcpy(result.data  + o*concatDim *innerDim + offset*innerDim, tensors.begin()[i].data + o*src_cat_dim*innerDim, copy_size * sizeof(T));
+                            std::memcpy(result.mutable_data()  + o*concatDim *innerDim + offset*innerDim, tensors.begin()[i].mutable_data() + o*src_cat_dim*innerDim, copy_size * sizeof(T));
                             offset += src_cat_dim;
                         }
                     }
@@ -2324,20 +2368,20 @@ namespace bearml{
                 computeStrides();
 
 
-                std::copy(this->data, this->data + stride, temp + 0);
+                std::copy(this->mutable_data(), this->mutable_data() + stride, temp + 0);
                 ll start = stride;
                 for (const Tensor& tensor : tensors){
-                    T * tempData = tensor.data;
+                    T * tempData = tensor.mutable_data();
 
                     std::copy(tempData, tempData + stride, temp + start); // copy the data
                     start += stride;
                 }
 
 
-                if (this->data != nullptr) {
-                    delete[] this->data;
+                if (this->mutable_data() != nullptr) {
+                    delete[] this->mutable_data();
                 }
-                this->data = temp;
+                this->mutable_data() = temp;
             }
 
             // TODO
