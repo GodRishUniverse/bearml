@@ -11,9 +11,9 @@ namespace bearml {
         OP_Code op;
         std::vector<IRNode*> inputs;
         // TODO: Design these structures
-        Shape shape;
-        DType dtype;
-        Attrs attrs;
+        // Shape shape;
+        // DType dtype;
+        // Attrs attrs;
 
     };
 };

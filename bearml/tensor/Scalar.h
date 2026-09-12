@@ -7,15 +7,12 @@ namespace bearml {
         private:
             T scalar;
         public:
-            Scalar<T>(T scalar): scalar(scalar){
-            }
-
-            Scalar(const Scalar<T>& scalar) = default;
-            Scalar& operator=(const Scalar<T>& other) = default;
-            Scalar(const Scalar<T>&& scalar) = default;
-            Scalar& operator=(const Scalar<T>&& other) = default;
-            ~Scalar<T>() = default;
+            Scalar() = default;
+            Scalar(T v) : scalar(v) {}
+            T scalar() const { return scalar; }
+            operator T() const { return scalar; }
 
             // inherit ops
+
     };
 }
