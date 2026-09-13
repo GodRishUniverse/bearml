@@ -17,8 +17,8 @@ namespace bearml {
         std::vector<int> strides; // will be used in permute and in GEMM
         std::vector<int> strides_col_major; // TODO: use this to make all ops transpose friendly and avoid copy operations
 
-        size_t data_offset;
-        bool is_sliced_view;
+        size_t data_offset = 0;
+        bool is_sliced_view = false;
     };
 
     namespace utils {

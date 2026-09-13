@@ -98,10 +98,10 @@ namespace bearml {
             if (a.device == DeviceType::CUDA) {
                 // Use broadcast kernel with strides computed from the views
                 // We only need the batch strides (not the matrix dim strides)
-                std::vector<int64_t> batch_strides_a(a_view.strides.begin(),
-                    a_view.strides.begin() + batch_shape.size());
-                std::vector<int64_t> batch_strides_b(b_view.strides.begin(),
-                    b_view.strides.begin() + batch_shape.size());
+                std::vector<int64_t> batch_strides_a(a_view.layout_.strides.begin(),
+                    a_view.layout_.strides.begin() + batch_shape.size());
+                std::vector<int64_t> batch_strides_b(b_view.layout_.strides.begin(),
+                    b_view.layout_.strides.begin() + batch_shape.size());
 
                 cuda::launch_gemm_broadcasted<cuda_type_trait_t<T>>(
                     a_ref.const_data(), b_ref.const_data(), result.mutable_data(),
@@ -137,8 +137,8 @@ namespace bearml {
                 // Calculate offsets for this batch
                 ll offset_a = 0, offset_b = 0;
                 for (size_t d = 0; d < batch_shape.size(); ++d) {
-                    offset_a += batch_coords[d] * a_view.strides[d]; // if stride is zero somewhere in the broadcasted view then the computations make use of the same memory - no copies done
-                    offset_b += batch_coords[d] * b_view.strides[d]; // if stride is zero somewhere in the broadcasted view then the computations make use of the same memory - no copies done
+                    offset_a += batch_coords[d] * a_view.layout_.strides[d]; // if stride is zero somewhere in the broadcasted view then the computations make use of the same memory - no copies done
+                    offset_b += batch_coords[d] * b_view.layout_.strides[d]; // if stride is zero somewhere in the broadcasted view then the computations make use of the same memory - no copies done
                 }
 
                 // Get pointers to the matrices for this batch
@@ -180,7 +180,7 @@ namespace bearml {
 
         template<typename T>
         Tensor<T> hadamard(const Tensor<T> &a, const Tensor<T> &other) {
-            if (a.shape != other.shape){
+            if (a.layout_.shape != other.layout_.shape){
                 throw std::invalid_argument("Tensors must have the same shape");
             }
 
@@ -190,13 +190,13 @@ namespace bearml {
 
             // CUDA
             if (a.device == DeviceType::CUDA) {
-                Tensor<T> C(a.shape, a.device);
+                Tensor<T> C(a.layout_.shape, a.device);
 
                 cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(a.const_data(), other.const_data(), C.mutable_data(), a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
                 return C;
             }
 
-            Tensor<T> result(a.shape, a.device);
+            Tensor<T> result(a.layout_.shape, a.device);
             for (ll i = 0; i < a.sizeOfTensor(); i++){
                 result.at(i) = a.at(i) * other.at(i);
             }
