@@ -1343,6 +1343,218 @@ TEST(GemmLayoutTest, AutogradBackwardThroughTransposeViewNoContiguous) {
 }
 
 
+// ---------------- Storage sharing / copy / move semantics ----------------
+// Views share a tensor's storage via shared_ptr<Storage> instead of raw pointers.
+
+namespace {
+    // a slice view outliving its parent tensor
+    TensorD make_outliving_slice_view() {
+        TensorD inner({4});
+        inner.set(10.0, {0}); inner.set(20.0, {1}); inner.set(30.0, {2}); inner.set(40.0, {3});
+        TensorD view = inner.slice("1:3"); // elements 20, 30
+        return view; // inner destroyed on return; view keeps the storage alive
+    }
+}
+
+TEST(TensorStorageTest, SliceViewSharesStorageWithParent) {
+    TensorD a({4});
+    a.set(1.0, {0}); a.set(2.0, {1}); a.set(3.0, {2}); a.set(4.0, {3});
+    TensorD view = a.slice("1:3"); // elements a[1], a[2]
+    EXPECT_DOUBLE_EQ(view.get({0}), 2.0);
+    EXPECT_DOUBLE_EQ(view.get({1}), 3.0);
+
+    a.set(99.0, {1}); // write through parent
+    EXPECT_DOUBLE_EQ(view.get({0}), 99.0); // observable through the view
+
+    view.set(77.0, {1}); // write through the view
+    EXPECT_DOUBLE_EQ(a.get({2}), 77.0); // observable through the parent
+}
+
+TEST(TensorStorageTest, TransposeViewSharesStorageWithParent) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0); // [[1,2,3],[4,5,6]]
+    TensorD t = a.transpose();
+    EXPECT_DOUBLE_EQ(t.get({0, 1}), 4.0); // t[0,1] == a[1,0]
+
+    a.set(999.0, {1, 0}); // write through parent
+    EXPECT_DOUBLE_EQ(t.get({0, 1}), 999.0);
+
+    t.set(555.0, {2, 0}); // write through view; t[2,0] == a[0,2]
+    EXPECT_DOUBLE_EQ(a.get({0, 2}), 555.0);
+}
+
+TEST(TensorStorageTest, ViewOutlivesParent) {
+    TensorD view = make_outliving_slice_view();
+    EXPECT_EQ(view.getShape(), (std::vector<int>{2}));
+    EXPECT_DOUBLE_EQ(view.get({0}), 20.0);
+    EXPECT_DOUBLE_EQ(view.get({1}), 30.0);
+}
+
+// copy ctor densifies a transposed (col-major) source into row-major
+TEST(TensorStorageTest, CopyCtorFromTransposedSourceDensifies) {
+    TensorD a({2, 3}); a.linspace(1.0, 6.0); // [[1,2,3],[4,5,6]]
+    TensorD t = a.transpose();               // view (3,2), col-major
+    TensorD copy(t);                          // copy ctor from an lvalue view -> gather
+
+    EXPECT_EQ(copy.getShape(), (std::vector<int>{3, 2}));
+    EXPECT_TRUE(copy.is_contiguous());
+    EXPECT_DOUBLE_EQ(copy.get({0, 0}), 1.0);
+    EXPECT_DOUBLE_EQ(copy.get({0, 1}), 4.0);
+    EXPECT_DOUBLE_EQ(copy.get({1, 0}), 2.0);
+    EXPECT_DOUBLE_EQ(copy.get({1, 1}), 5.0);
+    EXPECT_DOUBLE_EQ(copy.get({2, 0}), 3.0);
+    EXPECT_DOUBLE_EQ(copy.get({2, 1}), 6.0);
+
+    a.set(-1.0, {0, 0}); // mutate original after copy
+    EXPECT_DOUBLE_EQ(copy.get({0, 0}), 1.0); // copy is untouched (deep, independent storage)
+}
+
+// copy ctor rebases a sliced source's offset to zero
+TEST(TensorStorageTest, CopyCtorFromSlicedSourceStartsAtZero) {
+    TensorD a({5});
+    a.set(10.0, {0}); a.set(20.0, {1}); a.set(30.0, {2}); a.set(40.0, {3}); a.set(50.0, {4});
+    TensorD view = a.slice("2:5"); // elements 30, 40, 50 at offset 2
+    TensorD copy(view);
+
+    EXPECT_EQ(copy.getShape(), (std::vector<int>{3}));
+    EXPECT_TRUE(copy.is_contiguous());
+    EXPECT_DOUBLE_EQ(copy.get({0}), 30.0);
+    EXPECT_DOUBLE_EQ(copy.get({1}), 40.0);
+    EXPECT_DOUBLE_EQ(copy.get({2}), 50.0);
+}
+
+TEST(TensorStorageTest, CopyConstructorIsIndependentOfOriginal) {
+    TensorD a({3});
+    a.set(1.0, {0}); a.set(2.0, {1}); a.set(3.0, {2});
+    TensorD copy(a);
+
+    a.set(999.0, {0});      // mutate original
+    copy.set(-1.0, {1});    // mutate copy
+
+    EXPECT_DOUBLE_EQ(a.get({0}), 999.0);
+    EXPECT_DOUBLE_EQ(a.get({1}), 2.0);     // unaffected by the copy's mutation
+    EXPECT_DOUBLE_EQ(copy.get({0}), 1.0);  // unaffected by the original's mutation
+    EXPECT_DOUBLE_EQ(copy.get({1}), -1.0);
+}
+
+// copy assignment reallocates when the source shape differs
+TEST(TensorStorageTest, CopyAssignmentDifferentShapeReallocates) {
+    TensorD a({2, 2});
+    a.fill(9.0);
+    TensorD b({3});
+    b.set(1.0, {0}); b.set(2.0, {1}); b.set(3.0, {2});
+
+    a = b;
+    EXPECT_EQ(a.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(a.get({0}), 1.0);
+    EXPECT_DOUBLE_EQ(a.get({1}), 2.0);
+    EXPECT_DOUBLE_EQ(a.get({2}), 3.0);
+
+    b.set(100.0, {0});
+    EXPECT_DOUBLE_EQ(a.get({0}), 1.0); // independent of source after assignment
+    a.set(200.0, {1});
+    EXPECT_DOUBLE_EQ(b.get({1}), 2.0); // and vice versa
+}
+
+// copy assignment rebases a sliced source's offset to zero
+TEST(TensorStorageTest, CopyAssignmentFromSlicedSourceIsDenseFromZero) {
+    TensorD src({5});
+    src.set(10.0, {0}); src.set(20.0, {1}); src.set(30.0, {2}); src.set(40.0, {3}); src.set(50.0, {4});
+    TensorD view = src.slice("2:5"); // elements 30, 40, 50 at offset 2
+
+    TensorD dst({1});
+    dst = view;
+
+    EXPECT_EQ(dst.getShape(), (std::vector<int>{3}));
+    EXPECT_TRUE(dst.is_contiguous());
+    EXPECT_DOUBLE_EQ(dst.get({0}), 30.0);
+    EXPECT_DOUBLE_EQ(dst.get({1}), 40.0);
+    EXPECT_DOUBLE_EQ(dst.get({2}), 50.0);
+}
+
+TEST(TensorStorageTest, SelfAssignmentLeavesTensorIntact) {
+    TensorD a({3});
+    a.set(5.0, {0}); a.set(6.0, {1}); a.set(7.0, {2});
+    TensorD& self_ref = a; // indirection so the compiler can't flag a literal `a = a`
+    a = self_ref;
+
+    EXPECT_EQ(a.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(a.get({0}), 5.0);
+    EXPECT_DOUBLE_EQ(a.get({1}), 6.0);
+    EXPECT_DOUBLE_EQ(a.get({2}), 7.0);
+}
+
+TEST(TensorStorageTest, MoveConstructorTransfersStorage) {
+    TensorD a({3});
+    a.set(1.0, {0}); a.set(2.0, {1}); a.set(3.0, {2});
+    TensorD b(std::move(a));
+
+    EXPECT_EQ(b.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(b.get({0}), 1.0);
+    EXPECT_DOUBLE_EQ(b.get({1}), 2.0);
+    EXPECT_DOUBLE_EQ(b.get({2}), 3.0);
+}
+
+TEST(TensorStorageTest, MoveAssignmentTransfersStorage) {
+    TensorD a({2, 2});
+    a.set(1.0, {0, 0}); a.set(2.0, {0, 1}); a.set(3.0, {1, 0}); a.set(4.0, {1, 1});
+    TensorD b({1}); // pre-existing, different shape
+
+    b = std::move(a);
+    EXPECT_EQ(b.getShape(), (std::vector<int>{2, 2}));
+    EXPECT_DOUBLE_EQ(b.get({0, 0}), 1.0);
+    EXPECT_DOUBLE_EQ(b.get({0, 1}), 2.0);
+    EXPECT_DOUBLE_EQ(b.get({1, 0}), 3.0);
+    EXPECT_DOUBLE_EQ(b.get({1, 1}), 4.0);
+}
+
+// getScalarValue must read at the view's data_offset, not element 0
+TEST(TensorStorageTest, ScalarSliceDataOffsetUsedAsLeftOperand) {
+    TensorD v({4});
+    v.set(1.0, {0}); v.set(3.0, {1}); v.set(5.0, {2}); v.set(7.0, {3});
+    TensorD scalarView = v.slice("2"); // shape {1}, offset 2, value 5.0
+    TensorD w({3}); w.fill(2.0);
+
+    TensorD r = scalarView * w; // CASE 1: a is scalar
+    EXPECT_EQ(r.getShape(), (std::vector<int>{3}));
+    EXPECT_DOUBLE_EQ(r.get({0}), 10.0); // 2.0 * 5.0, not 2.0 * 1.0
+    EXPECT_DOUBLE_EQ(r.get({1}), 10.0);
+    EXPECT_DOUBLE_EQ(r.get({2}), 10.0);
+}
+
+TEST(TensorStorageTest, ScalarSliceDataOffsetUsedAsRightOperand) {
+    TensorD v({4});
+    v.set(1.0, {0}); v.set(3.0, {1}); v.set(5.0, {2}); v.set(7.0, {3});
+    TensorD scalarView = v.slice("2"); // value 5.0 at offset 2
+    TensorD w({3}); w.fill(2.0);
+
+    TensorD r = w * scalarView; // CASE 2: b is scalar
+    EXPECT_DOUBLE_EQ(r.get({0}), 10.0);
+    EXPECT_DOUBLE_EQ(r.get({1}), 10.0);
+    EXPECT_DOUBLE_EQ(r.get({2}), 10.0);
+}
+
+// same regression, via a {1,1} slice of a 2-D tensor rather than a 1-D slice.
+TEST(TensorStorageTest, ScalarSlice2DDataOffsetUsedInOperatorMult) {
+    TensorD m({2, 2});
+    m.set(1.0, {0, 0}); m.set(2.0, {0, 1});
+    m.set(3.0, {1, 0}); m.set(5.0, {1, 1}); // element (1,1) = 5.0, element 0 = 1.0
+    TensorD scalarView = m.slice("1, 1");    // shape {1,1}, isolates (1,1)
+    TensorD w({2}); w.fill(2.0);
+
+    TensorD r = scalarView * w;
+    EXPECT_DOUBLE_EQ(r.get({0}), 10.0);
+    EXPECT_DOUBLE_EQ(r.get({1}), 10.0);
+}
+
+TEST(TensorStorageTest, AtThrowsOutOfRangeForFlatIndexPastStorage) {
+#ifdef NDEBUG
+    GTEST_SKIP() << "at() bounds check is compiled out in Release builds";
+#endif
+    TensorD a({3});
+    EXPECT_THROW(a.at(1000), std::out_of_range);
+}
+
+
 // main to run all the tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

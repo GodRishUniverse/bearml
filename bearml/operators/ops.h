@@ -33,7 +33,7 @@ enum class OP_Code : uint16_t {
     OP_TANH,
 
     // ARB
-    OP_PAD
+    OP_PAD,
 
     // OP NULL
     NO_OP // No operation

@@ -3,7 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include "operators/ops.h"
-
+#include "utils/shape_utils.h"
 
 namespace bearml {
 
@@ -11,7 +11,7 @@ namespace bearml {
         OP_Code op;
         std::vector<IRNode*> inputs;
         // TODO: Design these structures
-        // Shape shape;
+        Shape shape;
         // DType dtype;
         // Attrs attrs;
 

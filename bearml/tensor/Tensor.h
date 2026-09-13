@@ -206,13 +206,12 @@ namespace bearml{
             size_t data_offset;
             bool is_sliced_view;
 
-            // number of elements the storage can hold - the tensor's own shape can be smaller (views)
+            // elements in the storage (a view's shape can be smaller)
             size_t storage_elements() const {
                 return storage_ ? storage_->number_of_bytes() / sizeof(T) : 0;
             }
 
-            // Debug-only: every at() goes through here, so an out-of-range flat index from a bad
-            // stride/offset computation fails at the access instead of corrupting a neighbour.
+            // Debug-only bounds check for at()
             void check_in_storage(size_t flat) const {
 #ifndef NDEBUG
                 if (flat >= storage_elements()) {
@@ -222,15 +221,14 @@ namespace bearml{
 #endif
             }
 
-            // allocates fresh storage for the current shape/device - the only place a Tensor takes memory
+            // fresh storage for the current shape and device
             void allocate_storage() {
                 storage_ = std::make_shared<Storage>(sizeOfTensor() * sizeof(T), this->device);
             }
 
         public:
 
-            // Element access. Takes a flat index into the storage (callers add data_offset, as they
-            // already did) - bounds-checked in Debug builds.
+            // flat index into storage (caller adds data_offset); bounds-checked in Debug
             T& at(size_t flat) {
                 check_in_storage(flat);
                 return storage_->data<T>()[flat];
@@ -241,10 +239,7 @@ namespace bearml{
                 return storage_->data<T>()[flat];
             }
 
-            // The only raw-pointer escapes, for the boundaries that cannot take anything else:
-            // CUDA kernel launches, Eigen::Map, and the allocator's memcpy family. The pointer is
-            // borrowed from the storage - it stays valid as long as this tensor (or any view
-            // sharing the storage) is alive, and nothing here owns it.
+            // raw pointers for CUDA kernels, Eigen::Map and memcpy
             T* mutable_data() { return storage_ ? storage_->data<T>() : nullptr; }
             const T* const_data() const { return storage_ ? storage_->data<T>() : nullptr; }
 
@@ -305,8 +300,7 @@ namespace bearml{
                     throw std::runtime_error("Cannot get scalar value from non-scalar tensor");
                 }
 
-                // data_offset matters: a scalar-shaped slice/broadcast view does not start at
-                // element 0 of the storage it shares
+                // a view's element lives at data_offset, not 0
                 T value;
                 if (t.device.is_cpu()) {
                     value = t.at(t.data_offset);
@@ -402,9 +396,7 @@ namespace bearml{
 
 
             // copy constructor
-            // device comes from other: a copy always lands on the source's device, cross-device
-            // needs an explicit .to(). It has to be set before we allocate, since the storage
-            // picks its allocator from it.
+            // a copy stays on the source's device; use .to() to move it
             Tensor(const Tensor& other) : shape(other.shape), device(other.device), data_offset(0), is_sliced_view(false){ // we own the data when we copy;
                 computeStrides();
                 allocate_storage();
@@ -412,7 +404,7 @@ namespace bearml{
                 size_t bytes = full_size * sizeof(T);
 
                 if (other.is_contiguous()) {
-                    // same device on both sides, so this is memcpy on cpu / D2D on gpu
+                    // same device: memcpy on cpu, D2D on gpu
                     this->storage_->allocator().copy_device_to_device(this->mutable_data(), other.const_data() + other.data_offset, bytes);
                 } else {
                     // other is a strided view (transpose / permute / slice / broadcast).
@@ -427,7 +419,7 @@ namespace bearml{
                             h_strides[d] = (size_t)other.strides[d];
                         }
                         cuda::utils::launch_contiguous_gather<cuda_type_trait_t<T>>(
-                            cuda_ptr(const_cast<T*>(other.const_data())), cuda_ptr(this->mutable_data()), other.data_offset,
+                            cuda_ptr(other.const_data()), cuda_ptr(this->mutable_data()), other.data_offset,
                             h_shape.data(), h_strides.data(), (size_t)nd, full_size);
                     } else {
                         // i walks the DESTINATION in row-major (dst is dense, so we write data[i] in flat order)
@@ -444,130 +436,66 @@ namespace bearml{
                         }
                     }
                 }
-                // std::copy(other.data, other.data + other.sizeOfTensor(), this->data);
             }
 
             // copy assignment operator
             Tensor& operator=(const Tensor& other) {
                 if (this != &other) {
-                    if (this->owns_data && this->mutable_data() && this->allocator_) {
-                        allocator_->deallocate(this->mutable_data());
-                    }
-                    this->shape = other.shape;
-                    this->device = other.device;
-                    this->strides = other.strides;
-                    this->strides_col_major = other.strides_col_major;
-                    this->owns_data = true;  // Copy always owns its data
-                    this->data_offset = other.data_offset;
-                    this->is_sliced_view = other.is_sliced_view;
-
-                    this->allocator_.reset(get_allocator(device));
-                    size_t bytes = sizeOfTensor() * sizeof(T);
-                    this->mutable_data() =static_cast<T*>(allocator_->allocate(bytes));
-                    if (this->device == other.device) {
-                        // cpu to cpu or gpu to gpu
-                        allocator_->copy_device_to_device(this->mutable_data(), other.mutable_data(), bytes);
-                    } else {
-                        if (this->device.is_cpu()) {
-                            // from device to cpu
-                            other.allocator_->copy_to_host(this->mutable_data(), other.mutable_data(), bytes);
-                        } else {
-                            // from cpu to device
-                            this->allocator_->copy_to_device(this->mutable_data(), other.mutable_data(), bytes);
-                        }
-                    }
+                    Tensor copy(other);        // copy ctor densifies views
+                    *this = std::move(copy);
                 }
                 return *this;
             }
 
-            // move constructor
-            Tensor(Tensor&& other) noexcept : owns_data(other.owns_data), shape(std::move(other.shape)), strides(std::move(other.strides)), strides_col_major(std::move(other.strides_col_major)), device(other.device), data(other.mutable_data()), allocator_(std::move(other.allocator_)), data_offset(other.data_offset){
-                // this->shape = other.shape;
-                // this->data = other.data;
-                // this->device = other.device;
-                // this->strides = other.strides;
-                other.mutable_data() = nullptr;
-                other.owns_data = false;
+            // move constructor - repoints the shared storage
+            Tensor(Tensor&& other) noexcept
+                : shape(std::move(other.shape)), strides(std::move(other.strides)),
+                  strides_col_major(std::move(other.strides_col_major)), storage_(std::move(other.storage_)),
+                  device(other.device), data_offset(other.data_offset), is_sliced_view(other.is_sliced_view) {
                 other.is_sliced_view = false;
             }
 
             // move assignment operator
             Tensor& operator=(Tensor&& other) noexcept {
                 if (this != &other) {
-
-                    if (this->owns_data && this->mutable_data() && this->allocator_) {
-                        allocator_->deallocate(this->mutable_data());
-                    }
-
                     this->shape = std::move(other.shape);
-                    this->mutable_data() = other.mutable_data();
-                    this->device = other.device;
                     this->strides = std::move(other.strides);
                     this->strides_col_major = std::move(other.strides_col_major);
-                    this->allocator_ = std::move(other.allocator_);
-                    this->owns_data = other.owns_data;
+                    this->storage_ = std::move(other.storage_);
+                    this->device = other.device;
                     this->data_offset = other.data_offset;
-                    other.mutable_data() = nullptr;
-                    other.owns_data = false;
+                    this->is_sliced_view = other.is_sliced_view;
                     other.is_sliced_view = false;
                 }
                 return *this;
             }
 
-            // destructor
-            ~Tensor(){
-                // standard cleanup
-                if (this->owns_data && this->mutable_data() && this->allocator_) {
-                    allocator_->deallocate(this->mutable_data());
-                }
-            }
+            // destructor - shared_ptr<Storage> frees the allocation
+            ~Tensor() = default;
 
             // copy to
             Tensor to(const Device& targetDevice) const{
                 if (device == targetDevice) {
                     return *this; // Return copy on same device
                 }
-                Tensor result(shape, targetDevice);
-                size_t bytes = sizeOfTensor() * sizeof(T);
-                if (targetDevice.is_cpu()) {
-                    // GPU -> CPU
-                    allocator_->copy_to_host(result.mutable_data(), mutable_data(), bytes);
-                } else {
-                    // CPU -> GPU
-                    allocator_->copy_to_device(result.mutable_data(), mutable_data(), bytes);
-                }
+                // views are densified first so bytes match the shape
+                bool exact_buffer = is_contiguous() && data_offset == 0 && storage_elements() == sizeOfTensor();
+                Tensor result = exact_buffer ? makeStrideView(*this) : Tensor(*this);
+                result.storage_ = result.storage_->to(targetDevice);
+                result.device = targetDevice;
                 return result;
             }
 
 
-            // inplace to
+            // inplace to - new storage, so a view stops sharing with its parent
             void to_(const Device& targetDevice) {
                 if (device == targetDevice) return;
-
-                size_t bytes = sizeOfTensor() * sizeof(T);
-                auto new_allocator = std::unique_ptr<DeviceAllocator>(get_allocator(targetDevice));
-                T* new_data = static_cast<T*>(new_allocator->allocate(bytes));
-
-                // transfer data
-                if (targetDevice.is_cpu()) {
-                    allocator_->copy_to_host(new_data, mutable_data(), bytes);
-                } else {
-                    new_allocator->copy_to_device(new_data, mutable_data(), bytes);
-                }
-
-                if (owns_data) {
-                    allocator_->deallocate(mutable_data());
-                }
-
-                mutable_data() = new_data;
-                device = targetDevice;
-                allocator_ = std::move(new_allocator); // new unique pointer setting
-                owns_data = true;
+                *this = to(targetDevice);
             }
 
 
-            // A Tensor<T> cannot change its own dtype in place: T is fixed by the class template and `data` is T*.
-            // Assumes a contiguous tensor (only data_offset is respected, like to()).
+            // dtype can't change in place: T is fixed for this Tensor<T>
+            // Assumes a contiguous tensor (only data_offset is respected).
             // TODO: handle strided / non-contiguous views -> depends if we want to support in-place dtype change
             template <typename T2>
             Tensor<T2> change_dtype() const {
@@ -684,7 +612,7 @@ namespace bearml{
 
 
             // only for contiguous tensors (this function will help with device-agnostic copying and memory management for bulk data like loading csv files, etc.)
-            void set_using_bulk_copy(const std::vector<T>& values) const {
+            void set_using_bulk_copy(const std::vector<T>& values) {
                 size_t full_size = this->sizeOfTensor();
                 // partial fills are allowed; only reject overflow
                 if (values.size() > full_size) {
@@ -695,10 +623,10 @@ namespace bearml{
                     throw std::runtime_error("set_using_bulk_copy only supports contiguous tensors");
                 }
                 // Makes it device-agnostic: destination first, then source, then bytes
-                this->allocator_->copy_to_device(this->mutable_data() + this->data_offset, values.data(), values.size() * sizeof(T));
+                this->storage_->allocator().copy_to_device(this->mutable_data() + this->data_offset, values.data(), values.size() * sizeof(T));
             }
 
-            void set(T val, std::vector<int> index) const {
+            void set(T val, std::vector<int> index) {
 
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
@@ -935,7 +863,7 @@ namespace bearml{
                 }
                 os << "\n";
 
-                os << "OWNERSHIP: " << ((tensor.owns_data) ? "TRUE" : "FALSE") << std::endl;
+                os << "STORAGE REFS: " << tensor.storage_.use_count() << std::endl;
                 os << "SLICED VIEW: " << ((tensor.getDataOffset() != 0) ? "TRUE" : "FALSE") << std::endl;
 
                 return os;
@@ -1951,7 +1879,6 @@ namespace bearml{
             }
 
 
-            // Tensor(bool owns_data) : data(nullptr), owns_data(owns_data) {};
             void fill(T v){
                 // CUDA fill
                 if (!this->device.is_cpu()) {
@@ -2347,28 +2274,24 @@ namespace bearml{
                     }
                 }
 
-                size_t total = (tensors.size()+1) * this->sizeOfTensor();
-                T * temp = new T[total];
-                size_t stride = this->sizeOfTensor();
+                size_t stride = this->sizeOfTensor(); // captured before shape changes
+                size_t total = (tensors.size()+1) * stride;
+                auto new_storage = std::make_shared<Storage>(total * sizeof(T), this->device);
 
                 this->shape.insert(this->shape.begin(), tensors.size()+1);
                 computeStrides();
 
-
-                std::copy(this->mutable_data(), this->mutable_data() + stride, temp + 0);
-                ll start = stride;
+                // reads the old storage before storage_ is reassigned
+                std::copy(this->mutable_data(), this->mutable_data() + stride, new_storage->data<T>());
+                size_t start = stride;
                 for (const Tensor& tensor : tensors){
-                    T * tempData = tensor.mutable_data();
+                    const T * tempData = tensor.const_data();
 
-                    std::copy(tempData, tempData + stride, temp + start); // copy the data
+                    std::copy(tempData, tempData + stride, new_storage->data<T>() + start); // copy the data
                     start += stride;
                 }
 
-
-                if (this->mutable_data() != nullptr) {
-                    delete[] this->mutable_data();
-                }
-                this->mutable_data() = temp;
+                this->storage_ = new_storage;
             }
 
             // TODO

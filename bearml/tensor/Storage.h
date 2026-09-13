@@ -49,5 +49,21 @@ namespace bearml {
         const Device& device() const { return device_; }
         DeviceAllocator& allocator() const { return *allocator_; }
 
+        // copies the buffer to target
+        std::shared_ptr<Storage> to(const Device& target) const {
+            auto out = std::make_shared<Storage>(num_bytes_, target);
+            if (num_bytes_ == 0) return out;
+            if (device_.is_cpu() && target.is_cpu()) {
+                out->allocator().copy_device_to_device(out->data_, data_, num_bytes_);   // memcpy
+            } else if (device_.is_cpu()) {
+                out->allocator().copy_to_device(out->data_, data_, num_bytes_);          // H2D
+            } else if (target.is_cpu()) {
+                allocator_->copy_to_host(out->data_, data_, num_bytes_);                 // D2H
+            } else {
+                out->allocator().copy_device_to_device(out->data_, data_, num_bytes_);   // D2D
+            }
+            return out;
+        }
+
     };
 }
