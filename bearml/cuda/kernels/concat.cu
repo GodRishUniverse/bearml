@@ -7,7 +7,7 @@ namespace bearml {
 
         // TODO: figure out indexing out here
         template <typename T>
-        __global__ void concat_kernel(T** allInputs, int** shapes, size_t elements_count, T* result,  size_t outerDim, size_t innerDim, size_t dim, size_t concatDim ) {
+        __global__ void concat_kernel(const T** allInputs, int** shapes, size_t elements_count, T* result,  size_t outerDim, size_t innerDim, size_t dim, size_t concatDim ) {
             for (size_t o = blockIdx.x * blockDim.x + threadIdx.x; o < outerDim; o += blockDim.x * gridDim.x) {
                 int offset = 0; // offset will be used to move the pointer to execute the copies
                 for (size_t i = 0; i < elements_count; ++i) {
@@ -24,7 +24,7 @@ namespace bearml {
 
 
         template <typename T>
-        void launch_concat_kernel(T** d_allInputs, int** d_shapes, size_t concat_tensors_size,  T* d_result, size_t outerDim, size_t innerDim, size_t dim, size_t concatDim, cudaStream_t stream) {
+        void launch_concat_kernel(const T** d_allInputs, int** d_shapes, size_t concat_tensors_size,  T* d_result, size_t outerDim, size_t innerDim, size_t dim, size_t concatDim, cudaStream_t stream) {
             bool own_stream = (stream == nullptr);
             if (own_stream) {
                 CUDA_CHECK(cudaStreamCreate(&stream));

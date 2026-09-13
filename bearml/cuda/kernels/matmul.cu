@@ -83,8 +83,8 @@ namespace bearml {
             // Layout-aware GEMM - so that when we have ColumnMajor layout, we can still use contiguous memory access
             int64_t row_aware_strde_a, int64_t col_aware_stride_a,
             int64_t row_aware_strde_b, int64_t col_aware_stride_b,
-            T* __restrict__ a,
-            T* __restrict__ b,
+            const T* __restrict__ a,
+            const T* __restrict__ b,
             T* c
         ){
             int column = blockIdx.x* BLOCK_SIZE + threadIdx.x; // rows access
@@ -170,8 +170,8 @@ namespace bearml {
         // test this out
         template<typename T>
         void launch_gemm_contiguous(
-            T* d_a,
-            T* d_b,
+            const T* d_a,
+            const T* d_b,
             T* d_c,
             int batchsize,
             int m,

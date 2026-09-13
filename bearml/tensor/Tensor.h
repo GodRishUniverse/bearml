@@ -510,7 +510,7 @@ namespace bearml{
                     const size_t n = sizeOfTensor();
 
                     if (this->device.is_cuda()){
-                        cuda::utils::launch_dtype_change<cuda_type_trait_t<T>, cuda_type_trait_t<T2>>(cuda_ptr(this->mutable_data() + data_offset), cuda_ptr(new_tensor.mutable_data()), n);
+                        cuda::utils::launch_dtype_change<cuda_type_trait_t<T>, cuda_type_trait_t<T2>>(cuda_ptr(this->const_data() + data_offset), cuda_ptr(new_tensor.mutable_data()), n);
                     } else {
                         for (size_t i = 0; i < n; ++i) {
                             new_tensor.at(i) = static_cast<T2>(this->at(data_offset + i));
@@ -911,7 +911,7 @@ namespace bearml{
                 if (A.device.type == DeviceType::CUDA) {
                     if (A.shape == B.shape) {
                         Tensor C(A.shape, A.device);
-                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(A.mutable_data()), cuda_ptr(B.mutable_data()), cuda_ptr(C.mutable_data()), C.getShape(), op);
+                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(A.const_data()), cuda_ptr(B.const_data()), cuda_ptr(C.mutable_data()), C.getShape(), op);
                         return C;
                     }
                     auto outShape = utils::computeBroadcastShape(A.shape, B.shape);
@@ -945,7 +945,7 @@ namespace bearml{
             static Tensor elementwise_scalar(const Tensor& A, T b, OP_Code op, LHS_RHS_Code side) {
                 Tensor C(A.shape, A.device);
                 if (A.device.type == DeviceType::CUDA) {
-                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(cuda_ptr(A.mutable_data()), cuda_val(b), cuda_ptr(C.mutable_data()), A.shape, op, side);
+                    cuda::launch_elementwise_contiguous_with_constant<cuda_type_trait_t<T>>(cuda_ptr(A.const_data()), cuda_val(b), cuda_ptr(C.mutable_data()), A.shape, op, side);
                     return C;
                 }
                 size_t N = A.sizeOfTensor();
@@ -1004,7 +1004,7 @@ namespace bearml{
 
                         Tensor oView = makeBroadcastView(other, outShape);
 
-                        cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(cuda_ptr(mutable_data()), cuda_ptr(other.mutable_data()), cuda_ptr(mutable_data()),
+                        cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(cuda_ptr(mutable_data()), cuda_ptr(other.const_data()), cuda_ptr(mutable_data()),
                             getStrides(), oView.getStrides(), outShape, op);
 
                         return *this;
@@ -1034,7 +1034,7 @@ namespace bearml{
                 } else {
                     // CUDA
                     if (device.type == DeviceType::CUDA) {
-                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(mutable_data()), cuda_ptr(other.mutable_data()), cuda_ptr(mutable_data()), shape, op);
+                        cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(cuda_ptr(mutable_data()), cuda_ptr(other.const_data()), cuda_ptr(mutable_data()), shape, op);
                         return *this;
                     }
                     size_t N = sizeOfTensor();
@@ -1088,7 +1088,7 @@ namespace bearml{
                 if (A.device.type == DeviceType::CUDA) {
                     Tensor C(A.shape, A.device);
                     cuda::launch_elementwise_unary<cuda_type_trait_t<T>>(
-                        cuda_ptr(A.mutable_data()),
+                        cuda_ptr(A.const_data()),
                         cuda_ptr(C.mutable_data()),
                         C.getShape(),
                         op
@@ -1218,7 +1218,7 @@ namespace bearml{
                         // 1D row-major vec of length K, viewed as (K,1): row_stride=1, col_stride doesn't matter (only one col)
                         Tensor result({1}, a.device);
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a.mutable_data()), cuda_ptr(b.mutable_data()), cuda_ptr(result.mutable_data()),
+                            cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()),
                             1,    // batchsize
                             1,    // m (rows of a treated as row vector)
                             a_shape[0], // k (common dim),
@@ -1231,8 +1231,8 @@ namespace bearml{
                         return result;
                     }
 
-                    Eigen::Map<const VectorXT<T>> vec_a(a.mutable_data(), a_shape[0]);
-                    Eigen::Map<const VectorXT<T>> vec_b(b.mutable_data(), b_shape[0]);
+                    Eigen::Map<const VectorXT<T>> vec_a(a.const_data(), a_shape[0]);
+                    Eigen::Map<const VectorXT<T>> vec_b(b.const_data(), b_shape[0]);
 
                     Tensor output({1});
                     output.at(0) = vec_a.dot(vec_b);
@@ -1251,7 +1251,7 @@ namespace bearml{
                         // B is 1D row-major contiguous → viewed as (m,1): row_stride=1, col_stride=1 (single col).
                         Tensor result({a_shape[0]}, a.device);
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a.mutable_data()), cuda_ptr(b.mutable_data()), cuda_ptr(result.mutable_data()),
+                            cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()),
                             1,           // batchsize
                             a_shape[0],  // m
                             a_shape[1],  // k (common dim),
@@ -1267,8 +1267,8 @@ namespace bearml{
                     // Eigen's RowMajor Map can't read a col-major view directly; densify if needed.
                     // The CUDA path above already handles layout natively via per-operand strides.
                     Tensor a_use = a.is_row_major_contiguous() ? a : Tensor::contiguous(a);
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
-                    Eigen::Map<const VectorXT<T>> vec_b(b.mutable_data(), b_shape[0]);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                    Eigen::Map<const VectorXT<T>> vec_b(b.const_data(), b_shape[0]);
 
                     Tensor result({a_shape[0]});
                     Eigen::Map<VectorXT<T>> result_vec(result.mutable_data(), a_shape[0]);
@@ -1289,7 +1289,7 @@ namespace bearml{
                         // B's strides come straight from the tensor (handles transposed/permuted B view).
                         Tensor result({1,b_shape[1]}, a.device);
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a.mutable_data()), cuda_ptr(b.mutable_data()), cuda_ptr(result.mutable_data()),
+                            cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()),
                             1,           // batchsize
                             1,           // m
                             b_shape[0],  // k (common dim),
@@ -1306,8 +1306,8 @@ namespace bearml{
                     // (The earlier `mat_b * vec_a` form only typechecked when B was square.)
                     // Densify b first if it's a col-major / strided view so the RowMajor Map is correct.
                     Tensor b_use = b.is_row_major_contiguous() ? b : Tensor::contiguous(b);
-                    Eigen::Map<const VectorXT<T>> vec_a(a.mutable_data(), a_shape[0]);
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
+                    Eigen::Map<const VectorXT<T>> vec_a(a.const_data(), a_shape[0]);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
 
                     Tensor result({b_shape[1]});
                     Eigen::Map<VectorXT<T>> result_vec(result.mutable_data(), b_shape[1]);
@@ -1344,7 +1344,7 @@ namespace bearml{
                         // For row-major (M,K) that's (K, 1); for col-major it's (1, M). The kernel doesn't
                         // care which — it just uses both to compute a[row * row_stride + k * col_stride].
                         cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a_use.mutable_data()), cuda_ptr(b_use.mutable_data()), cuda_ptr(result.mutable_data()),
+                            cuda_ptr(a_use.const_data()), cuda_ptr(b_use.const_data()), cuda_ptr(result.mutable_data()),
                             1,           // batchsize
                             a_shape[0],  // m
                             a_shape[1],  // k
@@ -1365,20 +1365,20 @@ namespace bearml{
 
                     using ColMajorT = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
                     if (a_layout == Layout::ROW_MAJOR && b_layout == Layout::ROW_MAJOR) {
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
                         result_mat = mat_a * mat_b;
                     } else if (a_layout == Layout::ROW_MAJOR /* && b is COL_MAJOR */) {
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
-                        Eigen::Map<const ColMajorT>          mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const ColMajorT>          mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
                         result_mat = mat_a * mat_b;
                     } else if (b_layout == Layout::ROW_MAJOR /* && a is COL_MAJOR */) {
-                        Eigen::Map<const ColMajorT>          mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
+                        Eigen::Map<const ColMajorT>          mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
                         result_mat = mat_a * mat_b;
                     } else { // both col-major
-                        Eigen::Map<const ColMajorT> mat_a(a_use.mutable_data(), a_shape[0], a_shape[1]);
-                        Eigen::Map<const ColMajorT> mat_b(b_use.mutable_data(), b_shape[0], b_shape[1]);
+                        Eigen::Map<const ColMajorT> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const ColMajorT> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
                         result_mat = mat_a * mat_b;
                     }
 
@@ -1431,7 +1431,7 @@ namespace bearml{
             friend bool operator==(const Tensor &a, const Tensor &b){
                 if (a.getShape() == b.getShape() && a.getStrides() == b.getStrides()){
                     if (a.getDevice().type == DeviceType::CUDA && b.getDevice().type == DeviceType::CUDA){
-                        return cuda::launch_check_equal_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.mutable_data()), cuda_ptr(b.mutable_data()), a.sizeOfTensor()); // need to test this
+                        return cuda::launch_check_equal_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), a.sizeOfTensor()); // need to test this
                     }
                     // NOTE: std::abs is better for doubles
                     for (size_t i = 0; i<a.sizeOfTensor(); i++){
@@ -1709,7 +1709,7 @@ namespace bearml{
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
                     cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
-                        cuda_ptr(t.mutable_data()), cuda_ptr(s.mutable_data()), cuda_ptr(result.mutable_data()),
+                        cuda_ptr(t.const_data()), cuda_ptr(s.const_data()), cuda_ptr(result.mutable_data()),
                         t.getShape(), OP_Code::OP_MAX
                     );
                     return result;
@@ -1750,7 +1750,7 @@ namespace bearml{
                 if (t.device == DeviceType::CUDA) {
                     Tensor result(t.getShape(), t.device);
                     cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
-                        cuda_ptr(t.mutable_data()), cuda_ptr(s.mutable_data()), cuda_ptr(result.mutable_data()),
+                        cuda_ptr(t.const_data()), cuda_ptr(s.const_data()), cuda_ptr(result.mutable_data()),
                         t.getShape(), OP_Code::OP_MIN
                     );
                     return result;
@@ -1911,7 +1911,7 @@ namespace bearml{
 
                 //CUDA support
                 // TODO: fix the type
-                return cuda::launch_check_zero_kernel(cuda_ptr(t.mutable_data()), t.sizeOfTensor());
+                return cuda::launch_check_zero_kernel(cuda_ptr(t.const_data()), t.sizeOfTensor());
 
             }
 
@@ -2074,7 +2074,7 @@ namespace bearml{
                         h_strides[d] = (size_t)t.strides[d];
                     }
                     cuda::utils::launch_contiguous_gather<cuda_type_trait_t<T>>(
-                        cuda_ptr(t.mutable_data()), cuda_ptr(result.mutable_data()), t.data_offset,
+                        cuda_ptr(t.const_data()), cuda_ptr(result.mutable_data()), t.data_offset,
                         h_shape.data(), h_strides.data(), (size_t)nd, n);
                 } else {
                     // i walks the DESTINATION row-major (so we write result.data[i] in the natural flat order)
@@ -2205,12 +2205,12 @@ namespace bearml{
                 if (device.type == DeviceType::CUDA) {
                     const size_t n = tensors.size();
 
-                    std::vector<T*> h_data(n);
+                    std::vector<const T*> h_data(n);
                     std::vector<int*> h_shape_ptrs(n); // each entry is a device pointer
 
                     for (size_t i = 0; i < n; ++i) {
                         const Tensor& t = tensors.begin()[i];
-                        h_data[i] = t.mutable_data(); // get the raw data pointer
+                        h_data[i] = t.const_data(); // get the raw data pointer
 
                         int* d_shape = nullptr;
                         size_t shape_size = t.getShape().size();
@@ -2221,7 +2221,7 @@ namespace bearml{
                         h_shape_ptrs[i] = d_shape;
                     }
 
-                    T** d_allInputs = nullptr;
+                    const T** d_allInputs = nullptr;
                     CUDA_CHECK(cudaMalloc(&d_allInputs, n * sizeof(T*)));
                     CUDA_CHECK(cudaMemcpy(d_allInputs, h_data.data(),
                                           n * sizeof(T*), cudaMemcpyHostToDevice));
@@ -2233,7 +2233,7 @@ namespace bearml{
                                           n * sizeof(int*), cudaMemcpyHostToDevice));
 
                     cuda::launch_concat_kernel<cuda_type_trait_t<T>>(
-                        reinterpret_cast<cuda_type_trait_t<T>**>(d_allInputs), d_shapes, n, cuda_ptr(result.mutable_data()),
+                        reinterpret_cast<const cuda_type_trait_t<T>**>(d_allInputs), d_shapes, n, cuda_ptr(result.mutable_data()),
                         outerDim, innerDim, dim, concatDim);
 
                     for (int* d_shape : h_shape_ptrs) CUDA_CHECK(cudaFree(d_shape));
@@ -2248,7 +2248,7 @@ namespace bearml{
                             // we copy the data for each tensor into the result tensor
                             // outer*concatDim * innerDim moves the pointer to the correct position in the result tensor
                             // offset * innerDim is the offset that will be copied from the source tensor using (o*src_cat_dim*innerDim)
-                            std::memcpy(result.mutable_data()  + o*concatDim *innerDim + offset*innerDim, tensors.begin()[i].mutable_data() + o*src_cat_dim*innerDim, copy_size * sizeof(T));
+                            std::memcpy(result.mutable_data()  + o*concatDim *innerDim + offset*innerDim, tensors.begin()[i].const_data() + o*src_cat_dim*innerDim, copy_size * sizeof(T));
                             offset += src_cat_dim;
                         }
                     }

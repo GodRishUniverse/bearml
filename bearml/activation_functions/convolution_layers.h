@@ -64,19 +64,19 @@ namespace bearml {
                     if (input.getDevice().is_cpu()) {
                         // first fill the output tensor with the constant value
                         for (int i = 0; i < output.sizeOfTensor(); i++) {
-                            output.data[i] = constant_value;
+                            output.at(i) = constant_value;
                         }
 
                         for (int batch = 0; batch < batch_size; batch++) {
                             for (int r = r_start; r < r_end; r++) {
                                 for (int c = c_start; c < c_end; c++) {
-                                    output.data[batch * out_cols * out_rows + (r+pad_amount)*out_cols + (c+pad_amount)] = input.data[batch * in_rows * in_cols + r * in_cols + c];
+                                    output.at(batch * out_cols * out_rows + (r+pad_amount)*out_cols + (c+pad_amount)) = input.at(batch * in_rows * in_cols + r * in_cols + c);
                                 }
                             }
                         }
                     } else {
                         // CUDA
-                        bearml::cuda::launch_padd_with_constant<cuda_type_trait_t<T>>(cuda_ptr(input.data), cuda_ptr(output.data), batch_size, in_rows, in_cols, out_rows, out_cols, pad_amount, r_start, r_end, c_start, c_end, cuda_val(constant_value));
+                        bearml::cuda::launch_padd_with_constant<cuda_type_trait_t<T>>(cuda_ptr(input.const_data()), cuda_ptr(output.mutable_data()), batch_size, in_rows, in_cols, out_rows, out_cols, pad_amount, r_start, r_end, c_start, c_end, cuda_val(constant_value));
                     }
                     break;
                 default:

@@ -9,7 +9,7 @@ namespace bearml {
 
 
         template<typename T>
-        void launch_comparison_kernel(T* a, T* b, T* output, size_t size, CompareOp op, cudaStream_t stream= nullptr);
+        void launch_comparison_kernel(const T* a, const T* b, T* output, size_t size, CompareOp op, cudaStream_t stream= nullptr);
 
     }
 }

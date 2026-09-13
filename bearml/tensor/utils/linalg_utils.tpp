@@ -104,7 +104,7 @@ namespace bearml {
                     b_view.strides.begin() + batch_shape.size());
 
                 cuda::launch_gemm_broadcasted<cuda_type_trait_t<T>>(
-                    a_ref.data, b_ref.data, result.data,
+                    a_ref.const_data(), b_ref.const_data(), result.mutable_data(),
                     a_rows, a_cols, b_cols,
                     T(1), T(0),
                     &batch_shape,
@@ -142,9 +142,9 @@ namespace bearml {
                 }
 
                 // Get pointers to the matrices for this batch
-                T* mat_a_ptr = a_view.data + offset_a;
-                T* mat_b_ptr = b_view.data + offset_b;
-                T* result_ptr = result.data + batch_index * matrix_size_result;
+                const T* mat_a_ptr = a_view.const_data() + offset_a;
+                const T* mat_b_ptr = b_view.const_data() + offset_b;
+                T* result_ptr = result.mutable_data() + batch_index * matrix_size_result;
 
 
 
@@ -192,13 +192,13 @@ namespace bearml {
             if (a.device == DeviceType::CUDA) {
                 Tensor<T> C(a.shape, a.device);
 
-                cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(a.data, other.data, C.data, a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
+                cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(a.const_data(), other.const_data(), C.mutable_data(), a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
                 return C;
             }
 
             Tensor<T> result(a.shape, a.device);
             for (ll i = 0; i < a.sizeOfTensor(); i++){
-                result.data[i] = a.data[i] * other.data[i];
+                result.at(i) = a.at(i) * other.at(i);
             }
             return result;
         }
@@ -221,22 +221,22 @@ namespace bearml {
             if (a.device.type == DeviceType::CUDA) {
                 switch (op) {
                     case CompareOp::GT: // greater than
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::GE: // greater than or equal to
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::LT: // less than
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::LE: // less than or equal to
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::EQ: // equal to
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::NE: // not equal to
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.data, b.data, result.data, a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
                         break;
                     default:
                         throw std::invalid_argument("Invalid compare op");
@@ -245,22 +245,22 @@ namespace bearml {
                 for (size_t i = 0; i < a.sizeOfTensor(); i++) {
                     switch (op) {
                         case CompareOp::GT: // greater than
-                            result.data[i] = (a.data[i] > b.data[i]) ? true_val : false_val;
+                            result.at(i) = (a.at(i) > b.at(i)) ? true_val : false_val;
                             break;
                         case CompareOp::GE: // greater than or equal to
-                            result.data[i] = (a.data[i] >= b.data[i]) ? true_val : false_val;
+                            result.at(i) = (a.at(i) >= b.at(i)) ? true_val : false_val;
                             break;
                         case CompareOp::LT: // less than
-                            result.data[i] = (a.data[i] < b.data[i]) ? true_val : false_val;
+                            result.at(i) = (a.at(i) < b.at(i)) ? true_val : false_val;
                             break;
                         case CompareOp::LE: // less than or equal to
-                            result.data[i] = (a.data[i] <= b.data[i]) ? true_val : false_val;
+                            result.at(i) = (a.at(i) <= b.at(i)) ? true_val : false_val;
                             break;
                         case CompareOp::EQ: // equal to
-                            result.data[i] = ((std::abs(a.data[i] - b.data[i]) < 1e-12)) ? true_val : false_val;
+                            result.at(i) = ((std::abs(a.at(i) - b.at(i)) < 1e-12)) ? true_val : false_val;
                             break;
                         case CompareOp::NE: // not equal to
-                            result.data[i] = ((std::abs(a.data[i] - b.data[i]) >= 1e-12)) ? true_val : false_val;
+                            result.at(i) = ((std::abs(a.at(i) - b.at(i)) >= 1e-12)) ? true_val : false_val;
                             break;
                         default:
                             throw std::invalid_argument("Invalid compare op");
@@ -304,7 +304,7 @@ namespace bearml {
             Tensor<T> result(other.getShape(), other.device);
 
             for (size_t i = 0; i < other.sizeOfTensor(); i++) {
-                result.data[i] = (first >= other.data[i]) ? first_val : second_val;
+                result.at(i) = (first >= other.at(i)) ? first_val : second_val;
             }
             // TODO: CUDA implementation
 
@@ -316,7 +316,7 @@ namespace bearml {
             Tensor<T> result(other.getShape(), other.device);
 
             for (size_t i = 0; i < other.sizeOfTensor(); i++) {
-                result.data[i] = (first > other.data[i]) ? first_val : second_val;
+                result.at(i) = (first > other.at(i)) ? first_val : second_val;
             }
             // TODO: CUDA implementation
 
@@ -328,7 +328,7 @@ namespace bearml {
             Tensor<T> result(other.getShape(), other.device);
 
             for (size_t i = 0; i <  other.sizeOfTensor(); i++) {
-                result.data[i] = (first <= other.data[i]) ? first_val : second_val;
+                result.at(i) = (first <= other.at(i)) ? first_val : second_val;
             }
             // TODO: CUDA implementation
 
@@ -340,7 +340,7 @@ namespace bearml {
             Tensor<T> result(other.getShape(), other.device);
 
             for (size_t i = 0; i <  other.sizeOfTensor(); i++) {
-                result.data[i] = (first < other.data[i]) ? first_val : second_val;
+                result.at(i) = (first < other.at(i)) ? first_val : second_val;
             }
             // TODO: CUDA implementation
 
@@ -351,7 +351,7 @@ namespace bearml {
         Tensor<T> mask_of_equal_to(T first, const Tensor<T>& other,  T first_val, T second_val){
            Tensor<T> result(other.getShape(), other.device);
             for (size_t i = 0; i < other.sizeOfTensor(); ++i) {
-                result.data[i] = (std::abs(first - other.data[i]) < 1e-12) ? first_val : second_val;
+                result.at(i) = (std::abs(first - other.at(i)) < 1e-12) ? first_val : second_val;
             }
             // TODO: CUDA implementation
 
@@ -364,7 +364,7 @@ namespace bearml {
             Tensor<T> result(first.getShape(), first.device);
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
-                result.data[i] = (first.data[i] >= other) ? first_val : second_val;
+                result.at(i) = (first.at(i) >= other) ? first_val : second_val;
             }
             // TODO: CUDA implementation
 
@@ -375,7 +375,7 @@ namespace bearml {
         Tensor<T> mask_of_greater_than(const Tensor<T>& first, T other,  T first_val, T second_val) {
             Tensor<T> result(first.getShape(), first.device);
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
-                result.data[i] = (first.data[i] > other) ? first_val: second_val;
+                result.at(i) = (first.at(i) > other) ? first_val: second_val;
             }
             // TODO: CUDA implementation
 
@@ -387,7 +387,7 @@ namespace bearml {
             Tensor<T> result(first.getShape(), first.device);
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
-                result.data[i] = (first.data[i] <= other) ? first_val : second_val;
+                result.at(i) = (first.at(i) <= other) ? first_val : second_val;
             }
             // TODO: CUDA implementation
 
@@ -399,7 +399,7 @@ namespace bearml {
             Tensor<T> result(first.getShape(), first.device);
 
             for (size_t i = 0; i < first.sizeOfTensor(); i++) {
-                result.data[i] = (first.data[i] < other) ? first_val : second_val;
+                result.at(i) = (first.at(i) < other) ? first_val : second_val;
             }
             // TODO: CUDA implementation
 
@@ -410,7 +410,7 @@ namespace bearml {
         Tensor<T> mask_of_equal_to(const Tensor<T>& first, T other,  T first_val, T second_val){
             Tensor<T> result(first.getShape(), first.device);
             for (size_t i = 0; i < first.sizeOfTensor(); ++i) {
-                result.data[i] = (std::abs(first.data[i] - other) < 1e-12) ? first_val : second_val;
+                result.at(i) = (std::abs(first.at(i) - other) < 1e-12) ? first_val : second_val;
             }
             // TODO: CUDA implementation
 
@@ -424,13 +424,13 @@ namespace bearml {
 
             if (a.getDevice().type == DeviceType::CPU) {
                 for (size_t i = 0; i < a.sizeOfTensor(); ++i) {
-                    result.data[i] = (std::abs(a.data[i] - T(0)) < 1e-12) ? T(0) : ((a.data[i] < T(0)) ? T(-1) : T(1));
+                    result.at(i) = (std::abs(a.at(i) - T(0)) < 1e-12) ? T(0) : ((a.at(i) < T(0)) ? T(-1) : T(1));
                 }
                 return result;
             }
 
             // CUDA implementation
-            cuda::launch_sign_contiguous<T>(a.data, result.data, a.getShape());
+            cuda::launch_sign_contiguous<T>(a.const_data(), result.mutable_data(), a.getShape());
 
             return result;
         }
@@ -456,7 +456,7 @@ namespace bearml {
                 for (int batch = 0; batch < a.sizeOfTensor() / (a_shape[a_shape.size() - 1] * a_shape[a_shape.size() - 2]); ++batch) {
                     int row = a_shape[a_shape.size() - 1];
                     int col = a_shape[a_shape.size() - 2];
-                    Eigen::Map<MatrixRowMajorT<T>> matrix(result.data + batch * row * col, row, col); // get the matrix for this batch
+                    Eigen::Map<MatrixRowMajorT<T>> matrix(result.mutable_data() + batch * row * col, row, col); // get the matrix for this batch
                     Eigen::FullPivLU<MatrixRowMajorT<T>> lu(matrix);
                     if (!lu.isInvertible()) {
                         throw std::runtime_error("Matrix is not invertible");

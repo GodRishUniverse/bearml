@@ -28,7 +28,7 @@ namespace bearml {
 
         //  launch code for checking non-zero elements
         template<typename T>
-        bool launch_check_zero_kernel(T *d_data, int64_t size, cudaStream_t stream) {
+        bool launch_check_zero_kernel(const T *d_data, int64_t size, cudaStream_t stream) {
             bool own_stream = (stream == nullptr);
             if (own_stream) {
                 CUDA_CHECK(cudaStreamCreate(&stream));
@@ -86,7 +86,7 @@ namespace bearml {
 
 
         template<typename T>
-        bool launch_check_equal_kernel(T *d_data, T *d_other, int64_t size, cudaStream_t stream) {
+        bool launch_check_equal_kernel(const T *d_data, const T *d_other, int64_t size, cudaStream_t stream) {
             bool own_stream = (stream == nullptr);
             if (own_stream) {
                 CUDA_CHECK(cudaStreamCreate(&stream));
