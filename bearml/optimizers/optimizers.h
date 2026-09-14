@@ -26,7 +26,7 @@ namespace bearml {
             class SGD: public Optimizer{
                     static_assert(bearml::is_tensor_v<T>,
                         "SGD requires a Tensor type (e.g. Tensorf / TensorD)");
-                    static_assert(bearml::is_supported_float_v<bearml::tensor_element_t<T>>,
+                    static_assert(bearml::is_floating(bearml::dtype_of<bearml::tensor_element_t<T>>),
                         "SGD parameters must be float, double, or bfloat16 tensors");
                 private:
                     std::vector<std::shared_ptr<bearml::Node<T>>> params;
@@ -43,7 +43,7 @@ namespace bearml {
             class Adam: public Optimizer{
                     static_assert(bearml::is_tensor_v<T>,
                         "Adam requires a Tensor type (e.g. Tensorf / TensorD)");
-                    static_assert(bearml::is_supported_float_v<bearml::tensor_element_t<T>>,
+                    static_assert(bearml::is_floating(bearml::dtype_of<bearml::tensor_element_t<T>>),
                         "Adam parameters must be float, double, or bfloat16 tensors");
                 private:
                     std::vector<std::shared_ptr<bearml::Node<T>>> params;

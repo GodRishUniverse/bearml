@@ -39,6 +39,7 @@
 #include "utils/device_utils.h"
 #include "utils/slice.h"
 #include "utils/ordering.h"
+#include "utils/dtype.h"
 
 #include "Scalar.h"
 
@@ -85,34 +86,18 @@ namespace bearml{
     // forward declaration of the class template - needed by the free-function declarations below
     template <typename T> class Tensor;
 
-    // is_supported_float_v<E> is true iff E is a floating scalar we accept for
-    // reduction accumulation and optimizer parameters: float, double, or bfloat16.
-    // bfloat16 is recognised as C++23 std::bfloat16_t on the host and as
-    // __nv_bfloat16 inside CUDA translation units (each guarded so the other side
-    // still compiles). Deliberately excludes integer element types (e.g. TensorI).
-    // Declared before class Tensor so inline members (e.g. mean) can use it.
-    template<typename E>
-    inline constexpr bool is_supported_float_v =
-        std::is_same_v<E, float> || std::is_same_v<E, double>
-#if defined(__STDCPP_BFLOAT16_T__)
-        || std::is_same_v<E, std::bfloat16_t>
-#endif
-#if defined(BEARML_USE_CUDA)
-        || std::is_same_v<E, __nv_bfloat16>
-#endif
-        ;
-
     // bearml::cuda_type_trait<U>::type maps a host element type U to the CUDA
     // kernel type used to launch it (defaults to U itself; overridden for the
     // handful of types whose device representation differs from the host one).
-    // Declared before class Tensor (like is_supported_float_v above) so inline
-    // members can use it — must be visible before its first use, since it's a
-    // free namespace-scope template rather than a member of Tensor.
+    // Declared before class Tensor so inline members can use it — must be
+    // visible before its first use, since it's a free namespace-scope template
+    // rather than a member of Tensor.
     template <typename U> struct cuda_type_trait{ using type = U; };
     #if defined(BEARML_USE_CUDA) && defined(__STDCPP_BFLOAT16_T__)
         template<> struct cuda_type_trait<std::bfloat16_t> { using type = __nv_bfloat16; };
     #endif
     #if defined(BEARML_USE_CUDA)
+        // TODO: F16 needs its own host type (std::float16_t) distinct from int16_t
         template<> struct cuda_type_trait<int16_t> { using type = __half; };
     #endif
     template <typename U> using cuda_type_trait_t = typename cuda_type_trait<U>::type;
@@ -184,13 +169,6 @@ namespace bearml{
             // All Tensor<U> instantiations are mutual friends so dtype-converting
             // ops (e.g. change_dtype) can access another instantiation's private data.
             template <typename U> friend class Tensor;
-
-            // The below line was added by an LLM to help me in the template instantiation
-            // CPU compute (Eigen / std::math / host arithmetic) is only well-formed for these element
-            // types. __nv_bfloat16 / __half are CUDA-only: their CPU branches are if-constexpr'd out
-            // and throw at runtime. Used to keep all explicit instantiations compiling.
-            static constexpr bool kHostCompute =
-                std::is_same_v<T, float> || std::is_same_v<T, double> || std::is_same_v<T, int>;
 
             // inline static so each Tensor<T> instantiation gets its own definition
             inline static size_t print_precision = 14;
@@ -559,7 +537,7 @@ namespace bearml{
             }
 
 
-            T get(std::vector<int> index) const {
+            Scalar<T> get(std::vector<int> index) const {
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use get()");
                 }
@@ -577,7 +555,7 @@ namespace bearml{
                 return at(this->layout_.data_offset+ off);
             }
 
-            T get(std::span<int> index) const {
+            Scalar<T> get(std::span<int> index) const {
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use get()");
                 }
@@ -611,7 +589,7 @@ namespace bearml{
                 this->storage_->allocator().copy_to_device(this->mutable_data() + this->layout_.data_offset, values.data(), values.size() * sizeof(T));
             }
 
-            void set(T val, std::vector<int> index) {
+            void set(Scalar<T> val, std::vector<int> index) {
 
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
@@ -688,7 +666,7 @@ namespace bearml{
 
             // TODO: refactor
             // TODO: add test to check offset values
-            void set_with_offset(ll offset, int row, int col, T val){
+            void set_with_offset(ll offset, int row, int col, Scalar<T> val){
                 // assumes offset is passed correctly at the moment
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
@@ -732,6 +710,9 @@ namespace bearml{
             size_t getDataOffset() const {
                 return this->layout_.data_offset;
             }
+
+            // helper function
+            static constexpr DType dtype() { return dtype_of<T>; }
 
             static std::vector<int> compute_row_major_strides(const std::vector<int>& sh) {
                 std::vector<int> s(sh.size());
@@ -827,7 +808,7 @@ namespace bearml{
                 os << "Tensor on device: ";
                 os << tensor.device.to_string() << "\n";
 
-                os << "Tensor dtype: " << utils::print_type<T>() << "\n"; // cause we templated so T is not known at compile time
+                os << "Tensor dtype: " << dtype_name(dtype_of<T>) << "\n";
 
                 os << "Tensor data:\n";
                 if (tensor.device.is_cpu()) {
@@ -1110,16 +1091,16 @@ namespace bearml{
             }
 
             // element wise add
-            Tensor& operator+=(const T& b) {
-                return inplace_scalar(b, OP_Code::OP_ADD);
+            Tensor& operator+=(Scalar<T> b) {
+                return inplace_scalar(b.value(), OP_Code::OP_ADD);
             }
 
             // element wise add
-            friend Tensor operator+(const Tensor &A, const T& b) {
-                return elementwise_scalar(A, b, OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
+            friend Tensor operator+(const Tensor &A, Scalar<T> b) {
+                return elementwise_scalar(A, b.value(), OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
             }
 
-            friend Tensor operator+(const T& b, const Tensor &A) {
+            friend Tensor operator+(Scalar<T> b, const Tensor &A) {
                 return A+b;
             } // same as above
 
@@ -1132,16 +1113,16 @@ namespace bearml{
                 return inplace_tensor_binary(other, OP_Code::OP_SUB);
             }
             // element wise subtract
-            Tensor& operator-=(const T& b) {
-                return inplace_scalar(b, OP_Code::OP_SUB);
+            Tensor& operator-=(Scalar<T> b) {
+                return inplace_scalar(b.value(), OP_Code::OP_SUB);
             }
             // element wise subtract
-            friend Tensor operator-(const Tensor &A, const T& b) {
-                return elementwise_scalar(A, b, OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
+            friend Tensor operator-(const Tensor &A, Scalar<T> b) {
+                return elementwise_scalar(A, b.value(), OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
             }
             // element wise subtract - operation is switched (b - A)
-            friend Tensor operator-(const T& b, const Tensor &A) {
-                return elementwise_scalar(A, b, OP_Code::OP_SUB, LHS_RHS_Code::OP_LHS);
+            friend Tensor operator-(Scalar<T> b, const Tensor &A) {
+                return elementwise_scalar(A, b.value(), OP_Code::OP_SUB, LHS_RHS_Code::OP_LHS);
             }
 
             // --------------------------------MULTIPLICATION----------------------------------------------------------------------
@@ -1156,12 +1137,12 @@ namespace bearml{
             template<typename U> friend Tensor<U> linear_algebra::reduce(const Tensor<U>& a, std::vector<int>& afterShape, reductions::ReductionOps op);
 
             // element wise multiply (now uses elementwise_scalar dispatch)
-            friend Tensor operator*(const Tensor &A, const T& b) {
-                return elementwise_scalar(A, b, OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
+            friend Tensor operator*(const Tensor &A, Scalar<T> b) {
+                return elementwise_scalar(A, b.value(), OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
             }
 
             // for when the operations are reversed
-            friend Tensor operator*(const T& b, const Tensor &A) {
+            friend Tensor operator*(Scalar<T> b, const Tensor &A) {
                 return A*b; // order of multiplication doesn't matter here -> does it?
             }
 
@@ -1385,18 +1366,18 @@ namespace bearml{
                  return *this;
             }
             // calls the element wise mul
-            Tensor& operator*=(const T& B) {
+            Tensor& operator*=(Scalar<T> B) {
                  *this = *this * B;
                  return *this;
             }
 
             // -------------------------------DIVISION--------------------------------------------------------------------------
-            friend Tensor operator/(const Tensor &A, const T& b) {
-                return elementwise_scalar(A, b, OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS);
+            friend Tensor operator/(const Tensor &A, Scalar<T> b) {
+                return elementwise_scalar(A, b.value(), OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS);
             }
 
-            friend Tensor operator/(const T& b, const Tensor &A) {
-                return elementwise_scalar(A, b, OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
+            friend Tensor operator/(Scalar<T> b, const Tensor &A) {
+                return elementwise_scalar(A, b.value(), OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
             }
 
             friend Tensor operator/(const Tensor &a, const Tensor &b) {
@@ -1666,23 +1647,23 @@ namespace bearml{
             //----------------------------------------Max------------------------------------------------------
 
             // TODO: fix this - CUDA kernel as well
-            static Tensor max(const Tensor& t,const  T val){
+            static Tensor max(const Tensor& t, Scalar<T> val){
                 // std::cout <<"MAX" <<std::endl;
                 if (t.device == DeviceType::CUDA) {
                     // Create a scalar tensor on CUDA filled with val
                     Tensor scalar_t(t.getShape());
-                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.at(i) = val;
+                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.at(i) = val.value();
                     scalar_t.to_(t.device);
                     return Tensor::max(t, scalar_t);
                 }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.at(i) = std::max({t.at(i), val});
+                    a.at(i) = std::max({t.at(i), val.value()});
                 }
                 return a;
             }
 
-            static Tensor max(const T val, const Tensor& t){
+            static Tensor max(Scalar<T> val, const Tensor& t){
                 return Tensor::max(t,val);
             }
 
@@ -1708,22 +1689,22 @@ namespace bearml{
 
             //----------------------------------------Min------------------------------------------------------
 
-            static Tensor min(const Tensor& t, T val){
+            static Tensor min(const Tensor& t, Scalar<T> val){
                 // std::cout <<"MIN" <<std::endl;
                 if (t.device == DeviceType::CUDA) {
                     Tensor scalar_t(t.getShape());
-                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.at(i) = val;
+                    for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.at(i) = val.value();
                     scalar_t.to_(t.device);
                     return Tensor::min(t, scalar_t);
                 }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.at(i) = std::min({t.at(i), val});
+                    a.at(i) = std::min({t.at(i), val.value()});
                 }
                 return a;
             }
 
-            static Tensor min(const T val, const Tensor& t){
+            static Tensor min(Scalar<T> val, const Tensor& t){
                 return Tensor::min(t,val);
             }
 
@@ -1767,7 +1748,7 @@ namespace bearml{
             static Tensor mean(Tensor &t ){
                 // sum_kernel accumulates into a buffer of the tensor's own element
                 // type, so restrict to floating types (reject int tensors) at compile time.
-                static_assert(bearml::is_supported_float_v<T>,
+                static_assert(bearml::is_floating(bearml::dtype_of<T>),
                     "Tensor::mean supports only float, double, or bfloat16 element types");
 
                 Tensor result({1}, t.device);
@@ -1864,12 +1845,12 @@ namespace bearml{
             }
 
 
-            void fill(T v){
+            void fill(Scalar<T> v){
                 // CUDA fill
                 if (!this->device.is_cpu()) {
                     cuda::launch_fill<cuda_type_trait_t<T>>(
                         cuda_ptr(this->mutable_data()),
-                        cuda_val(v),
+                        cuda_val(v.value()),
                         this->layout_.shape
                     );
                     return;
@@ -1918,7 +1899,7 @@ namespace bearml{
 
 
             // linspace function to edit the current tensor
-            Tensor& linspace(T start, T end){
+            Tensor& linspace(Scalar<T> start, Scalar<T> end){
                 size_t long_size = this->sizeOfTensor();
                 double size = static_cast<double>(long_size-1);
                 // accumulate in double for precision, store back as the element type T
@@ -2308,11 +2289,10 @@ namespace bearml{
     template<typename E> struct tensor_element<Tensor<E>> { using type = E; };
     template<typename U> using tensor_element_t = typename tensor_element<U>::type;
 
-    // Convenience: true iff U is Tensor<E> with a supported floating element type.
-    // (is_supported_float_v itself is declared before class Tensor, above.)
+    // Convenience: true iff U is Tensor<E> with a floating-point element type.
     template<typename U>
     inline constexpr bool is_supported_float_tensor_v =
-        is_tensor_v<U> && is_supported_float_v<tensor_element_t<U>>;
+        is_tensor_v<U> && is_floating(dtype_of<tensor_element_t<U>>);
 
 }
 

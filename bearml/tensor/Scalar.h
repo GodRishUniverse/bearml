@@ -1,4 +1,5 @@
 #pragma once
+#include "utils/dtype.h"
 
 namespace bearml {
     template<typename T>

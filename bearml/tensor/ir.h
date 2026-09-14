@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "operators/ops.h"
 #include "utils/shape_utils.h"
+#include "utils/dtype.h"
 
 namespace bearml {
 
@@ -12,7 +13,7 @@ namespace bearml {
         std::vector<IRNode*> inputs;
         // TODO: Design these structures
         Shape shape;
-        // DType dtype;
+        DType dtype;
         // Attrs attrs;
 
     };

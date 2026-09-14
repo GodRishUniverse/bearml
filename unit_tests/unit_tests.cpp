@@ -2,6 +2,7 @@
 
 #include "gtest/gtest.h"
 #include "bearml.h"
+#include <sstream>
 
 using namespace bearml; // our namespace for bearml types
 using NodeT = std::shared_ptr<Node<TensorD>>; // aliases defined for ease of reading
@@ -1554,6 +1555,224 @@ TEST(TensorStorageTest, AtThrowsOutOfRangeForFlatIndexPastStorage) {
     EXPECT_THROW(a.at(1000), std::out_of_range);
 }
 
+
+// Scalar<T> API tests - CPU only, hand-computed exact values
+
+TEST(TensorScalarTest, AddRawDoubleLiteralBothSides) {
+    TensorD a({3}); a.fill(2.0);
+    TensorD b = a + 3.0;
+    TensorD c = 3.0 + a;
+    for (int i = 0; i < 3; i++) {
+        EXPECT_DOUBLE_EQ(b.get({i}), 5.0);
+        EXPECT_DOUBLE_EQ(c.get({i}), 5.0);
+    }
+}
+
+TEST(TensorScalarTest, SubRawDoubleLiteralBothSides) {
+    TensorD a({3}); a.fill(5.0);
+    TensorD b = a - 2.0; // 3.0
+    TensorD c = 2.0 - a; // -3.0
+    for (int i = 0; i < 3; i++) {
+        EXPECT_DOUBLE_EQ(b.get({i}), 3.0);
+        EXPECT_DOUBLE_EQ(c.get({i}), -3.0);
+    }
+}
+
+TEST(TensorScalarTest, MulRawDoubleLiteralBothSides) {
+    TensorD a({3}); a.fill(4.0);
+    TensorD b = a * 2.0;
+    TensorD c = 2.0 * a;
+    for (int i = 0; i < 3; i++) {
+        EXPECT_DOUBLE_EQ(b.get({i}), 8.0);
+        EXPECT_DOUBLE_EQ(c.get({i}), 8.0);
+    }
+}
+
+TEST(TensorScalarTest, DivRawDoubleLiteralBothSides) {
+    TensorD a({3}); a.fill(10.0);
+    TensorD b = a / 2.0;   // 5.0
+    TensorD c = 20.0 / a;  // 2.0
+    for (int i = 0; i < 3; i++) {
+        EXPECT_DOUBLE_EQ(b.get({i}), 5.0);
+        EXPECT_DOUBLE_EQ(c.get({i}), 2.0);
+    }
+}
+
+TEST(TensorScalarTest, MulWithExplicitScalarArgument) {
+    Scalar<double> s(2.0);
+    TensorD a({3}); a.fill(6.0);
+    TensorD b = a * s;
+    TensorD c = s * a;
+    for (int i = 0; i < 3; i++) {
+        EXPECT_DOUBLE_EQ(b.get({i}), 12.0);
+        EXPECT_DOUBLE_EQ(c.get({i}), 12.0);
+    }
+}
+
+TEST(TensorScalarTest, SubWithExplicitScalarArgumentIsNonCommutative) {
+    Scalar<double> s(2.0);
+    TensorD a({3}); a.fill(6.0);
+    TensorD b = a - s; // 4.0
+    TensorD c = s - a; // -4.0
+    for (int i = 0; i < 3; i++) {
+        EXPECT_DOUBLE_EQ(b.get({i}), 4.0);
+        EXPECT_DOUBLE_EQ(c.get({i}), -4.0);
+    }
+}
+
+TEST(TensorScalarTest, FloatTensorDoubleLiteralResolvesThroughScalar) {
+    Tensorf t({3}); t.fill(3.0); // double literal -> float -> Scalar<float>
+    Tensorf b = t * 2.0;
+    Tensorf c = 2.0 - t;
+    for (int i = 0; i < 3; i++) {
+        EXPECT_FLOAT_EQ(b.get({i}).value(), 6.0f);
+        EXPECT_FLOAT_EQ(c.get({i}).value(), -1.0f);
+    }
+}
+
+TEST(TensorScalarTest, IntLiteralOnDoubleTensor) {
+    TensorD a({3}); a.fill(1.0);
+    TensorD b = a + 1; // int -> double -> Scalar<double>
+    for (int i = 0; i < 3; i++) {
+        EXPECT_DOUBLE_EQ(b.get({i}), 2.0);
+    }
+}
+
+TEST(TensorScalarTest, CompoundAssignWithLiterals) {
+    TensorD a({3}); a.fill(5.0);
+    a += 2.0; // 7.0
+    a -= 1.0; // 6.0
+    a *= 2.0; // 12.0
+    for (int i = 0; i < 3; i++) {
+        EXPECT_DOUBLE_EQ(a.get({i}), 12.0);
+    }
+}
+
+TEST(TensorScalarTest, CompoundAssignWithScalarArgument) {
+    TensorD a({3}); a.fill(5.0);
+    Scalar<double> add_s(2.0), sub_s(1.0), mul_s(2.0);
+    a += add_s; // 7.0
+    a -= sub_s; // 6.0
+    a *= mul_s; // 12.0
+    for (int i = 0; i < 3; i++) {
+        EXPECT_DOUBLE_EQ(a.get({i}), 12.0);
+    }
+}
+
+TEST(TensorScalarTest, FillWithLiteral) {
+    TensorD a({2, 2});
+    a.fill(9.0);
+    for (int r = 0; r < 2; r++)
+        for (int c = 0; c < 2; c++)
+            EXPECT_DOUBLE_EQ(a.get({r, c}), 9.0);
+}
+
+TEST(TensorScalarTest, LinspaceWithLiterals) {
+    TensorD t({5});
+    t.linspace(0.0, 8.0);
+    EXPECT_DOUBLE_EQ(t.get({0}), 0.0);
+    EXPECT_DOUBLE_EQ(t.get({1}), 2.0);
+    EXPECT_DOUBLE_EQ(t.get({2}), 4.0);
+    EXPECT_DOUBLE_EQ(t.get({3}), 6.0);
+    EXPECT_DOUBLE_EQ(t.get({4}), 8.0);
+}
+
+TEST(TensorScalarTest, StaticMaxWithScalarOnEitherSide) {
+    TensorD a({3});
+    a.set(1.0, {0}); a.set(5.0, {1}); a.set(3.0, {2});
+    TensorD b = TensorD::max(a, 2.0);
+    TensorD c = TensorD::max(2.0, a);
+    EXPECT_DOUBLE_EQ(b.get({0}), 2.0); EXPECT_DOUBLE_EQ(b.get({1}), 5.0); EXPECT_DOUBLE_EQ(b.get({2}), 3.0);
+    EXPECT_DOUBLE_EQ(c.get({0}), 2.0); EXPECT_DOUBLE_EQ(c.get({1}), 5.0); EXPECT_DOUBLE_EQ(c.get({2}), 3.0);
+}
+
+TEST(TensorScalarTest, StaticMinWithScalarOnEitherSide) {
+    TensorD a({3});
+    a.set(1.0, {0}); a.set(5.0, {1}); a.set(3.0, {2});
+    TensorD b = TensorD::min(a, 2.0);
+    TensorD c = TensorD::min(2.0, a);
+    EXPECT_DOUBLE_EQ(b.get({0}), 1.0); EXPECT_DOUBLE_EQ(b.get({1}), 2.0); EXPECT_DOUBLE_EQ(b.get({2}), 2.0);
+    EXPECT_DOUBLE_EQ(c.get({0}), 1.0); EXPECT_DOUBLE_EQ(c.get({1}), 2.0); EXPECT_DOUBLE_EQ(c.get({2}), 2.0);
+}
+
+TEST(TensorScalarTest, GetReturnsScalarAndConverts) {
+    TensorD t({1});
+    t.set(9.0, {0});
+    EXPECT_TRUE((std::is_same_v<decltype(t.get({0})), bearml::Scalar<double>>));
+    double v = t.get({0});
+    EXPECT_DOUBLE_EQ(v, 9.0);
+}
+
+TEST(TensorScalarTest, SetWithLiteralThenGet) {
+    TensorD t({2});
+    t.set(4.0, {0});
+    t.set(7.0, {1});
+    EXPECT_DOUBLE_EQ(t.get({0}), 4.0);
+    EXPECT_DOUBLE_EQ(t.get({1}), 7.0);
+}
+
+// DType Tests
+
+TEST(DTypeTest, DTypeOfHostScalars) {
+    static_assert(bearml::dtype_of<double> == bearml::DType::F64);
+    static_assert(bearml::dtype_of<float> == bearml::DType::F32);
+    static_assert(bearml::dtype_of<int64_t> == bearml::DType::I64);
+    static_assert(bearml::dtype_of<int32_t> == bearml::DType::I32);
+    static_assert(bearml::dtype_of<int16_t> == bearml::DType::I16);
+    static_assert(bearml::dtype_of<int8_t> == bearml::DType::I8);
+    EXPECT_EQ(bearml::dtype_of<double>, bearml::DType::F64);
+    EXPECT_EQ(bearml::dtype_of<float>, bearml::DType::F32);
+    EXPECT_EQ(bearml::dtype_of<int64_t>, bearml::DType::I64);
+    EXPECT_EQ(bearml::dtype_of<int32_t>, bearml::DType::I32);
+    EXPECT_EQ(bearml::dtype_of<int16_t>, bearml::DType::I16);
+    EXPECT_EQ(bearml::dtype_of<int8_t>, bearml::DType::I8);
+}
+
+#if defined(__STDCPP_BFLOAT16_T__)
+TEST(DTypeTest, DTypeOfBFloat16) {
+    static_assert(bearml::dtype_of<std::bfloat16_t> == bearml::DType::BF16);
+    EXPECT_EQ(bearml::dtype_of<std::bfloat16_t>, bearml::DType::BF16);
+}
+#endif
+
+TEST(DTypeTest, TensorDtypeMethod) {
+    EXPECT_EQ(TensorD::dtype(), bearml::DType::F64);
+    EXPECT_EQ(Tensorf::dtype(), bearml::DType::F32);
+    EXPECT_EQ(TensorI::dtype(), bearml::DType::I32);
+}
+
+TEST(DTypeTest, DTypeNameForEveryEnumValue) {
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::F64), "float64");
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::F32), "float32");
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::F16), "float16");
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::F8), "float8");
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::MXFP4), "mxfp4");
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::BF16), "bfloat16");
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::I64), "int64");
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::I32), "int32");
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::I16), "int16");
+    EXPECT_EQ(bearml::dtype_name(bearml::DType::I8), "int8");
+}
+
+TEST(DTypeTest, IsFloatingForEveryEnumValue) {
+    EXPECT_TRUE(bearml::is_floating(bearml::DType::F64));
+    EXPECT_TRUE(bearml::is_floating(bearml::DType::F32));
+    EXPECT_TRUE(bearml::is_floating(bearml::DType::F16));
+    EXPECT_TRUE(bearml::is_floating(bearml::DType::F8));
+    EXPECT_TRUE(bearml::is_floating(bearml::DType::MXFP4));
+    EXPECT_TRUE(bearml::is_floating(bearml::DType::BF16));
+    EXPECT_FALSE(bearml::is_floating(bearml::DType::I64));
+    EXPECT_FALSE(bearml::is_floating(bearml::DType::I32));
+    EXPECT_FALSE(bearml::is_floating(bearml::DType::I16));
+    EXPECT_FALSE(bearml::is_floating(bearml::DType::I8));
+}
+
+TEST(DTypeTest, StreamOperatorPrintsDtypeName) {
+    TensorD t({2, 2});
+    std::ostringstream oss;
+    oss << t;
+    EXPECT_NE(oss.str().find("Tensor dtype: float64"), std::string::npos);
+}
 
 // main to run all the tests
 int main(int argc, char **argv) {
