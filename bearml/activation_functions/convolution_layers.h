@@ -120,20 +120,20 @@ namespace bearml {
         template <typename T = bearml::Tensorf>
         class Conv2D : public Module<T> {
         private:
-            int in_channels_;
-            int out_channels_;
-            int kernel_size_;
-            int stride_;
-            int padding_;
-            int dilation_;
-            int groups_;
-            bool bias_;
-            Padding_Op_Code padding_mode_;
-            int constant_pad_;
+            int in_channels;
+            int out_channels;
+            int kernel_size;
+            int stride;
+            int padding;
+            int dilation;
+            int groups;
+            bool bias;
+            Padding_Op_Code padding_mode;
+            int constant_pad;
 
         public:
             Conv2D(int in_channels, int out_channels, int kernel_size, int stride = 1, int padding = 0, int dilation =1, int groups = 1, bool bias = true, Padding_Op_Code padding_mode = Padding_Op_Code::PAD_CONSTANT, int seed = 42, bearml::Device dev = bearml::Device::cpu(), int constant_pad = 0)
-                : Module<T>(seed, dev), in_channels_(in_channels), out_channels_(out_channels), kernel_size_(kernel_size), stride_(stride), padding_(padding), dilation_(dilation), groups_(groups), bias_(bias), padding_mode_(padding_mode), constant_pad_(constant_pad) {
+                : Module<T>(seed, dev), in_channels(in_channels), out_channels(out_channels), kernel_size(kernel_size), stride(stride), padding(padding), dilation(dilation), groups(groups), bias(bias), padding_mode(padding_mode), constant_pad(constant_pad) {
 
             }
 
