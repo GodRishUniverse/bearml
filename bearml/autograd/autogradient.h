@@ -57,19 +57,12 @@ namespace bearml{
         return adjoint of input v_input(s) - this is the gradient of the function (network) with respect to all the inputs
     */
 
+    template<typename T> class  Node;
 
-
-    // trying
-    template<typename T>
-    class Function {
-        OP_Code op = OP_Code::NO_OP; // baseline
-        OpAttributes op_attr;
-
-    };
     // will be our function map
     template <typename T>
-    Tensor<T> grad_of(Function<T>& func) {
-        switch (func.op) {
+    std::vector<T> grad_of(Node<T>& node) {
+        switch (node.op) {
             case OP_Code::NO_OP:
                 return Tensor<T>::zeros_like();
             default:
@@ -77,7 +70,6 @@ namespace bearml{
         }
     };
 
-   template<typename T> class  Node;
    // NOTE: Check if  we need to ->  add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads
    //
    template <typename T>

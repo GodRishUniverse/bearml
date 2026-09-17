@@ -199,6 +199,11 @@ namespace bearml{
                 storage = std::make_shared<Storage>(sizeOfTensor() * sizeof(T), this->device);
             }
 
+
+            void record_op(OP_Code op, std::initializer_list<Tensor<T>> inputs, OpAttributes op_attr, Tensor<T> output) {
+
+            }
+
         public:
 
             // flat index into storage (caller adds data_offset); bounds-checked in Debug
