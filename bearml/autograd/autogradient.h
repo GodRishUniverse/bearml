@@ -11,6 +11,7 @@
 #include <iostream>
 
 
+#include "operators/ops.h"
 #include "tensor/Tensor.h"
 // #include "../cuda/includes/ops.h" //TODO: this Ops should be moved to a separate folder as Ops.h used in Tensor.h as well
 
@@ -56,6 +57,26 @@ namespace bearml{
         return adjoint of input v_input(s) - this is the gradient of the function (network) with respect to all the inputs
     */
 
+
+
+    // trying
+    template<typename T>
+    class Function {
+        OP_Code op = OP_Code::NO_OP; // baseline
+        OpAttributes op_attr;
+
+    };
+    // will be our function map
+    template <typename T>
+    Tensor<T> grad_of(Function<T>& func) {
+        switch (func.op) {
+            case OP_Code::NO_OP:
+                return Tensor<T>::zeros_like();
+            default:
+                return Tensor<T>::zeros_like();
+        }
+    };
+
    template<typename T> class  Node;
    // NOTE: Check if  we need to ->  add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads
    //
@@ -67,9 +88,12 @@ namespace bearml{
         T val;
         T grad; // delay grad creation and use jacobians to solbe the broadcasting problem
         std::vector<std::shared_ptr<Node<T>>> inputs;// PARENTS-  using stl shared pointer
-        std::vector<std::weak_ptr<Node<T>>> outputs; // CHILDREN- using stl weak pointer - to break the cycle of shared_ptr references in inputs and outputs
+        // std::vector<std::weak_ptr<Node<T>>> outputs; // CHILDREN- using stl weak pointer - to break the cycle of shared_ptr references in inputs and outputs
+        // Let us not use closures
         std::function<void()> backward_fn; // will be used for backward pass rather than the gradients
 
+        OP_Code op = OP_Code::NO_OP; // baseline
+        OpAttributes op_attr;
 
         Node(T value ) : val(value) , grad([&value]() {
                 if constexpr (std::is_same<T, double>::value) {
@@ -178,8 +202,8 @@ namespace bearml{
 
             node->inputs = {a,b};
 
-            a->outputs.push_back(node);
-            b->outputs.push_back(node);
+            // a->outputs.push_back(node);
+            // b->outputs.push_back(node);
 
             std::weak_ptr<Node<T>> weak_a = a;
             std::weak_ptr<Node<T>> weak_b = b;
@@ -326,7 +350,7 @@ namespace bearml{
 
                 node->inputs = {b};
 
-                b->outputs.push_back(node);
+                // b->outputs.push_back(node);
 
                 std::weak_ptr<Node<T>> weak_b = b;
                 std::weak_ptr<Node<T>> weak_node = node;
@@ -375,7 +399,7 @@ namespace bearml{
                 std::shared_ptr<Node<T>> node  = make_node(a->val/divisor);
                 // node = a / b
                 node->inputs = {a};
-                a->outputs.push_back(node);
+                // a->outputs.push_back(node);
 
                 std::weak_ptr<Node<T>> weak_a = a;
                 std::weak_ptr<Node<T>> weak_node = node;
@@ -392,7 +416,7 @@ namespace bearml{
                 std::shared_ptr<Node<T>> node  = make_node(divisor/a->val);
                 // node = a / b
                 node->inputs = {a};
-                a->outputs.push_back(node);
+                // a->outputs.push_back(node);
 
                 std::weak_ptr<Node<T>> weak_a = a;
                 std::weak_ptr<Node<T>> weak_node = node;
@@ -485,7 +509,7 @@ namespace bearml{
             }
 
             node->inputs = {a};
-            a->outputs.push_back(node);
+            // a->outputs.push_back(node);
 
             std::weak_ptr<Node<T>> weak_a = a;
             std::weak_ptr<Node<T>> weak_node = node;
@@ -695,7 +719,7 @@ namespace bearml{
                 std::shared_ptr<Node<T>> node = make_node(a->val.accumulate(dim_to_use, bearml::reductions::ReductionOps::SUM, true));
 
                 node->inputs = {a};
-                a->outputs.push_back(node);
+                // a->outputs.push_back(node);
 
                 std::weak_ptr<Node<T>> weak_a = a;
                 std::weak_ptr<Node<T>> weak_node = node;
@@ -728,7 +752,7 @@ namespace bearml{
                 std::shared_ptr<Node<T>> node = make_node(T::softmax(a->val, dim));
 
                 node->inputs = {a};
-                a->outputs.push_back(node);
+                // a->outputs.push_back(node);
 
                 // normalize dim once (forward already validated the range); accumulate() needs a non-negative axis
                 int rank = static_cast<int>(a->val.getShape().size());

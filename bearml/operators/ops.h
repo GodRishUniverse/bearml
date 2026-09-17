@@ -1,10 +1,18 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
-
+#include "padding_ops.h""
 
 #ifndef OP_CODE
 #define OP_CODE
+
+struct OpAttributes{
+    int dim = -1;                                      // softmax
+    int pad_amount = 0;
+    Padding_Op_Code pad_mode = Padding_Op_Code::PAD_CONSTANT;
+    double constant = 0;                               // scalar operand
+    bool constant_on_left = false;                     // 2.0 / x vs x / 2.0
+};
 
 // operation (op) codes for the operations that will be done element-wise
 enum class OP_Code : uint16_t {
