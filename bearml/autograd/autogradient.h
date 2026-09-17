@@ -57,7 +57,28 @@ namespace bearml{
         return adjoint of input v_input(s) - this is the gradient of the function (network) with respect to all the inputs
     */
 
-    template<typename T> class  Node;
+    // Will use this struct inside tensor - rather than a separate class
+    template<typename T> struct Node{
+        T val;
+        T grad;
+        std::vector<std::shared_ptr<Node<T>>> inputs;      // parents; size == op_arity(op)
+        // std::vector<std::weak_ptr<Node<T>>> outputs;    // children; off until a graph pass needs them
+        OP_Code op = OP_Code::NO_OP;
+        OpAttributes op_attr;
+    };
+
+    constexpr OP_ARITY op_arity(OP_Code op) {
+        switch (op) {
+            // Binary operations
+            case OP_Code::OP_ADD: case OP_Code::OP_SUB: case OP_Code::OP_MUL: case OP_Code::OP_DIV:
+            case OP_Code::OP_MAX: case OP_Code::OP_MIN: case OP_Code::OP_HADAMARD:
+                return OP_ARITY::BINARY;
+            case OP_Code::NO_OP:
+                return OP_ARITY::NONE;
+            default:
+                return OP_ARITY::UNARY;
+        }
+    }
 
     // will be our function map
     template <typename T>
@@ -69,6 +90,12 @@ namespace bearml{
                 return Tensor<T>::zeros_like();
         }
     };
+
+
+    namespace autogradient {
+        template<typename T> T                 grad_unary  (const Node<T>& n);   // d/d input
+        template<typename T> std::pair<T, T>   grad_binary (const Node<T>& n);   // d/d a, d/d b
+    }
 
    // NOTE: Check if  we need to ->  add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads
    //
