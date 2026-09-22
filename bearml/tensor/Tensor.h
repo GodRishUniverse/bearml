@@ -33,6 +33,9 @@
 
 #include <boost/algorithm/string.hpp> // for string manipulation
 
+
+#include "../autograd/autogradient.h"
+
 #include "utils/shape_utils.h"
 #include "utils/debug_utils.h"
 #include "utils/linalg_utils.h"
@@ -179,6 +182,8 @@ namespace bearml{
 
             Device device;
 
+            std::shared_ptr<bearml::Node<Tensor<T>>> graph_node; // integration with autograd
+
             // elements in the storage (a view's shape can be smaller)
             size_t storage_elements() const {
                 return storage ? storage->number_of_bytes() / sizeof(T) : 0;
@@ -199,9 +204,17 @@ namespace bearml{
                 storage = std::make_shared<Storage>(sizeOfTensor() * sizeof(T), this->device);
             }
 
+            // untracked and detached copy of this tensor
+            Tensor detach() const {
+                Tensor v = makeStrideView(*this);
+                v.node = nullptr;
+                return v;
+            }
 
-            void record_op(OP_Code op, std::initializer_list<Tensor<T>> inputs, OpAttributes op_attr, Tensor<T> output) {
 
+            void record_op(OP_Code op, std::initializer_list<const Tensor*> inputs,
+                          OpAttributes attrs, Tensor& output) {
+                              // ...
             }
 
         public:
