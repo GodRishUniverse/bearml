@@ -34,8 +34,6 @@
 #include <boost/algorithm/string.hpp> // for string manipulation
 
 
-#include "../autograd/autogradient.h"
-
 #include "utils/shape_utils.h"
 #include "utils/debug_utils.h"
 #include "utils/linalg_utils.h"
@@ -88,6 +86,8 @@ namespace bearml{
 
     // forward declaration of the class template - needed by the free-function declarations below
     template <typename T> class Tensor;
+    template <typename T> struct Node;               // autograd record, defined in autograd/autogradient.h
+    namespace autogradient { struct TensorAccess; } // autograd's access to graph_node
 
     // bearml::cuda_type_trait<U>::type maps a host element type U to the CUDA
     // kernel type used to launch it (defaults to U itself; overridden for the
@@ -182,7 +182,9 @@ namespace bearml{
 
             Device device;
 
-            std::shared_ptr<bearml::Node<Tensor<T>>> graph_node; // integration with autograd
+            std::shared_ptr<Node<Tensor<T>>> graph_node; // autograd record; null when untracked
+            friend struct autogradient::TensorAccess;
+            template <typename U> friend struct Node;   // Node default-constructs its val/grad
 
             // elements in the storage (a view's shape can be smaller)
             size_t storage_elements() const {
@@ -204,37 +206,12 @@ namespace bearml{
                 storage = std::make_shared<Storage>(sizeOfTensor() * sizeof(T), this->device);
             }
 
-            // untracked and detached copy of this tensor
-            Tensor detach() const {
-                Tensor v = makeStrideView(*this);
-                v.node = nullptr;
-                return v;
-            }
+            // attaches an autograd node to this output when any input is tracked
+            void record_op(OP_Code op, std::initializer_list<const Tensor*> inputs, OpAttributes attrs = {});
 
+            // in-place ops don't record: reject them on tracked intermediates and with a tracked operand
+            void check_inplace(const Tensor* other = nullptr) const;
 
-            void record_op(OP_Code op, std::initializer_list<const Tensor*> inputs,
-                          OpAttributes attrs, Tensor& output) {
-                              // ...
-            }
-
-        public:
-
-            // flat index into storage (caller adds data_offset); bounds-checked in Debug
-            T& at(size_t flat) {
-                check_in_storage(flat);
-                return storage->data<T>()[flat];
-            }
-
-            const T& at(size_t flat) const {
-                check_in_storage(flat);
-                return storage->data<T>()[flat];
-            }
-
-            // raw pointers for CUDA kernels, Eigen::Map and memcpy
-            T* mutable_data() { return storage ? storage->data<T>() : nullptr; }
-            const T* const_data() const { return storage ? storage->data<T>() : nullptr; }
-
-        private:
 
             // default constructor - added for edge cases - private ONLY -> cpu only allocation
             Tensor() :  device(Device(DeviceType::CPU, -1)){};
@@ -341,7 +318,457 @@ namespace bearml{
 
             // ==============================PRIVATE========================================
 
+
+            // untracked matrix/scalar product behind operator*
+            static Tensor matmul(const Tensor &a, const Tensor &b) {
+                utils::errorCheckSameDevice(a, b); // will throw an error if devices don't match
+
+                // 5 cases that need to be checked for this
+                //                  case 0: A and B are scalars in the form of Tensors [TAKEN INSIDE CASE 1 and 2]
+                // case 1: A is scalar
+                // case 2: B is scalar
+                // case 3: A is a vector and B is a vector
+                // case 4: A is matrix and B is a vector
+                // case 5: A is a vector and B is a matrix
+                // case 6: matrix multiplication - batched and unbatched (GEMM operations)
+
+                // CASE 1
+                if (isScalar(a)){
+                    return elementwise_scalar(b, getScalarValue(a).value(), OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS); // b is not a scalar
+                }
+
+                // CASE 2
+                if (isScalar(b)){
+                    return elementwise_scalar(a, getScalarValue(b).value(), OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS); // a is not a scalar
+                }
+
+                std::vector<int> a_shape = a.getShape();
+                std::vector<int> b_shape = b.getShape();
+
+                // CASE 3: vector-vector product - dot product
+                if (a_shape.size() == 1 && b_shape.size()==1){
+                    if (a_shape[0] != b_shape[0]) {
+                        throw std::invalid_argument("Vector dimensions must match for dot product");
+                    }
+
+                    if (a.device == DeviceType::CUDA) {
+                        // Treat as 1x1 matmul: (1,K) * (K,1) = (1,1)
+                        // 1D row-major vec of length K, viewed as (1,K): row_stride doesn't matter (only one row), col_stride=1
+                        // 1D row-major vec of length K, viewed as (K,1): row_stride=1, col_stride doesn't matter (only one col)
+                        Tensor result({1}, a.device);
+                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
+                            cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()),
+                            1,    // batchsize
+                            1,    // m (rows of a treated as row vector)
+                            a_shape[0], // k (common dim),
+                            1,    // n (cols of result)
+                            1.0, 0.0,
+                            (int64_t)a_shape[0], 1,   // ra_row, ra_col for A as (1,K)
+                            1, 1,                     // rb_row, rb_col for B as (K,1)
+                            nullptr
+                        );
+                        return result;
+                    }
+
+                    Eigen::Map<const VectorXT<T>> vec_a(a.const_data(), a_shape[0]);
+                    Eigen::Map<const VectorXT<T>> vec_b(b.const_data(), b_shape[0]);
+
+                    Tensor output({1});
+                    output.at(0) = vec_a.dot(vec_b);
+                    return output;
+                }
+
+                // CASE 4: matrix n by m multiplied with m by 1 vector
+                if (a_shape.size() == 2 && b_shape.size() == 1) {
+                    if (a_shape[1] != b_shape[0]) {
+                        throw std::invalid_argument("Matrix columns must match vector size");
+                    }
+
+                    if (a.device == DeviceType::CUDA) {
+                        // Treat vector b as (m,1) matrix: (n,m) * (m,1) = (n,1)
+                        // A's strides come straight from the tensor (handles transposed/permuted A view natively).
+                        // B is 1D row-major contiguous → viewed as (m,1): row_stride=1, col_stride=1 (single col).
+                        Tensor result({a_shape[0]}, a.device);
+                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
+                            cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()),
+                            1,           // batchsize
+                            a_shape[0],  // m
+                            a_shape[1],  // k (common dim),
+                            1,           // n (output cols)
+                            1.0, 0.0,
+                            (int64_t)a.tensor_shape.strides[0], (int64_t)a.tensor_shape.strides[1],   // A real strides
+                            1, 1,                                            // B as (K,1)
+                            nullptr
+                        );
+                        return result;
+                    }
+
+                    // Eigen's RowMajor Map can't read a col-major view directly; densify if needed.
+                    // The CUDA path above already handles layout natively via per-operand strides.
+                    Tensor a_use = a.is_row_major_contiguous() ? a : Tensor::contiguous(a);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                    Eigen::Map<const VectorXT<T>> vec_b(b.const_data(), b_shape[0]);
+
+                    Tensor result({a_shape[0]});
+                    Eigen::Map<VectorXT<T>> result_vec(result.mutable_data(), a_shape[0]);
+                    result_vec = mat_a * vec_b;
+
+                    return result;
+                }
+
+                // CASE 5: vector m multiplied with m by n matrix
+                if (a_shape.size() == 1 && b_shape.size() == 2) {
+                    if (a_shape[0] != b_shape[0]) {
+                        throw std::invalid_argument("Matrix columns must match vector size: : vector m multiplied with m by n matrix");
+                    }
+
+                    if (a.device == DeviceType::CUDA) {
+                        // Treat vector a as (1,m) matrix: (1,m) * (m,n) = (1,n)
+                        // A is 1D row-major contiguous → viewed as (1,m): row_stride=m (single row), col_stride=1.
+                        // B's strides come straight from the tensor (handles transposed/permuted B view).
+                        Tensor result({1,b_shape[1]}, a.device);
+                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
+                            cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()),
+                            1,           // batchsize
+                            1,           // m
+                            b_shape[0],  // k (common dim),
+                            b_shape[1],  // n (output cols)
+                            1.0, 0.0,
+                            (int64_t)a_shape[0], 1,                          // A as (1,K)
+                            (int64_t)b.tensor_shape.strides[0], (int64_t)b.tensor_shape.strides[1],    // B real strides
+                            nullptr
+                        );
+                        return result;
+                    }
+
+                    // For v(m) * B(m,n) -> (n,), the math is B^T * v with v as a column vector.
+                    // (The earlier `mat_b * vec_a` form only typechecked when B was square.)
+                    // Densify b first if it's a col-major / strided view so the RowMajor Map is correct.
+                    Tensor b_use = b.is_row_major_contiguous() ? b : Tensor::contiguous(b);
+                    Eigen::Map<const VectorXT<T>> vec_a(a.const_data(), a_shape[0]);
+                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
+
+                    Tensor result({b_shape[1]});
+                    Eigen::Map<VectorXT<T>> result_vec(result.mutable_data(), b_shape[1]);
+                    result_vec = mat_b.transpose() * vec_a;
+
+                    return result;
+                }
+
+                // CASE 6: unbatched matmul
+                if (a_shape.size() == 2 && b_shape.size() == 2) {
+                    if (a_shape[1] != b_shape[0]) {
+                        throw std::invalid_argument("Matrix dimensions incompatible for multiplication");
+                    }
+
+                    // Operands can be: ROW_MAJOR (fresh tensors, regular slices), COL_MAJOR (transposed
+                    // views — strides swapped against shape), or STRIDED (permutes, broadcast). The CUDA
+                    // kernel consumes any (row_stride, col_stride) pair natively, so we pass the operand's
+                    // own strides for row/col-major. For STRIDED we densify on entry — Eigen Stride<> would
+                    // also work but adds a lot of code surface for an uncommon case.
+                    using Layout = utils::Layout;
+                    auto a_layout = a.layout();
+                    auto b_layout = b.layout();
+                    // Tensor::contiguous() is a no-op when the operand is row-major contig, so this
+                    // costs nothing for the common case.
+                    Tensor a_use = (a_layout == Layout::STRIDED) ? Tensor::contiguous(a) : a;
+                    Tensor b_use = (b_layout == Layout::STRIDED) ? Tensor::contiguous(b) : b;
+                    // refresh layouts after the potential densify
+                    a_layout = a_use.layout();
+                    b_layout = b_use.layout();
+
+                    if (a.device == DeviceType::CUDA) {
+                        Tensor result({a_shape[0], b_shape[1]}, a.device);
+                        // a_use.strides[0] is the M-axis stride, a_use.strides[1] is the K-axis stride.
+                        // For row-major (M,K) that's (K, 1); for col-major it's (1, M). The kernel doesn't
+                        // care which — it just uses both to compute a[row * row_stride + k * col_stride].
+                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
+                            cuda_ptr(a_use.const_data()), cuda_ptr(b_use.const_data()), cuda_ptr(result.mutable_data()),
+                            1,           // batchsize
+                            a_shape[0],  // m
+                            a_shape[1],  // k
+                            b_shape[1],  // n
+                            1.0, 0.0,
+                            (int64_t)a_use.tensor_shape.strides[0], (int64_t)a_use.tensor_shape.strides[1],
+                            (int64_t)b_use.tensor_shape.strides[0], (int64_t)b_use.tensor_shape.strides[1],
+                            nullptr
+                        );
+                        return result;
+                    }
+
+                    // CPU path: Eigen Map can't take a (stride0, stride1) pair, only "is the data laid out
+                    // RowMajor or ColMajor for THIS shape". So pick the Map type from the layout flag.
+                    // Eigen happily multiplies a RowMajor matrix by a ColMajor one and vice versa.
+                    Tensor result({a_shape[0], b_shape[1]});
+                    Eigen::Map<MatrixRowMajorT<T>> result_mat(result.mutable_data(), a_shape[0], b_shape[1]);
+
+                    using ColMajorT = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
+                    if (a_layout == Layout::ROW_MAJOR && b_layout == Layout::ROW_MAJOR) {
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
+                        result_mat = mat_a * mat_b;
+                    } else if (a_layout == Layout::ROW_MAJOR /* && b is COL_MAJOR */) {
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const ColMajorT>          mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
+                        result_mat = mat_a * mat_b;
+                    } else if (b_layout == Layout::ROW_MAJOR /* && a is COL_MAJOR */) {
+                        Eigen::Map<const ColMajorT>          mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
+                        result_mat = mat_a * mat_b;
+                    } else { // both col-major
+                        Eigen::Map<const ColMajorT> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
+                        Eigen::Map<const ColMajorT> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
+                        result_mat = mat_a * mat_b;
+                    }
+
+                    return result;
+                }
+
+                // CASE 6: batched matmul (delegates to batchedMatMul which handles CUDA)
+                if (a_shape.size() >= 2 && b_shape.size() >= 2) {
+                    return linear_algebra::batchedMatMul(a, b);
+                }
+
+                // SHOULD NEVER REACH HERE
+                throw std::invalid_argument("SHOULD NOT REACH HERE - Unsupported tensor shapes for multiplication");
+            }
+
+
+            // untracked elementwise max behind max(t, s)
+            static Tensor max_impl(const Tensor& t, const Tensor& s){
+                if (t.getShape() != s.getShape()){
+                    throw std::invalid_argument("Shapes dont match for max operation");
+                }
+                if (t.device == DeviceType::CUDA) {
+                    Tensor result(t.getShape(), t.device);
+                    cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
+                        cuda_ptr(t.const_data()), cuda_ptr(s.const_data()), cuda_ptr(result.mutable_data()),
+                        t.getShape(), OP_Code::OP_MAX
+                    );
+                    return result;
+                }
+                Tensor  a = t; // copied
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
+                    a.at(i) = std::max({t.at(i), s.at(i)});
+                }
+                return a;
+            }
+
+
+            // untracked elementwise min behind min(t, s)
+            static Tensor min_impl(const Tensor& t, const Tensor& s){
+                if (t.getShape() != s.getShape()){
+                    throw std::invalid_argument("Shapes dont match for min operation");
+                }
+                if (t.device == DeviceType::CUDA) {
+                    Tensor result(t.getShape(), t.device);
+                    cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
+                        cuda_ptr(t.const_data()), cuda_ptr(s.const_data()), cuda_ptr(result.mutable_data()),
+                        t.getShape(), OP_Code::OP_MIN
+                    );
+                    return result;
+                }
+                Tensor  a = t; // copied
+                for (size_t i =0; i<t.sizeOfTensor(); i++){
+                    a.at(i) = std::min({t.at(i), s.at(i)});
+                }
+                return a;
+            }
+
+
+            // untracked reduction behind accumulate()
+            Tensor accumulate_impl(int dim, reductions::ReductionOps op, bool keepdims = false){
+                if (dim<0 || dim>=tensor_shape.shape.size()){
+                    throw std::invalid_argument("DIM not in the correct range!");
+                }
+
+                // edge cases to consider - when we only have a vector then sum will give a scalar
+                if (tensor_shape.shape.size()==1 && dim ==0){
+                    // no need to check keep dims as if keepdims is false then it will be a scalar anyways
+                    Tensor new_t({1}, this->device);
+                    new_t.at(0) = (op == reductions::ReductionOps::PROD) ? T(1)
+                                             : (op == reductions::ReductionOps::MAX)  ? std::numeric_limits<T>::lowest()
+                                             : (op == reductions::ReductionOps::MIN)  ?  std::numeric_limits<T>::max()
+                                             : T(0); // even for argmin/argmax initial value is 0
+                    // argmin/argmax need the running comparison value seeded to the
+                    // opposite extreme (the index in new_t.data[0] stays 0 by default)
+                    T value = (op == reductions::ReductionOps::ARG_MAX) ? std::numeric_limits<T>::lowest()
+                            : (op == reductions::ReductionOps::ARG_MIN) ? std::numeric_limits<T>::max()
+                            : new_t.at(0); // for argmin/argmax
+                    for (size_t i =0; i < sizeOfTensor(); i++){
+                        switch (op) {
+                            case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
+                                new_t.at(0) += at(i);
+                                break;
+                            case reductions::ReductionOps::PROD:
+                                new_t.at(0) *= at(i);
+                                break;
+                            case reductions::ReductionOps::MAX:
+                                new_t.at(0) = std::max(new_t.at(0) , at(i));
+                                break;
+                            case reductions::ReductionOps::MIN:
+                                new_t.at(0) = std::min(new_t.at(0) , at(i));
+                                break;
+                            case reductions::ReductionOps::ARG_MAX:
+                                if (at(i) > value) {
+                                    new_t.at(0) = i;
+                                    value = at(i);
+                                }
+                                break;
+                            case reductions::ReductionOps::ARG_MIN:
+                                if (at(i) < value) {
+                                    new_t.at(0) = i;
+                                    value = at(i);
+                                }
+                                break;
+                            default:
+                                throw std::runtime_error("Unsupported reduction op");
+                        }
+                    }
+                    // for mean, divide by the number of elements (get scalar value)
+                    if (op == reductions::ReductionOps::MEAN) {
+                        new_t.at(0) /= sizeOfTensor();
+                    }
+                    new_t.to_(this->device);
+                    return new_t;
+                }
+
+                std::vector<int> newShape = tensor_shape.shape;
+                int oldDim = newShape[dim]; // same as dim width
+                newShape[dim] = 1; // we will change the shape afterwards
+
+                ll offset_new_shape{1};
+                for (int d = dim+1; d <newShape.size(); d++){
+                    offset_new_shape*=newShape[d];
+                }
+
+                ll offset_old{offset_new_shape*oldDim};
+
+                Tensor new_t(newShape, this->device);
+                T* flat_data = new_t.mutable_data();
+
+                if (this->device.type == DeviceType::CUDA) {
+                    cuda::launch_accumulate_kernel<cuda_type_trait_t<T>>(cuda_ptr(this->mutable_data()), cuda_ptr(flat_data), this->tensor_shape.shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
+
+                } else {
+
+                    // gpu direct access not allowed, so we copy to CPU first
+                    Tensor copy_tensor = *this;
+                    copy_tensor.to_(Device(DeviceType::CPU, -1));
+
+                    ll dest_idx = 0;
+                    for (size_t v =0; v<sizeOfTensor(); v+=offset_old){
+                        for (size_t s = 0; s<offset_new_shape;s++){
+                            // accumulate initial value based on reduction op
+                            T val = (op == reductions::ReductionOps::PROD) ? T(1)
+                                                     : (op == reductions::ReductionOps::MAX || op == reductions::ReductionOps::ARG_MAX)  ? std::numeric_limits<T>::lowest()
+                                                     : (op == reductions::ReductionOps::MIN || op == reductions::ReductionOps::ARG_MIN)  ?  std::numeric_limits<T>::max()
+                                                     : T(0);
+                            int64_t arg_idx = 0;
+
+                            for (int idx = 0; idx<oldDim; idx++){
+                                // edited from this->data to copy_tensor.data
+                                T elem = copy_tensor.at(v + idx * offset_new_shape + s);
+                                switch (op) {
+                                    case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
+                                        val += elem;
+                                        break;
+                                    case reductions::ReductionOps::PROD:
+                                        val *= elem;
+                                        break;
+                                    case reductions::ReductionOps::MAX:
+                                        val = std::max(val, elem);
+                                        break;
+                                    case reductions::ReductionOps::MIN:
+                                        val = std::min(val, elem);
+                                        break;
+                                    case reductions::ReductionOps::ARG_MAX:
+                                        if (elem > val) {
+                                            val = elem;
+                                            arg_idx = idx;
+                                        }
+                                        break;
+                                    case reductions::ReductionOps::ARG_MIN:
+                                        if (elem < val) {
+                                            val = elem;
+                                            arg_idx = idx;
+                                        }
+                                        break;
+                                    default:
+                                        throw std::runtime_error("Unsupported reduction op");
+
+                                }
+                            }
+                            if (op == reductions::ReductionOps::ARG_MAX || op == reductions::ReductionOps::ARG_MIN) {
+                                flat_data[dest_idx] = arg_idx;  // store the index, not the value
+                            } else {
+                                if (op == reductions::ReductionOps::MEAN) val /= oldDim; // only for mean
+                                flat_data[dest_idx]= val;
+                            }
+                            dest_idx++;
+                        }
+                    }
+                }
+
+
+                if (keepdims) {
+                    // new_t.to_(this->device);
+                    return new_t;
+                }
+                new_t.flatten_inplace((dim<tensor_shape.shape.size()-1)? dim : (dim-1),  (dim<tensor_shape.shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
+                // new_t.to_(this->device);
+                return new_t;
+            }
+
+
+            // untracked transposed view behind transpose()
+            Tensor transpose_view() const {
+                // scalar / single-element: nothing to do
+                if (sizeOfTensor() <= 1) {
+                    return makeStrideView(*this);
+                }
+
+                if (this->tensor_shape.shape.size() < 2){
+                    throw std::invalid_argument("transpose requires a tensor of rank >= 2");
+                }
+
+                Tensor v = makeStrideView(*this);
+                const int n = (int)v.tensor_shape.shape.size();
+                std::swap(v.tensor_shape.shape[n-2],             v.tensor_shape.shape[n-1]);
+                std::swap(v.tensor_shape.strides[n-2],           v.tensor_shape.strides[n-1]);
+                std::swap(v.tensor_shape.strides_col_major[n-2], v.tensor_shape.strides_col_major[n-1]);
+                return v;
+            }
+
         public:
+
+            // flat index into storage (caller adds data_offset); bounds-checked in Debug
+            T& at(size_t flat) {
+                check_in_storage(flat);
+                return storage->data<T>()[flat];
+            }
+
+            const T& at(size_t flat) const {
+                check_in_storage(flat);
+                return storage->data<T>()[flat];
+            }
+
+            // raw pointers for CUDA kernels, Eigen::Map and memcpy
+            T* mutable_data() { return storage ? storage->data<T>() : nullptr; }
+            const T* const_data() const { return storage ? storage->data<T>() : nullptr; }
+
+            // ------------------------------ autograd (defined in autograd/autogradient.cpp) ------------------------------
+            void set_requires_grad(bool on = true);
+            bool requires_grad() const;
+            const Tensor& grad() const;                  // throws if the tensor is untracked
+            void zero_grad();
+
+            // shares storage, drops the graph node
+            Tensor detach() const { Tensor v = makeStrideView(*this); v.graph_node = nullptr; return v; }
+
+            // shares storage and the graph node
+            Tensor alias() const { Tensor v = makeStrideView(*this); v.graph_node = graph_node; return v; }
+
 
             // constructor when size and data are provided -> copies on same device as I want to ensure the programmer has explicit knowledge of where the tensor is and should use .to before doing "cross-devices" copies
             Tensor(std::vector<int> sizePassed, const Device& device = Device::cpu()) :tensor_shape{sizePassed}, device(device){ // we own the data here
@@ -436,7 +863,7 @@ namespace bearml{
             // move constructor - repoints the shared storage
             Tensor(Tensor&& other) noexcept
                 : tensor_shape(std::move(other.tensor_shape)), storage(std::move(other.storage)),
-                  device(other.device) {
+                  device(other.device), graph_node(std::move(other.graph_node)) {
                 other.tensor_shape.is_sliced_view = false;
             }
 
@@ -446,6 +873,7 @@ namespace bearml{
                     this->tensor_shape = std::move(other.tensor_shape);
                     this->storage = std::move(other.storage);
                     this->device = other.device;
+                    this->graph_node = std::move(other.graph_node);
                     other.tensor_shape.is_sliced_view = false;
                 }
                 return *this;
@@ -471,7 +899,10 @@ namespace bearml{
             // inplace to - new storage, so a view stops sharing with its parent
             void to_(const Device& targetDevice) {
                 if (device == targetDevice) return;
+                check_inplace();
+                auto node = graph_node;
                 *this = to(targetDevice);
+                graph_node = node; // a moved parameter stays tracked
             }
 
 
@@ -594,6 +1025,7 @@ namespace bearml{
 
             // only for contiguous tensors (this function will help with device-agnostic copying and memory management for bulk data like loading csv files, etc.)
             void set_using_bulk_copy(const std::vector<T>& values) {
+                check_inplace();
                 size_t full_size = this->sizeOfTensor();
                 // partial fills are allowed; only reject overflow
                 if (values.size() > full_size) {
@@ -608,6 +1040,7 @@ namespace bearml{
             }
 
             void set(Scalar<T> val, std::vector<int> index) {
+                check_inplace();
 
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
@@ -685,6 +1118,7 @@ namespace bearml{
             // TODO: refactor
             // TODO: add test to check offset values
             void set_with_offset(ll offset, int row, int col, Scalar<T> val){
+                check_inplace();
                 // assumes offset is passed correctly at the moment
                 if (!this->device.is_cpu()) {
                     throw std::runtime_error("GPU Direct Memory Access not setup right now! Transfer to cpu to use set()");
@@ -1101,21 +1535,27 @@ namespace bearml{
             // --------------------------------ADDITION----------------------------------------------------------------------------
 
             friend Tensor operator+(const Tensor &A, const Tensor &B) {
-                return elementwise_binary(A, B, OP_Code::OP_ADD);
+                Tensor out = elementwise_binary(A, B, OP_Code::OP_ADD);
+                out.record_op(OP_Code::OP_ADD, {&A, &B});
+                return out;
             }
 
             Tensor& operator+=(const Tensor &other) {
+                check_inplace(&other);
                 return inplace_tensor_binary(other, OP_Code::OP_ADD);
             }
 
             // element wise add
             Tensor& operator+=(Scalar<T> b) {
+                check_inplace();
                 return inplace_scalar(b.value(), OP_Code::OP_ADD);
             }
 
             // element wise add
             friend Tensor operator+(const Tensor &A, Scalar<T> b) {
-                return elementwise_scalar(A, b.value(), OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
+                Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
+                out.record_op(OP_Code::OP_ADD_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                return out;
             }
 
             friend Tensor operator+(Scalar<T> b, const Tensor &A) {
@@ -1125,22 +1565,30 @@ namespace bearml{
 
             // --------------------------------SUBTRACTION-------------------------------------------------------------------------
             friend Tensor operator-(const Tensor &A, const Tensor &B) {
-                return elementwise_binary(A, B, OP_Code::OP_SUB);
+                Tensor out = elementwise_binary(A, B, OP_Code::OP_SUB);
+                out.record_op(OP_Code::OP_SUB, {&A, &B});
+                return out;
             }
             Tensor& operator-=(const Tensor &other) {
+                check_inplace(&other);
                 return inplace_tensor_binary(other, OP_Code::OP_SUB);
             }
             // element wise subtract
             Tensor& operator-=(Scalar<T> b) {
+                check_inplace();
                 return inplace_scalar(b.value(), OP_Code::OP_SUB);
             }
             // element wise subtract
             friend Tensor operator-(const Tensor &A, Scalar<T> b) {
-                return elementwise_scalar(A, b.value(), OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
+                Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
+                out.record_op(OP_Code::OP_SUB_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                return out;
             }
             // element wise subtract - operation is switched (b - A)
             friend Tensor operator-(Scalar<T> b, const Tensor &A) {
-                return elementwise_scalar(A, b.value(), OP_Code::OP_SUB, LHS_RHS_Code::OP_LHS);
+                Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_SUB, LHS_RHS_Code::OP_LHS);
+                out.record_op(OP_Code::OP_RSUB_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                return out;
             }
 
             // --------------------------------MULTIPLICATION----------------------------------------------------------------------
@@ -1156,7 +1604,9 @@ namespace bearml{
 
             // element wise multiply (now uses elementwise_scalar dispatch)
             friend Tensor operator*(const Tensor &A, Scalar<T> b) {
-                return elementwise_scalar(A, b.value(), OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
+                Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
+                out.record_op(OP_Code::OP_MUL_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                return out;
             }
 
             // for when the operations are reversed
@@ -1166,243 +1616,50 @@ namespace bearml{
 
 
             friend Tensor operator*(const Tensor &a, const Tensor &b) {
-                utils::errorCheckSameDevice(a, b); // will throw an error if devices don't match
-
-                // 5 cases that need to be checked for this
-                //                  case 0: A and B are scalars in the form of Tensors [TAKEN INSIDE CASE 1 and 2]
-                // case 1: A is scalar
-                // case 2: B is scalar
-                // case 3: A is a vector and B is a vector
-                // case 4: A is matrix and B is a vector
-                // case 5: A is a vector and B is a matrix
-                // case 6: matrix multiplication - batched and unbatched (GEMM operations)
-
-                // CASE 1
-                if (isScalar(a)){
-                    return b*getScalarValue(a); // b is not a scalar - we call our friend function (created above for element wise mult) here
-                }
-
-                // CASE 2
-                if (isScalar(b)){
-                    return a*getScalarValue(b); // a is not a scalar - we call our friend function (created above for element wise mult) here
-                }
-
-                std::vector<int> a_shape = a.getShape();
-                std::vector<int> b_shape = b.getShape();
-
-                // CASE 3: vector-vector product - dot product
-                if (a_shape.size() == 1 && b_shape.size()==1){
-                    if (a_shape[0] != b_shape[0]) {
-                        throw std::invalid_argument("Vector dimensions must match for dot product");
-                    }
-
-                    if (a.device == DeviceType::CUDA) {
-                        // Treat as 1x1 matmul: (1,K) * (K,1) = (1,1)
-                        // 1D row-major vec of length K, viewed as (1,K): row_stride doesn't matter (only one row), col_stride=1
-                        // 1D row-major vec of length K, viewed as (K,1): row_stride=1, col_stride doesn't matter (only one col)
-                        Tensor result({1}, a.device);
-                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()),
-                            1,    // batchsize
-                            1,    // m (rows of a treated as row vector)
-                            a_shape[0], // k (common dim),
-                            1,    // n (cols of result)
-                            1.0, 0.0,
-                            (int64_t)a_shape[0], 1,   // ra_row, ra_col for A as (1,K)
-                            1, 1,                     // rb_row, rb_col for B as (K,1)
-                            nullptr
-                        );
-                        return result;
-                    }
-
-                    Eigen::Map<const VectorXT<T>> vec_a(a.const_data(), a_shape[0]);
-                    Eigen::Map<const VectorXT<T>> vec_b(b.const_data(), b_shape[0]);
-
-                    Tensor output({1});
-                    output.at(0) = vec_a.dot(vec_b);
-                    return output;
-                }
-
-                // CASE 4: matrix n by m multiplied with m by 1 vector
-                if (a_shape.size() == 2 && b_shape.size() == 1) {
-                    if (a_shape[1] != b_shape[0]) {
-                        throw std::invalid_argument("Matrix columns must match vector size");
-                    }
-
-                    if (a.device == DeviceType::CUDA) {
-                        // Treat vector b as (m,1) matrix: (n,m) * (m,1) = (n,1)
-                        // A's strides come straight from the tensor (handles transposed/permuted A view natively).
-                        // B is 1D row-major contiguous → viewed as (m,1): row_stride=1, col_stride=1 (single col).
-                        Tensor result({a_shape[0]}, a.device);
-                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()),
-                            1,           // batchsize
-                            a_shape[0],  // m
-                            a_shape[1],  // k (common dim),
-                            1,           // n (output cols)
-                            1.0, 0.0,
-                            (int64_t)a.tensor_shape.strides[0], (int64_t)a.tensor_shape.strides[1],   // A real strides
-                            1, 1,                                            // B as (K,1)
-                            nullptr
-                        );
-                        return result;
-                    }
-
-                    // Eigen's RowMajor Map can't read a col-major view directly; densify if needed.
-                    // The CUDA path above already handles layout natively via per-operand strides.
-                    Tensor a_use = a.is_row_major_contiguous() ? a : Tensor::contiguous(a);
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
-                    Eigen::Map<const VectorXT<T>> vec_b(b.const_data(), b_shape[0]);
-
-                    Tensor result({a_shape[0]});
-                    Eigen::Map<VectorXT<T>> result_vec(result.mutable_data(), a_shape[0]);
-                    result_vec = mat_a * vec_b;
-
-                    return result;
-                }
-
-                // CASE 5: vector m multiplied with m by n matrix
-                if (a_shape.size() == 1 && b_shape.size() == 2) {
-                    if (a_shape[0] != b_shape[0]) {
-                        throw std::invalid_argument("Matrix columns must match vector size: : vector m multiplied with m by n matrix");
-                    }
-
-                    if (a.device == DeviceType::CUDA) {
-                        // Treat vector a as (1,m) matrix: (1,m) * (m,n) = (1,n)
-                        // A is 1D row-major contiguous → viewed as (1,m): row_stride=m (single row), col_stride=1.
-                        // B's strides come straight from the tensor (handles transposed/permuted B view).
-                        Tensor result({1,b_shape[1]}, a.device);
-                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()),
-                            1,           // batchsize
-                            1,           // m
-                            b_shape[0],  // k (common dim),
-                            b_shape[1],  // n (output cols)
-                            1.0, 0.0,
-                            (int64_t)a_shape[0], 1,                          // A as (1,K)
-                            (int64_t)b.tensor_shape.strides[0], (int64_t)b.tensor_shape.strides[1],    // B real strides
-                            nullptr
-                        );
-                        return result;
-                    }
-
-                    // For v(m) * B(m,n) -> (n,), the math is B^T * v with v as a column vector.
-                    // (The earlier `mat_b * vec_a` form only typechecked when B was square.)
-                    // Densify b first if it's a col-major / strided view so the RowMajor Map is correct.
-                    Tensor b_use = b.is_row_major_contiguous() ? b : Tensor::contiguous(b);
-                    Eigen::Map<const VectorXT<T>> vec_a(a.const_data(), a_shape[0]);
-                    Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
-
-                    Tensor result({b_shape[1]});
-                    Eigen::Map<VectorXT<T>> result_vec(result.mutable_data(), b_shape[1]);
-                    result_vec = mat_b.transpose() * vec_a;
-
-                    return result;
-                }
-
-                // CASE 6: unbatched matmul
-                if (a_shape.size() == 2 && b_shape.size() == 2) {
-                    if (a_shape[1] != b_shape[0]) {
-                        throw std::invalid_argument("Matrix dimensions incompatible for multiplication");
-                    }
-
-                    // Operands can be: ROW_MAJOR (fresh tensors, regular slices), COL_MAJOR (transposed
-                    // views — strides swapped against shape), or STRIDED (permutes, broadcast). The CUDA
-                    // kernel consumes any (row_stride, col_stride) pair natively, so we pass the operand's
-                    // own strides for row/col-major. For STRIDED we densify on entry — Eigen Stride<> would
-                    // also work but adds a lot of code surface for an uncommon case.
-                    using Layout = utils::Layout;
-                    auto a_layout = a.layout();
-                    auto b_layout = b.layout();
-                    // Tensor::contiguous() is a no-op when the operand is row-major contig, so this
-                    // costs nothing for the common case.
-                    Tensor a_use = (a_layout == Layout::STRIDED) ? Tensor::contiguous(a) : a;
-                    Tensor b_use = (b_layout == Layout::STRIDED) ? Tensor::contiguous(b) : b;
-                    // refresh layouts after the potential densify
-                    a_layout = a_use.layout();
-                    b_layout = b_use.layout();
-
-                    if (a.device == DeviceType::CUDA) {
-                        Tensor result({a_shape[0], b_shape[1]}, a.device);
-                        // a_use.strides[0] is the M-axis stride, a_use.strides[1] is the K-axis stride.
-                        // For row-major (M,K) that's (K, 1); for col-major it's (1, M). The kernel doesn't
-                        // care which — it just uses both to compute a[row * row_stride + k * col_stride].
-                        cuda::launch_gemm_contiguous<cuda_type_trait_t<T>>(
-                            cuda_ptr(a_use.const_data()), cuda_ptr(b_use.const_data()), cuda_ptr(result.mutable_data()),
-                            1,           // batchsize
-                            a_shape[0],  // m
-                            a_shape[1],  // k
-                            b_shape[1],  // n
-                            1.0, 0.0,
-                            (int64_t)a_use.tensor_shape.strides[0], (int64_t)a_use.tensor_shape.strides[1],
-                            (int64_t)b_use.tensor_shape.strides[0], (int64_t)b_use.tensor_shape.strides[1],
-                            nullptr
-                        );
-                        return result;
-                    }
-
-                    // CPU path: Eigen Map can't take a (stride0, stride1) pair, only "is the data laid out
-                    // RowMajor or ColMajor for THIS shape". So pick the Map type from the layout flag.
-                    // Eigen happily multiplies a RowMajor matrix by a ColMajor one and vice versa.
-                    Tensor result({a_shape[0], b_shape[1]});
-                    Eigen::Map<MatrixRowMajorT<T>> result_mat(result.mutable_data(), a_shape[0], b_shape[1]);
-
-                    using ColMajorT = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
-                    if (a_layout == Layout::ROW_MAJOR && b_layout == Layout::ROW_MAJOR) {
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
-                        result_mat = mat_a * mat_b;
-                    } else if (a_layout == Layout::ROW_MAJOR /* && b is COL_MAJOR */) {
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
-                        Eigen::Map<const ColMajorT>          mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
-                        result_mat = mat_a * mat_b;
-                    } else if (b_layout == Layout::ROW_MAJOR /* && a is COL_MAJOR */) {
-                        Eigen::Map<const ColMajorT>          mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
-                        Eigen::Map<const MatrixRowMajorT<T>> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
-                        result_mat = mat_a * mat_b;
-                    } else { // both col-major
-                        Eigen::Map<const ColMajorT> mat_a(a_use.const_data(), a_shape[0], a_shape[1]);
-                        Eigen::Map<const ColMajorT> mat_b(b_use.const_data(), b_shape[0], b_shape[1]);
-                        result_mat = mat_a * mat_b;
-                    }
-
-                    return result;
-                }
-
-                // CASE 6: batched matmul (delegates to batchedMatMul which handles CUDA)
-                if (a_shape.size() >= 2 && b_shape.size() >= 2) {
-                    return linear_algebra::batchedMatMul(a, b);
-                }
-
-                // SHOULD NEVER REACH HERE
-                throw std::invalid_argument("SHOULD NOT REACH HERE - Unsupported tensor shapes for multiplication");
+                Tensor out = matmul(a, b);
+                out.record_op(OP_Code::OP_MUL, {&a, &b});
+                return out;
             }
+
+
 
             // In-place matrix multiplication - we call our function made above
             Tensor& operator*=(const Tensor& B) {
-                 *this = *this * B;
+                check_inplace(&B);
+                 auto node = graph_node;
+                 *this = matmul(*this, B);
+                 graph_node = node; // in-place ops don't record
                  return *this;
             }
             // calls the element wise mul
             Tensor& operator*=(Scalar<T> B) {
-                 *this = *this * B;
+                check_inplace();
+                 auto node = graph_node;
+                 *this = elementwise_scalar(*this, B.value(), OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
+                 graph_node = node; // in-place ops don't record
                  return *this;
             }
 
             // -------------------------------DIVISION--------------------------------------------------------------------------
             friend Tensor operator/(const Tensor &A, Scalar<T> b) {
-                return elementwise_scalar(A, b.value(), OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS);
+                Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS);
+                out.record_op(OP_Code::OP_DIV_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                return out;
             }
 
             friend Tensor operator/(Scalar<T> b, const Tensor &A) {
-                return elementwise_scalar(A, b.value(), OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
+                Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
+                out.record_op(OP_Code::OP_RDIV_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                return out;
             }
 
             friend Tensor operator/(const Tensor &a, const Tensor &b) {
                 if (b.tensor_shape.shape != a.tensor_shape.shape){
                     throw std::runtime_error("Shapes should match for element-wise divide");
                 }
-                return elementwise_binary(a, b, OP_Code::OP_DIV);
+                Tensor out = elementwise_binary(a, b, OP_Code::OP_DIV);
+                out.record_op(OP_Code::OP_DIV, {&a, &b});
+                return out;
             }
 
             // Another case exists but that is when matrix b is invertible and then it just becomes matrix mul
@@ -1474,147 +1731,16 @@ namespace bearml{
             // TODO: refactor for native CUDA support
             //----------------------------------------ACCUMULATORs (used in reduce)------------------------------------------------------
             Tensor accumulate(int dim, reductions::ReductionOps op, bool keepdims = false){
-                if (dim<0 || dim>=tensor_shape.shape.size()){
-                    throw std::invalid_argument("DIM not in the correct range!");
+                Tensor out = accumulate_impl(dim, op, keepdims);
+                if (op == reductions::ReductionOps::SUM && keepdims) {
+                    out.record_op(OP_Code::OP_SUM, {this}, OpAttributes{.dim = dim});
+                } else if (graph_node) {
+                    throw std::logic_error("accumulate: only SUM with keepdims is differentiable");
                 }
-
-                // edge cases to consider - when we only have a vector then sum will give a scalar
-                if (tensor_shape.shape.size()==1 && dim ==0){
-                    // no need to check keep dims as if keepdims is false then it will be a scalar anyways
-                    Tensor new_t({1}, this->device);
-                    new_t.at(0) = (op == reductions::ReductionOps::PROD) ? T(1)
-                                             : (op == reductions::ReductionOps::MAX)  ? std::numeric_limits<T>::lowest()
-                                             : (op == reductions::ReductionOps::MIN)  ?  std::numeric_limits<T>::max()
-                                             : T(0); // even for argmin/argmax initial value is 0
-                    // argmin/argmax need the running comparison value seeded to the
-                    // opposite extreme (the index in new_t.data[0] stays 0 by default)
-                    T value = (op == reductions::ReductionOps::ARG_MAX) ? std::numeric_limits<T>::lowest()
-                            : (op == reductions::ReductionOps::ARG_MIN) ? std::numeric_limits<T>::max()
-                            : new_t.at(0); // for argmin/argmax
-                    for (size_t i =0; i < sizeOfTensor(); i++){
-                        switch (op) {
-                            case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
-                                new_t.at(0) += at(i);
-                                break;
-                            case reductions::ReductionOps::PROD:
-                                new_t.at(0) *= at(i);
-                                break;
-                            case reductions::ReductionOps::MAX:
-                                new_t.at(0) = std::max(new_t.at(0) , at(i));
-                                break;
-                            case reductions::ReductionOps::MIN:
-                                new_t.at(0) = std::min(new_t.at(0) , at(i));
-                                break;
-                            case reductions::ReductionOps::ARG_MAX:
-                                if (at(i) > value) {
-                                    new_t.at(0) = i;
-                                    value = at(i);
-                                }
-                                break;
-                            case reductions::ReductionOps::ARG_MIN:
-                                if (at(i) < value) {
-                                    new_t.at(0) = i;
-                                    value = at(i);
-                                }
-                                break;
-                            default:
-                                throw std::runtime_error("Unsupported reduction op");
-                        }
-                    }
-                    // for mean, divide by the number of elements (get scalar value)
-                    if (op == reductions::ReductionOps::MEAN) {
-                        new_t.at(0) /= sizeOfTensor();
-                    }
-                    new_t.to_(this->device);
-                    return new_t;
-                }
-
-                std::vector<int> newShape = tensor_shape.shape;
-                int oldDim = newShape[dim]; // same as dim width
-                newShape[dim] = 1; // we will change the shape afterwards
-
-                ll offset_new_shape{1};
-                for (int d = dim+1; d <newShape.size(); d++){
-                    offset_new_shape*=newShape[d];
-                }
-
-                ll offset_old{offset_new_shape*oldDim};
-
-                Tensor new_t(newShape, this->device);
-                T* flat_data = new_t.mutable_data();
-
-                if (this->device.type == DeviceType::CUDA) {
-                    cuda::launch_accumulate_kernel<cuda_type_trait_t<T>>(cuda_ptr(this->mutable_data()), cuda_ptr(flat_data), this->tensor_shape.shape, newShape, sizeOfTensor(), offset_new_shape, offset_old, op,  keepdims);
-
-                } else {
-
-                    // gpu direct access not allowed, so we copy to CPU first
-                    Tensor copy_tensor = *this;
-                    copy_tensor.to_(Device(DeviceType::CPU, -1));
-
-                    ll dest_idx = 0;
-                    for (size_t v =0; v<sizeOfTensor(); v+=offset_old){
-                        for (size_t s = 0; s<offset_new_shape;s++){
-                            // accumulate initial value based on reduction op
-                            T val = (op == reductions::ReductionOps::PROD) ? T(1)
-                                                     : (op == reductions::ReductionOps::MAX || op == reductions::ReductionOps::ARG_MAX)  ? std::numeric_limits<T>::lowest()
-                                                     : (op == reductions::ReductionOps::MIN || op == reductions::ReductionOps::ARG_MIN)  ?  std::numeric_limits<T>::max()
-                                                     : T(0);
-                            int64_t arg_idx = 0;
-
-                            for (int idx = 0; idx<oldDim; idx++){
-                                // edited from this->data to copy_tensor.data
-                                T elem = copy_tensor.at(v + idx * offset_new_shape + s);
-                                switch (op) {
-                                    case reductions::ReductionOps::SUM: case reductions::ReductionOps::MEAN:
-                                        val += elem;
-                                        break;
-                                    case reductions::ReductionOps::PROD:
-                                        val *= elem;
-                                        break;
-                                    case reductions::ReductionOps::MAX:
-                                        val = std::max(val, elem);
-                                        break;
-                                    case reductions::ReductionOps::MIN:
-                                        val = std::min(val, elem);
-                                        break;
-                                    case reductions::ReductionOps::ARG_MAX:
-                                        if (elem > val) {
-                                            val = elem;
-                                            arg_idx = idx;
-                                        }
-                                        break;
-                                    case reductions::ReductionOps::ARG_MIN:
-                                        if (elem < val) {
-                                            val = elem;
-                                            arg_idx = idx;
-                                        }
-                                        break;
-                                    default:
-                                        throw std::runtime_error("Unsupported reduction op");
-
-                                }
-                            }
-                            if (op == reductions::ReductionOps::ARG_MAX || op == reductions::ReductionOps::ARG_MIN) {
-                                flat_data[dest_idx] = arg_idx;  // store the index, not the value
-                            } else {
-                                if (op == reductions::ReductionOps::MEAN) val /= oldDim; // only for mean
-                                flat_data[dest_idx]= val;
-                            }
-                            dest_idx++;
-                        }
-                    }
-                }
-
-
-                if (keepdims) {
-                    // new_t.to_(this->device);
-                    return new_t;
-                }
-                new_t.flatten_inplace((dim<tensor_shape.shape.size()-1)? dim : (dim-1),  (dim<tensor_shape.shape.size()-1) ? dim+1 : -1, keepdims); // PROBLEM FOUND HERE in case when the dim passed in dim= shape.size()-1
-                // new_t.to_(this->device);
-                return new_t;
+                return out;
             }
+
+
 
             // Tensor argmax(int dim, bool keepdims = false);
             // Tensor argmin(int dim, bool keepdims = false);
@@ -1623,41 +1749,55 @@ namespace bearml{
             //----------------------------------------Exponential------------------------------------------------------
             static Tensor exp(Tensor& t){
                 // std::cout <<"EXPONENTIATED" <<std::endl;
-                return elementwise_unary(t, OP_Code::OP_EXP);
+                Tensor out = elementwise_unary(t, OP_Code::OP_EXP);
+                out.record_op(OP_Code::OP_EXP, {&t});
+                return out;
             }
 
             //----------------------------------------Sin------------------------------------------------------
             static Tensor sin(Tensor& t){
                 // std::cout <<"SIN" <<std::endl;
-                return elementwise_unary(t, OP_Code::OP_SIN);
+                Tensor out = elementwise_unary(t, OP_Code::OP_SIN);
+                out.record_op(OP_Code::OP_SIN, {&t});
+                return out;
             }
 
             //----------------------------------------Cos------------------------------------------------------
             static Tensor cos(Tensor& t){
                 // std::cout <<"COS" <<std::endl;
-                return elementwise_unary(t, OP_Code::OP_COS);
+                Tensor out = elementwise_unary(t, OP_Code::OP_COS);
+                out.record_op(OP_Code::OP_COS, {&t});
+                return out;
             }
 
             //----------------------------------------Tan------------------------------------------------------
             static Tensor tan(Tensor& t){
                 // std::cout <<"TAN" <<std::endl;
-                return elementwise_unary(t, OP_Code::OP_TAN);
+                Tensor out = elementwise_unary(t, OP_Code::OP_TAN);
+                out.record_op(OP_Code::OP_TAN, {&t});
+                return out;
             }
 
             //----------------------------------------Hyperbolic------------------------------------------------------
             static Tensor sinh(Tensor& t){
                 // std::cout <<"SINH" <<std::endl;
-                return elementwise_unary(t, OP_Code::OP_SINH);
+                Tensor out = elementwise_unary(t, OP_Code::OP_SINH);
+                out.record_op(OP_Code::OP_SINH, {&t});
+                return out;
             }
 
             static Tensor cosh(Tensor& t){
                 // std::cout <<"COSH" <<std::endl;
-                return elementwise_unary(t, OP_Code::OP_COSH);
+                Tensor out = elementwise_unary(t, OP_Code::OP_COSH);
+                out.record_op(OP_Code::OP_COSH, {&t});
+                return out;
             }
 
             static Tensor tanh(Tensor& t){
                 // std::cout <<"TANH" <<std::endl;
-                return elementwise_unary(t, OP_Code::OP_TANH);
+                Tensor out = elementwise_unary(t, OP_Code::OP_TANH);
+                out.record_op(OP_Code::OP_TANH, {&t});
+                return out;
             }
 
 
@@ -1666,13 +1806,18 @@ namespace bearml{
 
             // TODO: fix this - CUDA kernel as well
             static Tensor max(const Tensor& t, Scalar<T> val){
+                if (t.graph_node) {
+                    Tensor constant(t.getShape(), t.device);
+                    constant.fill(val);
+                    return max(t, constant);
+                }
                 // std::cout <<"MAX" <<std::endl;
                 if (t.device == DeviceType::CUDA) {
                     // Create a scalar tensor on CUDA filled with val
                     Tensor scalar_t(t.getShape());
                     for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.at(i) = val.value();
                     scalar_t.to_(t.device);
-                    return Tensor::max(t, scalar_t);
+                    return Tensor::max_impl(t, scalar_t);
                 }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
@@ -1686,34 +1831,27 @@ namespace bearml{
             }
 
             static Tensor max(const Tensor& t, const Tensor& s){
-                // std::cout <<"MAX" <<std::endl;
-                if (t.getShape() != s.getShape()){
-                    throw std::invalid_argument("Shapes dont match for max operation");
-                }
-                if (t.device == DeviceType::CUDA) {
-                    Tensor result(t.getShape(), t.device);
-                    cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
-                        cuda_ptr(t.const_data()), cuda_ptr(s.const_data()), cuda_ptr(result.mutable_data()),
-                        t.getShape(), OP_Code::OP_MAX
-                    );
-                    return result;
-                }
-                Tensor  a = t; // copied
-                for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.at(i) = std::max({t.at(i), s.at(i)});
-                }
-                return a;
+                Tensor out = max_impl(t, s);
+                out.record_op(OP_Code::OP_MAX, {&t, &s});
+                return out;
             }
+
+
 
             //----------------------------------------Min------------------------------------------------------
 
             static Tensor min(const Tensor& t, Scalar<T> val){
+                if (t.graph_node) {
+                    Tensor constant(t.getShape(), t.device);
+                    constant.fill(val);
+                    return min(t, constant);
+                }
                 // std::cout <<"MIN" <<std::endl;
                 if (t.device == DeviceType::CUDA) {
                     Tensor scalar_t(t.getShape());
                     for (size_t i = 0; i < t.sizeOfTensor(); i++) scalar_t.at(i) = val.value();
                     scalar_t.to_(t.device);
-                    return Tensor::min(t, scalar_t);
+                    return Tensor::min_impl(t, scalar_t);
                 }
                 Tensor  a = t; // copied
                 for (size_t i =0; i<t.sizeOfTensor(); i++){
@@ -1727,29 +1865,19 @@ namespace bearml{
             }
 
             static Tensor min(const Tensor& t, const Tensor& s){
-                // std::cout <<"MIN" <<std::endl;
-                if (t.getShape() != s.getShape()){
-                    throw std::invalid_argument("Shapes dont match for min operation");
-                }
-                if (t.device == DeviceType::CUDA) {
-                    Tensor result(t.getShape(), t.device);
-                    cuda::launch_elementwise_contiguous<cuda_type_trait_t<T>>(
-                        cuda_ptr(t.const_data()), cuda_ptr(s.const_data()), cuda_ptr(result.mutable_data()),
-                        t.getShape(), OP_Code::OP_MIN
-                    );
-                    return result;
-                }
-                Tensor  a = t; // copied
-                for (size_t i =0; i<t.sizeOfTensor(); i++){
-                    a.at(i) = std::min({t.at(i), s.at(i)});
-                }
-                return a;
+                Tensor out = min_impl(t, s);
+                out.record_op(OP_Code::OP_MIN, {&t, &s});
+                return out;
             }
+
+
 
             //----------------------------------------Absolute value------------------------------------------------------
             // Note: const accepts both non-const and const tensors
             static Tensor abs(const Tensor &t ){
-                return elementwise_unary(t, OP_Code::OP_ABS);
+                Tensor out = elementwise_unary(t, OP_Code::OP_ABS);
+                out.record_op(OP_Code::OP_ABS, {&t});
+                return out;
             }
 
 
@@ -1757,7 +1885,9 @@ namespace bearml{
             // Note: const accepts both non-const and const tensors
 
             static Tensor sqrt(const Tensor &t ){
-                return elementwise_unary(t, OP_Code::OP_SQRT);
+                Tensor out = elementwise_unary(t, OP_Code::OP_SQRT);
+                out.record_op(OP_Code::OP_SQRT, {&t});
+                return out;
             }
 
 
@@ -1787,6 +1917,7 @@ namespace bearml{
                     }
                     result.set(static_cast<T>(sum / static_cast<double>(t.sizeOfTensor())), {0}) ;
                 }
+                result.record_op(OP_Code::OP_MEAN_FOR_GRAD, {&t});
                 return result;
             }
 
@@ -1794,7 +1925,9 @@ namespace bearml{
             //---------------------------------------- Log ------------------------------------------------------
 
             static Tensor log(Tensor &t ){
-                return elementwise_unary(t, OP_Code::OP_LOG);
+                Tensor out = elementwise_unary(t, OP_Code::OP_LOG);
+                out.record_op(OP_Code::OP_LOG, {&t});
+                return out;
             }
 
             //---------------------------------------- Softmax ------------------------------------------------------
@@ -1859,11 +1992,13 @@ namespace bearml{
 
                 }
 
+                result.record_op(OP_Code::OP_SOFTMAX, {&t}, OpAttributes{.dim = dim_to_use});
                 return result;
             }
 
 
             void fill(Scalar<T> v){
+                check_inplace();
                 // CUDA fill
                 if (!this->device.is_cpu()) {
                     cuda::launch_fill<cuda_type_trait_t<T>>(
@@ -1911,6 +2046,7 @@ namespace bearml{
 
             // flatten - inplace
             void flatten_inplace(int start_dim =0, int end_dim = -1, bool keepdims=false){
+                check_inplace();
                 this->tensor_shape.shape = Tensor::flatten_(start_dim, end_dim, keepdims);
                 computeStrides();
             }
@@ -1918,6 +2054,7 @@ namespace bearml{
 
             // linspace function to edit the current tensor
             Tensor& linspace(Scalar<T> start, Scalar<T> end){
+                check_inplace();
                 size_t long_size = this->sizeOfTensor();
                 double size = static_cast<double>(long_size-1);
                 // accumulate in double for precision, store back as the element type T
@@ -1939,22 +2076,12 @@ namespace bearml{
             // No data is moved; call .contiguous() before feeding into a
             // row-major-only kernel (GEMM, element_wise_contiguous, etc.).
             Tensor transpose(){
-                // scalar / single-element: nothing to do
-                if (sizeOfTensor() <= 1) {
-                    return makeStrideView(*this);
-                }
-
-                if (this->tensor_shape.shape.size() < 2){
-                    throw std::invalid_argument("transpose requires a tensor of rank >= 2");
-                }
-
-                Tensor v = makeStrideView(*this);
-                const int n = (int)v.tensor_shape.shape.size();
-                std::swap(v.tensor_shape.shape[n-2],             v.tensor_shape.shape[n-1]);
-                std::swap(v.tensor_shape.strides[n-2],           v.tensor_shape.strides[n-1]);
-                std::swap(v.tensor_shape.strides_col_major[n-2], v.tensor_shape.strides_col_major[n-1]);
+                Tensor v = transpose_view();
+                v.record_op(OP_Code::OP_TRANSPOSE, {this});
                 return v;
             }
+
+
 
 
             // Permute - Not the same as TRANSPOSE
@@ -1966,6 +2093,7 @@ namespace bearml{
             }
 
             void inplace_permute(std::vector<int> new_order) {
+                check_inplace();
                 if (new_order.size() != this->tensor_shape.shape.size()){
                     throw std::invalid_argument("Permute order must have same length as tensor rank");
                 }
@@ -1996,6 +2124,7 @@ namespace bearml{
 
             // reshape
             void reshape(std::vector<int> new_shape){
+                check_inplace();
                 // check multipliability
                 if (utils::isSizeValid(new_shape, this->sizeOfTensor()) == false){
                     throw std::invalid_argument("Invalid shape - needs to be multipliable to original shape");
@@ -2008,6 +2137,7 @@ namespace bearml{
             // unsqueeze
             // Finalized (default dim = 0   )
             void unsqueeze(int dim = 0){
+                check_inplace();
                 std::vector<int> temp = this->tensor_shape.shape;
                 temp.insert(temp.begin() + dim, 1);
                 this->tensor_shape.shape = temp;
@@ -2017,6 +2147,7 @@ namespace bearml{
             // squeeze
             // default dim = 0
             void squeeze(int dim = 0 ){
+                check_inplace();
                 std::vector<int> temp = this->tensor_shape.shape;
                 //debugging
                 // std::cout << "INSIDE: " << std::endl;

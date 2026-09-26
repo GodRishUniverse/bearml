@@ -58,18 +58,18 @@ namespace bearml{
         return adjoint of input v_input(s) - this is the gradient of the function (network) with respect to all the inputs
     */
 
-    // Can change
-    extern inline bearml::reductions::ReductionOps reduction_op = bearml::reductions::ReductionOps::SUM;
+    // reduction used to sum a broadcast gradient back to an input's shape
+    inline bearml::reductions::ReductionOps reduction_op = bearml::reductions::ReductionOps::SUM;
 
-    // Will use this struct inside tensor - rather than a separate class
-    // T can be Tensor or Scalar type
+    // Autograd record for one tensor in the graph; T is Tensor<E>
     template<typename T> struct Node{
-        T val;
-        T grad;
+        T val;                                             // detached: shares storage, no node
+        T grad;                                            // detached; allocated only when requires_grad
         std::vector<std::shared_ptr<Node<T>>> inputs;      // parents; size == op_arity(op)
         // std::vector<std::weak_ptr<Node<T>>> outputs;    // children; off until a graph pass needs them
         OP_Code op = OP_Code::NO_OP;
         OpAttributes op_attr;
+        bool requires_grad = false;                        // false for constant inputs
     };
 
     constexpr OP_ARITY op_arity(OP_Code op) {
@@ -88,127 +88,34 @@ namespace bearml{
 
     namespace autogradient {
 
+        // autograd's access to Tensor::graph_node
+        struct TensorAccess {
+            template<typename E>
+            static std::shared_ptr<Node<Tensor<E>>>& node(Tensor<E>& t) { return t.graph_node; }
 
-        template <typename T>
-        Tensor<T> compute_grad_for_mean(Node<T>& node, Node<T>& node_input) {
-            ll n = node_input.sizeOfTensor();
-            Tensor<T> grad_broadcast(node_input.getShape(), node_input.getDevice());
-            Tensor<T> grad_cpu = node.grad.to(bearml::Device::cpu());
-            double scalar_grad = grad_cpu.get({0}); // we shift to the cpu because GPU direct access is not supported
-            grad_broadcast.fill(scalar_grad / static_cast<double>(n));
-            return grad_broadcast;
-        }
-
-
-        // will be our function map - PROBLEM - does recomputation
-        template <typename T>
-        std::vector<T> grad_of(Node<T>& node) {
-            switch (node.op) {
-                case OP_Code::NO_OP:
-                    return {}; // leaf node
-                case OP_Code::OP_ADD:
-                    return {node.grad, node.grad};
-                case OP_Code::OP_SUB:
-                    return {node.grad, node.grad*Scalar<T>(-1.0)};
-                case OP_Code::OP_MUL:
-                    // grad_a = grad * b^T
-                    // grad_b = a^T * grad
-                    return {node.grad*node.inputs[1]->val.transpose(), node.inputs[0]->val.transpose()*node.grad};
-                case OP_Code::OP_DIV:
-                    // c = a/b
-                    // dc/da = grad * (1/b)
-                    // dc/db = grad * (-a/b^2)
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0/node.inputs[1]->val), bearml::linear_algebra::hadamard(node.grad, -1.0 * node.inputs[0]->val / bearml::linear_algebra::hadamard(node.inputs[1]->val, node.inputs[1]->val))};
-                case OP_Code::OP_MAX:
-                    // grad_a = grad * (a >= b)
-                    // grad_b = grad * (b >= a)
-                    return {bearml::linear_algebra::hadamard(node.grad, bearml::linear_algebra::mask_of_greater_than_equal_to(node.inputs[0]->val,node.inputs[1]->val)), bearml::linear_algebra::hadamard(node.grad,  bearml::linear_algebra::mask_of_greater_than_equal_to(node.inputs[1]->val,node.inputs[0]->val))};
-                case OP_Code::OP_MIN:
-                    // grad_a = grad * (a <= b)
-                    // grad_b = grad * (b <= a)
-                    return {bearml::linear_algebra::hadamard(node.grad, bearml::linear_algebra::mask_of_less_than_equal_to(node.inputs[0]->val,node.inputs[1]->val)), bearml::linear_algebra::hadamard(node.grad,  bearml::linear_algebra::mask_of_less_than_equal_to(node.inputs[1]->val,node.inputs[0]->val))};
-                case OP_Code::OP_HADAMARD:
-                    // grad_a = grad * b
-                    // grad_b = grad * a
-                    return {bearml::linear_algebra::hadamard(node.grad, node.inputs[1]->val), bearml::linear_algebra::hadamard(node.grad, node.inputs[0]->val)};
-
-                // UNARY OPS
-
-                case OP_Code::OP_EXP:
-                    return {bearml::linear_algebra::hadamard(node.grad, node.val)};
-                case OP_Code::OP_SIN:
-                    return {bearml::linear_algebra::hadamard(node.grad, T::cos(node.inputs[0]->val))};
-                case OP_Code::OP_COS:
-                    return {bearml::linear_algebra::hadamard(node.grad, -1.0 * T::sin(node.inputs[0]->val))};
-                case OP_Code::OP_TAN:
-                    // grad_tan = grad * (1 + tan^2) [Note -> sec^2 = 1 + tan^2]
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0 +  bearml::linear_algebra::hadamard(T::tan(node.inputs[0]->val), T::tan(node.inputs[0]->val)))};
-                case OP_Code::OP_SINH:
-                    return {bearml::linear_algebra::hadamard(node.grad, T::cosh(node.inputs[0]->val))};
-                case OP_Code::OP_COSH:
-                    return {bearml::linear_algebra::hadamard(node.grad, T::sinh(node.inputs[0]->val))};
-                case OP_Code::OP_TANH:
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0 - bearml::linear_algebra::hadamard(node.val,node.val))};
-                case OP_Code::OP_TRANSPOSE:
-                    return {node.grad.transpose()};
-                case OP_Code::OP_ABS:
-                    return {bearml::linear_algebra::hadamard(node.grad, bearml::linear_algebra::sign(node.inputs[0]->val))};
-                case OP_Code::OP_LOG:
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0 / node.inputs[0]->val)};
-                case OP_Code::OP_SQRT:
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0 / (2.0 * T::sqrt(node.inputs[0]->val)))};
-                case OP_Code::OP_MEAN_FOR_GRAD:
-                    // c = mean(a)
-                    // c = 1/n * sum(a)
-                    // dL/da = dL/dc * dc/da (sum has gradient as 1 so only 1/n remains)
-                    return {compute_grad_for_mean(node, *node.inputs[0])};
-                case OP_Code::OP_PAD:
-                    return {bearml::neural_network::padding(node.grad, -node.op_attr.pad_amount, node.op_attr.pad_mode)};
-                // SCALAR OPS - one tensor input, constant in op_attr
-
-                case OP_Code::OP_ADD_SCALAR:
-                    // c is constant so it drops out
-                    return {node.grad};
-                case OP_Code::OP_SUB_SCALAR:
-                    // a - c
-                    return {node.grad};
-                case OP_Code::OP_RSUB_SCALAR:
-                    // c - a
-                    return {-1.0 * node.grad};
-                case OP_Code::OP_MUL_SCALAR:
-                    return {node.op_attr.constant * node.grad};
-                case OP_Code::OP_DIV_SCALAR:
-                    // a / c
-                    return {node.grad / node.op_attr.constant};
-                case OP_Code::OP_RDIV_SCALAR:
-                    // c / a  =>  dc/da = -c / a^2
-                    return {bearml::linear_algebra::hadamard(node.grad, -node.op_attr.constant / bearml::linear_algebra::hadamard(node.inputs[0]->val, node.inputs[0]->val))};
-
-                case OP_Code::OP_SOFTMAX:
-                    throw std::runtime_error("Autograd: Not implemented yet: SOFTMAX!");
-                case OP_Code::OP_SUM:
-                    throw std::runtime_error("Autograd: Not implemented yet: SUM!");
-                default:
-                    throw std::invalid_argument("Autograd: OP Code does not exist or not implemented yet!");
-            }
+            template<typename E>
+            static const std::shared_ptr<Node<Tensor<E>>>& node(const Tensor<E>& t) { return t.graph_node; }
         };
 
-        template<typename T>
-        void accumulate_grad(Tensor<T>& target_grad, const Tensor<T>& grad_contribution, const Tensor<T>& target_val) {
-            auto target_grad_shape = target_val.getShape();
-            target_grad += bearml::linear_algebra::reduce(grad_contribution, target_grad_shape, reduction_op);
-        }
+        // gradient of node's output w.r.t. each input, in input order
+        template <typename T>
+        std::vector<T> grad_of(Node<T>& node);
 
-        template<typename T>
-        void apply_grad(Node<T>& node) {
-            const OP_ARITY arity = op_arity(node.op);
-            if (node.inputs.size() != static_cast<size_t>(arity))
-                throw std::logic_error("Autograd: input count does not match op arity");
+        // pushes node.grad into its inputs that require grad
+        template <typename T>
+        void apply_grad(Node<T>& node);
 
-            auto grads = grad_of(node);// pushes n.grad into its inputs
-            for (size_t i = 0; i < node.inputs.size(); ++i)
-                accumulate_grad(node.inputs[i].grad, grads[i], node.inputs[i].val);
-        }
+        // seeds root with ones; returns the root gradient
+        template <typename E>
+        Tensor<E> backward(const Tensor<E>& root, bool accumulate = false);
+
+        // seeds root with a given upstream gradient
+        template <typename E>
+        Tensor<E> backward(const Tensor<E>& root, const Tensor<E>& seed, bool accumulate = false);
+
+        // runs backward from root and returns the gradients of wrt, in order
+        template <typename E>
+        std::vector<Tensor<E>> gradients(const Tensor<E>& root, std::initializer_list<const Tensor<E>*> wrt);
     }
 
    // NOTE: Check if  we need to ->  add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads

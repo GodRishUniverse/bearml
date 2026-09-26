@@ -193,6 +193,7 @@ namespace bearml {
                 Tensor<T> C(a.tensor_shape.shape, a.device);
 
                 cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(a.const_data(), other.const_data(), C.mutable_data(), a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
+                C.record_op(OP_Code::OP_HADAMARD, {&a, &other});
                 return C;
             }
 
@@ -200,6 +201,7 @@ namespace bearml {
             for (ll i = 0; i < a.sizeOfTensor(); i++){
                 result.at(i) = a.at(i) * other.at(i);
             }
+            result.record_op(OP_Code::OP_HADAMARD, {&a, &other});
             return result;
         }
 
@@ -625,5 +627,72 @@ namespace bearml {
         // Tensor flatten_and_sum_to_shape(const Tensor &t, const std::vector<int>& targetShape){
         //     return reduce(t, targetShape);
         // }
+    }
+
+    namespace neural_network {
+
+        template <typename T>
+        bearml::Tensor<T> padding(const bearml::Tensor<T>& input, int pad_amount, Padding_Op_Code padding_mode, T constant_value){
+            // now we need to change the shape
+            std::vector<int> output_shape = input.getShape();
+            std::vector<int> input_shape = input.getShape();
+            // check if the input is a matrix or not at least for pad_amount - cause i dont think 1D padding works
+            if (input_shape.size() < 2) {
+                throw std::invalid_argument("Padding requires at least 2D input");
+            }
+            // add pad_amount to the shape
+            output_shape[output_shape.size() - 2] += 2 * pad_amount; // add 2*pad_amount rows (or subtract if pad_amount is negative)
+            output_shape[output_shape.size() - 1] += 2 * pad_amount; // add 2*pad_amount columns (or subtract if pad_amount is negative)
+
+            bearml::Tensor<T> output(output_shape, input.getDevice());
+
+            long long int batch_size = input.sizeOfTensor() / (input_shape[input_shape.size() - 2] * input_shape[input_shape.size() - 1]);
+
+            int in_rows  = input_shape[input_shape.size() - 2];
+            int in_cols  = input_shape[input_shape.size() - 1];
+            int out_rows = output_shape[output_shape.size() - 2];
+            int out_cols = output_shape[output_shape.size() - 1];
+
+            // Only the region where input and (possibly cropped) output overlap gets copied;
+            // walking the full input range and offsetting by pad_amount only works when
+            // pad_amount >= 0 -- for pad_amount < 0 (cropping) that walks off both ends of
+            // output's allocation. Clamping to the overlap keeps every write in-bounds either way.
+            // Computed once here (rather than separately per-backend) since CPU and CUDA
+            // dispatch below both need the exact same overlap window.
+            int r_start = std::max(0, -pad_amount);
+            int r_end   = std::min(in_rows, out_rows - pad_amount);
+            int c_start = std::max(0, -pad_amount);
+            int c_end   = std::min(in_cols, out_cols - pad_amount);
+
+            switch (padding_mode) {
+                case Padding_Op_Code::PAD_CONSTANT:
+                    // NOTE: aparrantly variable declaration inside the switch statement needs case (cond): {} rather than case (cond): only
+                    // now if we have padding_mode as zeros then we can just need to copy the input values appropriately
+                    // n*m matrix becomes (n+2p) * (m+2p) matrix
+                    if (input.getDevice().is_cpu()) {
+                        // first fill the output tensor with the constant value
+                        for (int i = 0; i < output.sizeOfTensor(); i++) {
+                            output.at(i) = constant_value;
+                        }
+
+                        for (int batch = 0; batch < batch_size; batch++) {
+                            for (int r = r_start; r < r_end; r++) {
+                                for (int c = c_start; c < c_end; c++) {
+                                    output.at(batch * out_cols * out_rows + (r+pad_amount)*out_cols + (c+pad_amount)) = input.at(batch * in_rows * in_cols + r * in_cols + c);
+                                }
+                            }
+                        }
+                    } else {
+                        // CUDA
+                        bearml::cuda::launch_padd_with_constant<cuda_type_trait_t<T>>(cuda_ptr(input.const_data()), cuda_ptr(output.mutable_data()), batch_size, in_rows, in_cols, out_rows, out_cols, pad_amount, r_start, r_end, c_start, c_end, cuda_val(constant_value));
+                    }
+                    break;
+                default:
+                    throw std::runtime_error("Unsupported padding mode");
+            }
+            output.record_op(OP_Code::OP_PAD, {&input}, OpAttributes{.pad_amount = pad_amount, .pad_mode = padding_mode});
+            return output;
+        }
+
     }
 }
