@@ -182,7 +182,7 @@ namespace bearml{
 
             Device device;
 
-            std::shared_ptr<Node<Tensor<T>>> graph_node; // autograd record; null when untracked
+            std::shared_ptr<bearml::Node<Tensor<T>>> graph_node; // integration with autograd
             friend struct autogradient::TensorAccess;
             template <typename U> friend struct Node;   // Node default-constructs its val/grad
 
@@ -206,8 +206,8 @@ namespace bearml{
                 storage = std::make_shared<Storage>(sizeOfTensor() * sizeof(T), this->device);
             }
 
-            // attaches an autograd node to this output when any input is tracked
-            void record_op(OP_Code op, std::initializer_list<const Tensor*> inputs, OpAttributes attrs = {});
+            void record_op(OP_Code op, std::initializer_list<const Tensor*> inputs,
+                          OpAttributes attrs, Tensor& output);
 
             // in-place ops don't record: reject them on tracked intermediates and with a tracked operand
             void check_inplace(const Tensor* other = nullptr) const;
@@ -763,7 +763,7 @@ namespace bearml{
             const Tensor& grad() const;                  // throws if the tensor is untracked
             void zero_grad();
 
-            // shares storage, drops the graph node
+            // untracked and detached copy of this tensor
             Tensor detach() const { Tensor v = makeStrideView(*this); v.graph_node = nullptr; return v; }
 
             // shares storage and the graph node
@@ -1536,7 +1536,7 @@ namespace bearml{
 
             friend Tensor operator+(const Tensor &A, const Tensor &B) {
                 Tensor out = elementwise_binary(A, B, OP_Code::OP_ADD);
-                out.record_op(OP_Code::OP_ADD, {&A, &B});
+                out.record_op(OP_Code::OP_ADD, {&A, &B}, {}, out);
                 return out;
             }
 
@@ -1554,7 +1554,7 @@ namespace bearml{
             // element wise add
             friend Tensor operator+(const Tensor &A, Scalar<T> b) {
                 Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_ADD, LHS_RHS_Code::OP_RHS);
-                out.record_op(OP_Code::OP_ADD_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                out.record_op(OP_Code::OP_ADD_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())}, out);
                 return out;
             }
 
@@ -1566,7 +1566,7 @@ namespace bearml{
             // --------------------------------SUBTRACTION-------------------------------------------------------------------------
             friend Tensor operator-(const Tensor &A, const Tensor &B) {
                 Tensor out = elementwise_binary(A, B, OP_Code::OP_SUB);
-                out.record_op(OP_Code::OP_SUB, {&A, &B});
+                out.record_op(OP_Code::OP_SUB, {&A, &B}, {}, out);
                 return out;
             }
             Tensor& operator-=(const Tensor &other) {
@@ -1581,13 +1581,13 @@ namespace bearml{
             // element wise subtract
             friend Tensor operator-(const Tensor &A, Scalar<T> b) {
                 Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_SUB, LHS_RHS_Code::OP_RHS);
-                out.record_op(OP_Code::OP_SUB_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                out.record_op(OP_Code::OP_SUB_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())}, out);
                 return out;
             }
             // element wise subtract - operation is switched (b - A)
             friend Tensor operator-(Scalar<T> b, const Tensor &A) {
                 Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_SUB, LHS_RHS_Code::OP_LHS);
-                out.record_op(OP_Code::OP_RSUB_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                out.record_op(OP_Code::OP_RSUB_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())}, out);
                 return out;
             }
 
@@ -1605,7 +1605,7 @@ namespace bearml{
             // element wise multiply (now uses elementwise_scalar dispatch)
             friend Tensor operator*(const Tensor &A, Scalar<T> b) {
                 Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_MUL, LHS_RHS_Code::OP_RHS);
-                out.record_op(OP_Code::OP_MUL_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                out.record_op(OP_Code::OP_MUL_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())}, out);
                 return out;
             }
 
@@ -1617,7 +1617,7 @@ namespace bearml{
 
             friend Tensor operator*(const Tensor &a, const Tensor &b) {
                 Tensor out = matmul(a, b);
-                out.record_op(OP_Code::OP_MUL, {&a, &b});
+                out.record_op(OP_Code::OP_MUL, {&a, &b}, {}, out);
                 return out;
             }
 
@@ -1643,13 +1643,13 @@ namespace bearml{
             // -------------------------------DIVISION--------------------------------------------------------------------------
             friend Tensor operator/(const Tensor &A, Scalar<T> b) {
                 Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_DIV, LHS_RHS_Code::OP_RHS);
-                out.record_op(OP_Code::OP_DIV_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                out.record_op(OP_Code::OP_DIV_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())}, out);
                 return out;
             }
 
             friend Tensor operator/(Scalar<T> b, const Tensor &A) {
                 Tensor out = elementwise_scalar(A, b.value(), OP_Code::OP_DIV, LHS_RHS_Code::OP_LHS);
-                out.record_op(OP_Code::OP_RDIV_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())});
+                out.record_op(OP_Code::OP_RDIV_SCALAR, {&A}, OpAttributes{.constant = static_cast<double>(b.value())}, out);
                 return out;
             }
 
@@ -1658,7 +1658,7 @@ namespace bearml{
                     throw std::runtime_error("Shapes should match for element-wise divide");
                 }
                 Tensor out = elementwise_binary(a, b, OP_Code::OP_DIV);
-                out.record_op(OP_Code::OP_DIV, {&a, &b});
+                out.record_op(OP_Code::OP_DIV, {&a, &b}, {}, out);
                 return out;
             }
 
@@ -1733,7 +1733,7 @@ namespace bearml{
             Tensor accumulate(int dim, reductions::ReductionOps op, bool keepdims = false){
                 Tensor out = accumulate_impl(dim, op, keepdims);
                 if (op == reductions::ReductionOps::SUM && keepdims) {
-                    out.record_op(OP_Code::OP_SUM, {this}, OpAttributes{.dim = dim});
+                    out.record_op(OP_Code::OP_SUM, {this}, OpAttributes{.dim = dim}, out);
                 } else if (graph_node) {
                     throw std::logic_error("accumulate: only SUM with keepdims is differentiable");
                 }
@@ -1750,7 +1750,7 @@ namespace bearml{
             static Tensor exp(Tensor& t){
                 // std::cout <<"EXPONENTIATED" <<std::endl;
                 Tensor out = elementwise_unary(t, OP_Code::OP_EXP);
-                out.record_op(OP_Code::OP_EXP, {&t});
+                out.record_op(OP_Code::OP_EXP, {&t}, {}, out);
                 return out;
             }
 
@@ -1758,7 +1758,7 @@ namespace bearml{
             static Tensor sin(Tensor& t){
                 // std::cout <<"SIN" <<std::endl;
                 Tensor out = elementwise_unary(t, OP_Code::OP_SIN);
-                out.record_op(OP_Code::OP_SIN, {&t});
+                out.record_op(OP_Code::OP_SIN, {&t}, {}, out);
                 return out;
             }
 
@@ -1766,7 +1766,7 @@ namespace bearml{
             static Tensor cos(Tensor& t){
                 // std::cout <<"COS" <<std::endl;
                 Tensor out = elementwise_unary(t, OP_Code::OP_COS);
-                out.record_op(OP_Code::OP_COS, {&t});
+                out.record_op(OP_Code::OP_COS, {&t}, {}, out);
                 return out;
             }
 
@@ -1774,7 +1774,7 @@ namespace bearml{
             static Tensor tan(Tensor& t){
                 // std::cout <<"TAN" <<std::endl;
                 Tensor out = elementwise_unary(t, OP_Code::OP_TAN);
-                out.record_op(OP_Code::OP_TAN, {&t});
+                out.record_op(OP_Code::OP_TAN, {&t}, {}, out);
                 return out;
             }
 
@@ -1782,21 +1782,21 @@ namespace bearml{
             static Tensor sinh(Tensor& t){
                 // std::cout <<"SINH" <<std::endl;
                 Tensor out = elementwise_unary(t, OP_Code::OP_SINH);
-                out.record_op(OP_Code::OP_SINH, {&t});
+                out.record_op(OP_Code::OP_SINH, {&t}, {}, out);
                 return out;
             }
 
             static Tensor cosh(Tensor& t){
                 // std::cout <<"COSH" <<std::endl;
                 Tensor out = elementwise_unary(t, OP_Code::OP_COSH);
-                out.record_op(OP_Code::OP_COSH, {&t});
+                out.record_op(OP_Code::OP_COSH, {&t}, {}, out);
                 return out;
             }
 
             static Tensor tanh(Tensor& t){
                 // std::cout <<"TANH" <<std::endl;
                 Tensor out = elementwise_unary(t, OP_Code::OP_TANH);
-                out.record_op(OP_Code::OP_TANH, {&t});
+                out.record_op(OP_Code::OP_TANH, {&t}, {}, out);
                 return out;
             }
 
@@ -1832,7 +1832,7 @@ namespace bearml{
 
             static Tensor max(const Tensor& t, const Tensor& s){
                 Tensor out = max_impl(t, s);
-                out.record_op(OP_Code::OP_MAX, {&t, &s});
+                out.record_op(OP_Code::OP_MAX, {&t, &s}, {}, out);
                 return out;
             }
 
@@ -1866,7 +1866,7 @@ namespace bearml{
 
             static Tensor min(const Tensor& t, const Tensor& s){
                 Tensor out = min_impl(t, s);
-                out.record_op(OP_Code::OP_MIN, {&t, &s});
+                out.record_op(OP_Code::OP_MIN, {&t, &s}, {}, out);
                 return out;
             }
 
@@ -1876,7 +1876,7 @@ namespace bearml{
             // Note: const accepts both non-const and const tensors
             static Tensor abs(const Tensor &t ){
                 Tensor out = elementwise_unary(t, OP_Code::OP_ABS);
-                out.record_op(OP_Code::OP_ABS, {&t});
+                out.record_op(OP_Code::OP_ABS, {&t}, {}, out);
                 return out;
             }
 
@@ -1886,7 +1886,7 @@ namespace bearml{
 
             static Tensor sqrt(const Tensor &t ){
                 Tensor out = elementwise_unary(t, OP_Code::OP_SQRT);
-                out.record_op(OP_Code::OP_SQRT, {&t});
+                out.record_op(OP_Code::OP_SQRT, {&t}, {}, out);
                 return out;
             }
 
@@ -1917,7 +1917,7 @@ namespace bearml{
                     }
                     result.set(static_cast<T>(sum / static_cast<double>(t.sizeOfTensor())), {0}) ;
                 }
-                result.record_op(OP_Code::OP_MEAN_FOR_GRAD, {&t});
+                result.record_op(OP_Code::OP_MEAN_FOR_GRAD, {&t}, {}, result);
                 return result;
             }
 
@@ -1926,7 +1926,7 @@ namespace bearml{
 
             static Tensor log(Tensor &t ){
                 Tensor out = elementwise_unary(t, OP_Code::OP_LOG);
-                out.record_op(OP_Code::OP_LOG, {&t});
+                out.record_op(OP_Code::OP_LOG, {&t}, {}, out);
                 return out;
             }
 
@@ -1992,7 +1992,7 @@ namespace bearml{
 
                 }
 
-                result.record_op(OP_Code::OP_SOFTMAX, {&t}, OpAttributes{.dim = dim_to_use});
+                result.record_op(OP_Code::OP_SOFTMAX, {&t}, OpAttributes{.dim = dim_to_use}, result);
                 return result;
             }
 
@@ -2077,7 +2077,7 @@ namespace bearml{
             // row-major-only kernel (GEMM, element_wise_contiguous, etc.).
             Tensor transpose(){
                 Tensor v = transpose_view();
-                v.record_op(OP_Code::OP_TRANSPOSE, {this});
+                v.record_op(OP_Code::OP_TRANSPOSE, {this}, {}, v);
                 return v;
             }
 

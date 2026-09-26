@@ -58,13 +58,14 @@ namespace bearml{
         return adjoint of input v_input(s) - this is the gradient of the function (network) with respect to all the inputs
     */
 
-    // reduction used to sum a broadcast gradient back to an input's shape
-    inline bearml::reductions::ReductionOps reduction_op = bearml::reductions::ReductionOps::SUM;
+    // Can change
+    extern inline bearml::reductions::ReductionOps reduction_op = bearml::reductions::ReductionOps::SUM;
 
-    // Autograd record for one tensor in the graph; T is Tensor<E>
+    // Will use this struct inside tensor - rather than a separate class
+    // T can be Tensor or Scalar type
     template<typename T> struct Node{
-        T val;                                             // detached: shares storage, no node
-        T grad;                                            // detached; allocated only when requires_grad
+        T val;
+        T grad;
         std::vector<std::shared_ptr<Node<T>>> inputs;      // parents; size == op_arity(op)
         // std::vector<std::weak_ptr<Node<T>>> outputs;    // children; off until a graph pass needs them
         OP_Code op = OP_Code::NO_OP;
@@ -97,21 +98,21 @@ namespace bearml{
             static const std::shared_ptr<Node<Tensor<E>>>& node(const Tensor<E>& t) { return t.graph_node; }
         };
 
-        // gradient of node's output w.r.t. each input, in input order
+        template <typename T>
+        T compute_grad_for_mean(Node<T>& node, Node<T>& node_input);
+
         template <typename T>
         std::vector<T> grad_of(Node<T>& node);
 
-        // pushes node.grad into its inputs that require grad
-        template <typename T>
+        template<typename T>
+        void accumulate_grad(T& target_grad, const T& grad_contribution, const T& target_val);
+
+        template<typename T>
         void apply_grad(Node<T>& node);
 
-        // seeds root with ones; returns the root gradient
+        // backward from a tracked tensor; returns the root gradient
         template <typename E>
         Tensor<E> backward(const Tensor<E>& root, bool accumulate = false);
-
-        // seeds root with a given upstream gradient
-        template <typename E>
-        Tensor<E> backward(const Tensor<E>& root, const Tensor<E>& seed, bool accumulate = false);
 
         // runs backward from root and returns the gradients of wrt, in order
         template <typename E>

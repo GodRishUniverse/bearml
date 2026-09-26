@@ -193,7 +193,7 @@ namespace bearml {
                 Tensor<T> C(a.tensor_shape.shape, a.device);
 
                 cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(a.const_data(), other.const_data(), C.mutable_data(), a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
-                C.record_op(OP_Code::OP_HADAMARD, {&a, &other});
+                C.record_op(OP_Code::OP_HADAMARD, {&a, &other}, {}, C);
                 return C;
             }
 
@@ -201,7 +201,7 @@ namespace bearml {
             for (ll i = 0; i < a.sizeOfTensor(); i++){
                 result.at(i) = a.at(i) * other.at(i);
             }
-            result.record_op(OP_Code::OP_HADAMARD, {&a, &other});
+            result.record_op(OP_Code::OP_HADAMARD, {&a, &other}, {}, result);
             return result;
         }
 
@@ -690,7 +690,7 @@ namespace bearml {
                 default:
                     throw std::runtime_error("Unsupported padding mode");
             }
-            output.record_op(OP_Code::OP_PAD, {&input}, OpAttributes{.pad_amount = pad_amount, .pad_mode = padding_mode});
+            output.record_op(OP_Code::OP_PAD, {&input}, OpAttributes{.pad_amount = pad_amount, .pad_mode = padding_mode}, output);
             return output;
         }
 
