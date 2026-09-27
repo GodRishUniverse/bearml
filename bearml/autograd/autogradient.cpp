@@ -282,7 +282,7 @@ namespace bearml {
           node->inputs.reserve(inputs.size());
           for (const Tensor* in : inputs) {
              if (in->graph_node) {
-                // a leaf's storage may have been replaced (to_, *=) since it was last used
+                // leaf (e.g. W): to_ or *= may have given it new memory, so point val at the current memory
                 if (in->graph_node->op == OP_Code::NO_OP) in->graph_node->val = in->detach();
                 node->inputs.push_back(in->graph_node);
              } else {
