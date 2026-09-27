@@ -15,7 +15,7 @@ namespace bearml {
             }
 
             template <typename InputT, typename OutputT>
-            void launch_dtype_change(InputT *d_data, OutputT *d_out, int64_t size, cudaStream_t stream ) {
+            void launch_dtype_change(const InputT *d_data, OutputT *d_out, int64_t size, cudaStream_t stream ) {
                 bool own_stream = (stream == nullptr);
                 if (own_stream) {
                     CUDA_CHECK(cudaStreamCreate(&stream));

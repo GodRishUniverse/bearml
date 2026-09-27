@@ -3,7 +3,8 @@
 #include <vector>
 #include <algorithm>
 #include "operators/ops.h"
-
+#include "utils/shape_utils.h"
+#include "utils/dtype.h"
 
 namespace bearml {
 
@@ -13,7 +14,7 @@ namespace bearml {
         // TODO: Design these structures
         Shape shape;
         DType dtype;
-        Attrs attrs;
+        // Attrs attrs;
 
     };
 };

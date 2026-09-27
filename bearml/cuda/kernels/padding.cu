@@ -46,7 +46,7 @@ namespace bearml {
 
         template<typename T>
         void launch_padd_with_constant(
-            T* d_in,
+            const T* d_in,
             T* d_out,
             int batch_size,
             int in_rows,

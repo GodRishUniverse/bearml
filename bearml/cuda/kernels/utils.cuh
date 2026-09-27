@@ -8,7 +8,7 @@ namespace bearml {
     namespace cuda {
         namespace utils {
             template <typename InputT, typename OutputT>
-            void launch_dtype_change(InputT *d_data, OutputT *d_out, int64_t size, cudaStream_t stream = nullptr);
+            void launch_dtype_change(const InputT *d_data, OutputT *d_out, int64_t size, cudaStream_t stream = nullptr);
 
             template <typename T>
              __device__ T* shared_mem() {
@@ -18,7 +18,7 @@ namespace bearml {
 
             #ifndef INSTANTIATE_DTYPE_CHANGE
             #define INSTANTIATE_DTYPE_CHANGE(InT, OutT) \
-                template void launch_dtype_change<InT, OutT>(InT *d_data, OutT *d_out, int64_t size, cudaStream_t stream);
+                template void launch_dtype_change<InT, OutT>(const InT *d_data, OutT *d_out, int64_t size, cudaStream_t stream);
             #endif
 
             // Walks `src` by (offset, shape, strides) and writes a row-major-contiguous copy into `dst`.

@@ -66,7 +66,7 @@ namespace bearml {
 
         template<typename T, typename Op>
         __global__
-        void comparison_kernel(T* a, T* b, T* output, size_t size, Op op) {
+        void comparison_kernel(const T* a, const T* b, T* output, size_t size, Op op) {
             // ensures each thread processes a unique element (also avoiding out-of-bounds access)
             for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x; idx < size; idx += blockDim.x * gridDim.x) {
                 output[idx] = T(op(a[idx], b[idx]));
@@ -75,7 +75,7 @@ namespace bearml {
 
 
         template<typename T>
-        void launch_comparison_kernel(T* a, T* b, T* output, size_t size, CompareOp op, cudaStream_t stream) {
+        void launch_comparison_kernel(const T* a, const T* b, T* output, size_t size, CompareOp op, cudaStream_t stream) {
             bool own_stream = (stream == nullptr);
             if (own_stream) {
                 CUDA_CHECK(cudaStreamCreate(&stream));
@@ -109,14 +109,14 @@ namespace bearml {
         }
 
 
-        template void launch_comparison_kernel<__nv_bfloat16>(__nv_bfloat16* a, __nv_bfloat16* b, __nv_bfloat16* output, size_t size, CompareOp op, cudaStream_t stream);
-        template void launch_comparison_kernel<__half>(__half* a, __half* b, __half* output, size_t size, CompareOp op, cudaStream_t stream);
-        template void launch_comparison_kernel<float>(float* a, float* b, float* output, size_t size, CompareOp op, cudaStream_t stream);
-        template void launch_comparison_kernel<double>(double* a, double* b, double* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<__nv_bfloat16>(const __nv_bfloat16* a, const __nv_bfloat16* b, __nv_bfloat16* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<__half>(const __half* a, const __half* b, __half* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<float>(const float* a, const float* b, float* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<double>(const double* a, const double* b, double* output, size_t size, CompareOp op, cudaStream_t stream);
 
-        template void launch_comparison_kernel<int8_t>(int8_t* a, int8_t* b, int8_t* output, size_t size, CompareOp op, cudaStream_t stream);
-        template void launch_comparison_kernel<int16_t>(int16_t* a, int16_t* b, int16_t* output, size_t size, CompareOp op, cudaStream_t stream);
-        template void launch_comparison_kernel<int32_t>(int32_t* a, int32_t* b, int32_t* output, size_t size, CompareOp op, cudaStream_t stream);
-        template void launch_comparison_kernel<int64_t>(int64_t* a, int64_t* b, int64_t* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<int8_t>(const int8_t* a, const int8_t* b, int8_t* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<int16_t>(const int16_t* a, const int16_t* b, int16_t* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<int32_t>(const int32_t* a, const int32_t* b, int32_t* output, size_t size, CompareOp op, cudaStream_t stream);
+        template void launch_comparison_kernel<int64_t>(const int64_t* a, const int64_t* b, int64_t* output, size_t size, CompareOp op, cudaStream_t stream);
     }
 }

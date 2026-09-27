@@ -1,10 +1,3 @@
-// #include "tensor/Tensor.h"
-// #include "autograd/autogradient.h"
-// #include "activation_functions/modules.h"
-// #include "model_construct/model_construct.h"
-// #include "loss_functions/loss.h"
-// #include "optimizers/optimizers.h"
-// #include "devices/device_type.h"
 #include "activation_functions/convolution_layers.h"
 #include "bearml.h"
 #include <iostream>
@@ -24,17 +17,17 @@ class Model : public bearml::neural_network::Model_Construct{
 
     }
 
-    std::shared_ptr<bearml::Node<bearml::Tensorf>> forward(std::vector<bearml::Tensorf> inputs) override {
+    bearml::Tensorf forward(std::vector<bearml::Tensorf> inputs) override {
         // assuming only x is passed in
-        auto x = bearml::Node<bearml::Tensorf>::make_node(inputs[0]);
+        auto& x = inputs[0];
 
         auto f1 = this->layer1(x);
         auto f2 = this->nonlinearity(f1);
         return this->layer2(f2);
     }
 
-    std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> parameters() override {
-        std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> params;
+    std::vector<std::shared_ptr<bearml::Tensorf>> parameters() override {
+        std::vector<std::shared_ptr<bearml::Tensorf>> params;
 
         // collect parameters from layer1
         auto l1_params = layer1.parameters();
@@ -198,20 +191,20 @@ int main() {
     // double x_val=  4.0;
     // double y_val = 2.0;
 
-    // shared_ptr<bearml::Node<double>> x = bearml::Node<double>::make_node(x_val); // calling static function
-    // shared_ptr<bearml::Node<double>> y = bearml::Node<double>::make_node(y_val); // calling static function
+    // bearml::TensorD x({1}); x.fill(x_val); x.set_requires_grad(); // 1-element tensor stands in for a scalar
+    // bearml::TensorD y({1}); y.fill(y_val); y.set_requires_grad();
 
-    // auto z = x*y + x;
+    // auto z = bearml::linear_algebra::hadamard(x, y) + x;
     // // dz/dx = y+1 = 2+1 =3
     // // dz/dy= x =4
 
 
     // cout << bearml::autogradient::backward(z) << endl;
-    // cout << x->grad << endl;
-    // cout << y->grad << endl;
+    // cout << x.grad() << endl;
+    // cout << y.grad() << endl;
 
-    // bearml::Tensor a ({1,1,5,5});
-    // bearml::Tensor b ({1,2,5,5});
+    // bearml::TensorD a ({1,1,5,5});
+    // bearml::TensorD b ({1,2,5,5});
 
     // a.linspace(1,97);
     // b.linspace(1,10);
@@ -219,14 +212,14 @@ int main() {
     // cout << a * b << endl;
 
 
-    // shared_ptr<bearml::Node<bearml::Tensor>> x = bearml::Node<bearml::Tensor>::make_node(a); // calling static function
-    // shared_ptr<bearml::Node<bearml::Tensor>> y = bearml::Node<bearml::Tensor>::make_node(b); // calling static function
+    // a.set_requires_grad(); // a and b are now tracked leaves
+    // b.set_requires_grad();
 
-    // auto z = x*y + x;
+    // auto z = a*b + a;
 
     // cout << bearml::autogradient::backward(z) << endl;
-    // cout << x->grad << endl;
-    // cout << y->grad << endl;
+    // cout << a.grad() << endl;
+    // cout << b.grad() << endl;
 
     // bearml::Tensor c({3,2,4});
     // c.set(1.0, {0,1,1});
@@ -253,25 +246,25 @@ int main() {
     // vector<int> test_temp = {2,2,4,2};
     // cout << bearml::linear_algebra::reduce(test_tensor_for_reduce,test_temp  )<< endl;
 
-    // bearml::Tensor tester({1,2,4,5});
+    // bearml::TensorD tester({1,2,4,5});
     // tester.linspace(1,10);
 
 
-    // shared_ptr<bearml::Node<bearml::Tensor>> node = bearml::Node<bearml::Tensor>::make_node(tester);
+    // tester.set_requires_grad();
 
-    // bearml::neural_network::Linear<> layer1 = bearml::neural_network::Linear(5, 10);
+    // bearml::neural_network::Linear<bearml::TensorD> layer1(5, 10);
     // cout << "after linear layer" << endl;
 
-    // auto vvv = layer1(node);
+    // auto vvv = layer1(tester);
 
 
-    // bearml::neural_network::ReLU<> layer_relu = bearml::neural_network::ReLU();
+    // bearml::neural_network::ReLU<bearml::TensorD> layer_relu;
     // cout << "after relu layer" << endl;
 
     // auto vvvv= layer_relu(vvv);
 
     // bearml::autogradient::backward(vvvv);
-    // cout << vvv->val << endl;
+    // cout << vvv << endl;
 
     bearml::Device dev = bearml::Device(bearml::DeviceType::CUDA,  0);
 
@@ -283,10 +276,10 @@ int main() {
 
     // so PyTorch uses its custom random number generator for initialization and so our initialization does not match and so for testing this what can be done is we basically get pytorch weights and see if the numbers match
     auto pred = testmodel.forward({tester2});
-    pred->val.to_(dev);
+    // pred is already on dev - to_ on a tracked output would throw
 
-    // cout << pred->val << endl;
-    // cout << "Pred grad: " << pred->grad << endl;
+    // cout << pred << endl;
+    // cout << "Pred grad: " << pred.grad() << endl;
 
 
     bearml::Tensorf actual({1,5});
@@ -297,19 +290,17 @@ int main() {
     // Sample - works gets closer to the ideal values
     for (int i =0;i <10; i++){
         optim.zero_grad();
-        auto ac = bearml::Node<bearml::Tensorf>::make_node(actual);
-
-        auto loss = bearml::neural_network::loss_functions::l1_loss(ac, pred);
+        auto loss = bearml::neural_network::loss_functions::l1_loss(actual, pred);
         bearml::autogradient::backward(loss);
 
         optim.step();
 
-        cout << "Loss value: " << loss->val << endl;
+        cout << "Loss value: " << loss << endl;
 
         pred = testmodel.forward({tester2});
-        cout << "Pred value: " << pred->val << endl;
+        cout << "Pred value: " << pred << endl;
     }
-    cout << "Pred grad: " << pred->grad << endl;
+    cout << "Pred grad: " << pred.grad() << endl;
 
 
 
@@ -343,10 +334,9 @@ int main() {
      auto padded = bearml::neural_network::padding<double>(mat_inv, 1,Padding_Op_Code::PAD_CONSTANT, 2.0 );
      cout << padded << endl;
 
-     // bearml::neural_network::LeakyReLU leaky_relu(0.1);
-     // auto leaky_relu_node = bearml::Node<bearml::Tensor>::make_node(mat_inv);
-     // auto leaky_relu_out = leaky_relu.forward(leaky_relu_node);
-     // cout << leaky_relu_out->val << endl;
+     // bearml::neural_network::LeakyReLU<bearml::TensorD> leaky_relu(0.1, 42, dev); // layer must be on mat_inv's device
+     // auto leaky_relu_out = leaky_relu.forward(mat_inv);
+     // cout << leaky_relu_out << endl;
      // mat_inv.fill(1.0);
      // bearml::Tensor mat_inv_2 ({5,2});
      //
