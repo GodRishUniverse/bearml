@@ -191,20 +191,20 @@ int main() {
     // double x_val=  4.0;
     // double y_val = 2.0;
 
-    // shared_ptr<bearml::Node<double>> x = bearml::Node<double>::make_node(x_val); // calling static function
-    // shared_ptr<bearml::Node<double>> y = bearml::Node<double>::make_node(y_val); // calling static function
+    // bearml::TensorD x({1}); x.fill(x_val); x.set_requires_grad(); // 1-element tensor stands in for a scalar
+    // bearml::TensorD y({1}); y.fill(y_val); y.set_requires_grad();
 
-    // auto z = x*y + x;
+    // auto z = bearml::linear_algebra::hadamard(x, y) + x;
     // // dz/dx = y+1 = 2+1 =3
     // // dz/dy= x =4
 
 
     // cout << bearml::autogradient::backward(z) << endl;
-    // cout << x->grad << endl;
-    // cout << y->grad << endl;
+    // cout << x.grad() << endl;
+    // cout << y.grad() << endl;
 
-    // bearml::Tensor a ({1,1,5,5});
-    // bearml::Tensor b ({1,2,5,5});
+    // bearml::TensorD a ({1,1,5,5});
+    // bearml::TensorD b ({1,2,5,5});
 
     // a.linspace(1,97);
     // b.linspace(1,10);
@@ -212,14 +212,14 @@ int main() {
     // cout << a * b << endl;
 
 
-    // shared_ptr<bearml::Node<bearml::Tensor>> x = bearml::Node<bearml::Tensor>::make_node(a); // calling static function
-    // shared_ptr<bearml::Node<bearml::Tensor>> y = bearml::Node<bearml::Tensor>::make_node(b); // calling static function
+    // a.set_requires_grad(); // a and b are now tracked leaves
+    // b.set_requires_grad();
 
-    // auto z = x*y + x;
+    // auto z = a*b + a;
 
     // cout << bearml::autogradient::backward(z) << endl;
-    // cout << x->grad << endl;
-    // cout << y->grad << endl;
+    // cout << a.grad() << endl;
+    // cout << b.grad() << endl;
 
     // bearml::Tensor c({3,2,4});
     // c.set(1.0, {0,1,1});
@@ -246,25 +246,25 @@ int main() {
     // vector<int> test_temp = {2,2,4,2};
     // cout << bearml::linear_algebra::reduce(test_tensor_for_reduce,test_temp  )<< endl;
 
-    // bearml::Tensor tester({1,2,4,5});
+    // bearml::TensorD tester({1,2,4,5});
     // tester.linspace(1,10);
 
 
-    // shared_ptr<bearml::Node<bearml::Tensor>> node = bearml::Node<bearml::Tensor>::make_node(tester);
+    // tester.set_requires_grad();
 
-    // bearml::neural_network::Linear<> layer1 = bearml::neural_network::Linear(5, 10);
+    // bearml::neural_network::Linear<bearml::TensorD> layer1(5, 10);
     // cout << "after linear layer" << endl;
 
-    // auto vvv = layer1(node);
+    // auto vvv = layer1(tester);
 
 
-    // bearml::neural_network::ReLU<> layer_relu = bearml::neural_network::ReLU();
+    // bearml::neural_network::ReLU<bearml::TensorD> layer_relu;
     // cout << "after relu layer" << endl;
 
     // auto vvvv= layer_relu(vvv);
 
     // bearml::autogradient::backward(vvvv);
-    // cout << vvv->val << endl;
+    // cout << vvv << endl;
 
     bearml::Device dev = bearml::Device(bearml::DeviceType::CUDA,  0);
 
@@ -278,8 +278,8 @@ int main() {
     auto pred = testmodel.forward({tester2});
     // pred is already on dev - to_ on a tracked output would throw
 
-    // cout << pred->val << endl;
-    // cout << "Pred grad: " << pred->grad << endl;
+    // cout << pred << endl;
+    // cout << "Pred grad: " << pred.grad() << endl;
 
 
     bearml::Tensorf actual({1,5});
@@ -334,10 +334,9 @@ int main() {
      auto padded = bearml::neural_network::padding<double>(mat_inv, 1,Padding_Op_Code::PAD_CONSTANT, 2.0 );
      cout << padded << endl;
 
-     // bearml::neural_network::LeakyReLU leaky_relu(0.1);
-     // auto leaky_relu_node = bearml::Node<bearml::Tensor>::make_node(mat_inv);
-     // auto leaky_relu_out = leaky_relu.forward(leaky_relu_node);
-     // cout << leaky_relu_out->val << endl;
+     // bearml::neural_network::LeakyReLU<bearml::TensorD> leaky_relu(0.1, 42, dev); // layer must be on mat_inv's device
+     // auto leaky_relu_out = leaky_relu.forward(mat_inv);
+     // cout << leaky_relu_out << endl;
      // mat_inv.fill(1.0);
      // bearml::Tensor mat_inv_2 ({5,2});
      //

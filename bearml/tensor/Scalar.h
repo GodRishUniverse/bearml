@@ -1,5 +1,6 @@
 #pragma once
 #include "utils/dtype.h"
+#include <type_traits>
 
 namespace bearml {
     template<typename T>
@@ -9,6 +10,11 @@ namespace bearml {
         public:
             Scalar() = default;
             Scalar(T scalar): scalar(scalar){
+            }
+
+            // other arithmetic types (e.g. a double literal into a bfloat16 scalar) - explicit cast, no narrowing warning
+            template<typename U> requires (std::is_arithmetic_v<U> && !std::is_same_v<U, T>)
+            Scalar(U other): scalar(static_cast<T>(other)){
             }
 
             operator T() const { return scalar; }

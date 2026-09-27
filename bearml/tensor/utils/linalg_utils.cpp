@@ -546,9 +546,9 @@ namespace bearml {
                                     int w_in = w * stride - padding + kw*dilation;
                                     T value = padding_value;
                                     if (h_in >= 0 && h_in < height && w_in >= 0 && w_in < width) {
-                                        value = a({b, channels, h_in, w_in});
+                                        value = a({static_cast<int>(b), channels, h_in, w_in});
                                     }
-                                    patch.set(value, {b, channels*kernel_size*kernel_size + kh*kernel_size + kw, h*W_out + w});
+                                    patch.set(value, {static_cast<int>(b), channels*kernel_size*kernel_size + kh*kernel_size + kw, h*W_out + w});
                                 }
                             }
                         }

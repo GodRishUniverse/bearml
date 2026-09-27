@@ -728,6 +728,37 @@ TEST(ReLUTest, ForwardPositive) {
     EXPECT_DOUBLE_EQ(out.get({3}), 0.0);
 }
 
+TEST(ReLUTest, GradientAtZeroIsZero) {
+    neural_network::ReLU<TensorD> relu;
+    TensorD input({3}); input.set(-2.0, {0}); input.set(0.0, {1}); input.set(3.0, {2});
+    TensorD g({3}); g.set(2.0, {0}); g.set(3.0, {1}); g.set(5.0, {2});
+    auto x = make_leaf(input);
+    auto out = relu(x);
+    auto seeded = linear_algebra::hadamard(out, g);
+    autogradient::backward(seeded);
+    // g * (x > 0): the tie at 0 gets 0
+    EXPECT_DOUBLE_EQ(x.grad().get({0}), 0.0);
+    EXPECT_DOUBLE_EQ(x.grad().get({1}), 0.0);
+    EXPECT_DOUBLE_EQ(x.grad().get({2}), 5.0);
+}
+
+TEST(LeakyReLUTest, ForwardAndGradientAtZero) {
+    neural_network::LeakyReLU<TensorD> leaky(0.01);
+    TensorD input({3}); input.set(-2.0, {0}); input.set(0.0, {1}); input.set(3.0, {2});
+    TensorD g({3}); g.set(2.0, {0}); g.set(3.0, {1}); g.set(5.0, {2});
+    auto x = make_leaf(input);
+    auto out = leaky(x);
+    EXPECT_DOUBLE_EQ(out.get({0}), -0.02);
+    EXPECT_DOUBLE_EQ(out.get({1}), 0.0);
+    EXPECT_DOUBLE_EQ(out.get({2}), 3.0);
+    auto seeded = linear_algebra::hadamard(out, g);
+    autogradient::backward(seeded);
+    // g * slope for x <= 0, g for x > 0: the tie at 0 gets the slope, not 1 + slope
+    EXPECT_DOUBLE_EQ(x.grad().get({0}), 0.02);
+    EXPECT_DOUBLE_EQ(x.grad().get({1}), 0.03);
+    EXPECT_DOUBLE_EQ(x.grad().get({2}), 5.0);
+}
+
 
 // SGD Optimizer Tests
 

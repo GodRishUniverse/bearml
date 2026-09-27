@@ -59,7 +59,7 @@ namespace bearml{
     */
 
     // Can change
-    extern inline bearml::reductions::ReductionOps reduction_op = bearml::reductions::ReductionOps::SUM;
+    inline bearml::reductions::ReductionOps reduction_op = bearml::reductions::ReductionOps::SUM;
 
     // Will use this struct inside tensor - rather than a separate class
     // T can be Tensor or Scalar type

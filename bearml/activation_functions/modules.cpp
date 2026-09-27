@@ -143,7 +143,9 @@ namespace bearml {
             this->check_device(x);
             std::vector<int> temp_shape = x.getShape();
             T temp_zero(temp_shape,this->device);
-            return T::max(x, temp_zero);
+            // strict x > 0 mask (untracked) - gradient is 0 at x = 0, not the max tie's 1
+            T positive_mask = bearml::linear_algebra::mask_of_greater_than(x, temp_zero);
+            return bearml::linear_algebra::hadamard(x, positive_mask);
         }
 
     }

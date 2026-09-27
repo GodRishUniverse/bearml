@@ -25,7 +25,10 @@ namespace bearml {
             this->check_device(x);
             std::vector<int> temp_shape = x.getShape();
             T temp_zero(temp_shape,this->device);
-            return T::max(x, temp_zero)+this->negative_slope*T::min(x,temp_zero);
+            // strict x > 0 mask (untracked) - gradient is negative_slope at x = 0, not 1 + negative_slope from both ties
+            T positive_mask = bearml::linear_algebra::mask_of_greater_than(x, temp_zero);
+            T negative_mask = 1.0 - positive_mask;
+            return bearml::linear_algebra::hadamard(x, positive_mask) + this->negative_slope*bearml::linear_algebra::hadamard(x, negative_mask);
         }
 
         template <typename T>
