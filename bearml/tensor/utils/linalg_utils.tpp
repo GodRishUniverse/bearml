@@ -104,9 +104,9 @@ namespace bearml {
                     b_view.tensor_shape.strides.begin() + batch_shape.size());
 
                 cuda::launch_gemm_broadcasted<cuda_type_trait_t<T>>(
-                    a_ref.const_data(), b_ref.const_data(), result.mutable_data(),
+                    cuda_ptr(a_ref.const_data()), cuda_ptr(b_ref.const_data()), cuda_ptr(result.mutable_data()),
                     a_rows, a_cols, b_cols,
-                    T(1), T(0),
+                    cuda_val(T(1)), cuda_val(T(0)),
                     &batch_shape,
                     batch_shape.size(),
                     &batch_strides_a,
@@ -192,7 +192,7 @@ namespace bearml {
             if (a.device == DeviceType::CUDA) {
                 Tensor<T> C(a.tensor_shape.shape, a.device);
 
-                cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(a.const_data(), other.const_data(), C.mutable_data(), a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
+                cuda::launch_elementwise_broadcast<cuda_type_trait_t<T>>(cuda_ptr(a.const_data()), cuda_ptr(other.const_data()), cuda_ptr(C.mutable_data()), a.getStrides(), other.getStrides(), C.getShape(), OP_Code::OP_MUL);
                 C.record_op(OP_Code::OP_HADAMARD, {&a, &other}, {}, C);
                 return C;
             }
@@ -223,22 +223,22 @@ namespace bearml {
             if (a.device.type == DeviceType::CUDA) {
                 switch (op) {
                     case CompareOp::GT: // greater than
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::GE: // greater than or equal to
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::LT: // less than
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::LE: // less than or equal to
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::EQ: // equal to
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()), a.sizeOfTensor(), op, nullptr);
                         break;
                     case CompareOp::NE: // not equal to
-                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(a.const_data(), b.const_data(), result.mutable_data(), a.sizeOfTensor(), op, nullptr);
+                        bearml::cuda::launch_comparison_kernel<cuda_type_trait_t<T>>(cuda_ptr(a.const_data()), cuda_ptr(b.const_data()), cuda_ptr(result.mutable_data()), a.sizeOfTensor(), op, nullptr);
                         break;
                     default:
                         throw std::invalid_argument("Invalid compare op");
@@ -432,7 +432,7 @@ namespace bearml {
             }
 
             // CUDA implementation
-            cuda::launch_sign_contiguous<T>(a.const_data(), result.mutable_data(), a.getShape());
+            cuda::launch_sign_contiguous<cuda_type_trait_t<T>>(cuda_ptr(a.const_data()), cuda_ptr(result.mutable_data()), a.getShape());
 
             return result;
         }
