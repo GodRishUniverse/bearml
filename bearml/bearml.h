@@ -19,5 +19,5 @@
 #include "operators/padding_ops.h"
 #include "dataloader/dataloader.h"
 #include "datasets/datasets.h"
-#include "xla/hlobuilder.h" // TODO: implement
+#include "ml_compiler/hlobuilder.h" // TODO: implement
 // #include "cuda/includes/"

@@ -1,4 +1,5 @@
 // https://siboehm.com/articles/22/CUDA-MMM <- link to go over
+// - Use cuBLAS as they are more optimized: TODO
 #include "matmul.cuh"
 #include <cstdint>
 // gemm and why we need -> alpha*a*b + beta*c
@@ -10,6 +11,7 @@ namespace bearml {
         // TODO: Optimize - using memory coalescing, warp level parallelism, and shared memory, and tiling - check blog above and also look more into this
         //TODO: write broadcasting done on the gpu matmul code
         // TODO: remove % sign as it is very slow
+        // Add tiling as it reduces memory accesses required to compute no. of elments
         template <typename T>
         __global__
         void gemm_kernel_broadcast(

@@ -368,7 +368,7 @@ TEST(AutogradDoubleTest, SubBackward) {
 TEST(AutogradDoubleTest, MulBackward) {
     auto x = scalar_leaf(4.0);
     auto y = scalar_leaf(2.0);
-    auto z = x * y; // z = x*y, dz/dx = y = 2, dz/dy = x = 4
+    auto z = linear_algebra::hadamard(x, y); // z = x*y, dz/dx = y = 2, dz/dy = x = 4
     autogradient::backward(z);
     EXPECT_DOUBLE_EQ(x.grad().get({0}), 2.0);
     EXPECT_DOUBLE_EQ(y.grad().get({0}), 4.0);
@@ -391,7 +391,7 @@ TEST(AutogradDoubleTest, ExpBackward) {
 TEST(AutogradDoubleTest, ChainRule) {
     auto x = scalar_leaf(4.0);
     auto y = scalar_leaf(2.0);
-    auto z = x * y + x; // z = xy + x, dz/dx = y+1 = 3, dz/dy = x = 4
+    auto z = linear_algebra::hadamard(x, y) + x; // z = xy + x, dz/dx = y+1 = 3, dz/dy = x = 4
     autogradient::backward(z);
     EXPECT_DOUBLE_EQ(x.grad().get({0}), 3.0);
     EXPECT_DOUBLE_EQ(y.grad().get({0}), 4.0);
@@ -400,9 +400,9 @@ TEST(AutogradDoubleTest, ChainRule) {
 TEST(AutogradDoubleTest, MultipleOps) {
     auto x = scalar_leaf(2.0);
     auto y = scalar_leaf(3.0);
-    auto a = x * y;     // a = 6
+    auto a = linear_algebra::hadamard(x, y);     // a = 6
     auto b = a + x;     // b = 8, db/dx = y+1 = 4
-    auto c = b * y;     // c = 24, dc/dx = (y+1)*y = 12, dc/dy = (xy+x) + x*y = 6+8 = ... let's just verify numerically
+    auto c = linear_algebra::hadamard(b, y);     // c = 24, dc/dx = (y+1)*y = 12, dc/dy = (xy+x) + x*y = 6+8 = ... let's just verify numerically
     autogradient::backward(c);
     // c = (x*y + x)*y = x*y^2 + x*y
     // dc/dx = y^2 + y = 9 + 3 = 12
@@ -734,7 +734,7 @@ TEST(ReLUTest, ForwardPositive) {
 TEST(SGDTest, StepUpdatesParams) {
     TensorD tw({2}); tw.fill(5.0);
     auto w = std::make_shared<TensorD>(make_leaf(tw));
-    auto c = (*w) * 1.0; autogradient::backward(c); // grad = 1 - grad() is read-only, so set it through backward
+    auto c = (*w) * 1.0; autogradient::backward(c); // manually set grad (through backward - grad() is read-only)
 
     neural_network::optimizers::SGD<TensorD> sgd({w}, 0.1);
     sgd.step();
@@ -758,65 +758,97 @@ TEST(SGDTest, ZeroGrad) {
 
 // Autograd table tests - one hand-computed gradient per grad_of entry not covered above
 
+// gradient of hadamard(out, g) w.r.t. x - a non-unit upstream g catches a rule that drops node.grad
+static TensorD seeded_grad(const TensorD& out, const TensorD& x, const TensorD& g) {
+    auto seeded = linear_algebra::hadamard(out, g);
+    return autogradient::gradients(seeded, {&x})[0];
+}
+
 TEST(AutogradTableTest, ScalarOps) {
     TensorD tx({3}); tx.set(1.0, {0}); tx.set(2.0, {1}); tx.set(4.0, {2});
+    TensorD g({3}); g.set(2.0, {0}); g.set(3.0, {1}); g.set(5.0, {2});
     auto x = make_leaf(tx);
-    // gradients() zeroes x's grad first, so each op is checked on its own
-    auto add = x + 2.0;   auto g_add = autogradient::gradients(add, {&x})[0];   // 1
-    auto sub = x - 2.0;   auto g_sub = autogradient::gradients(sub, {&x})[0];   // 1
-    auto rsub = 2.0 - x;  auto g_rsub = autogradient::gradients(rsub, {&x})[0]; // -1
-    auto mul = x * 3.0;   auto g_mul = autogradient::gradients(mul, {&x})[0];   // 3
-    auto div = x / 4.0;   auto g_div = autogradient::gradients(div, {&x})[0];   // 1/4
-    auto rdiv = 8.0 / x;  auto g_rdiv = autogradient::gradients(rdiv, {&x})[0]; // -8/x^2
-    double rdiv_expected[3] = {-8.0, -2.0, -0.5};
+    auto g_add = seeded_grad(x + 2.0, x, g);   // g * 1
+    auto g_sub = seeded_grad(x - 2.0, x, g);   // g * 1
+    auto g_rsub = seeded_grad(2.0 - x, x, g);  // g * -1
+    auto g_mul = seeded_grad(x * 3.0, x, g);   // g * 3
+    auto g_div = seeded_grad(x / 4.0, x, g);   // g * 1/4
+    auto g_rdiv = seeded_grad(8.0 / x, x, g);  // g * -8/x^2
     for (int i = 0; i < 3; i++) {
-        EXPECT_DOUBLE_EQ(g_add.get({i}), 1.0);
-        EXPECT_DOUBLE_EQ(g_sub.get({i}), 1.0);
-        EXPECT_DOUBLE_EQ(g_rsub.get({i}), -1.0);
-        EXPECT_DOUBLE_EQ(g_mul.get({i}), 3.0);
-        EXPECT_DOUBLE_EQ(g_div.get({i}), 0.25);
-        EXPECT_NEAR(g_rdiv.get({i}), rdiv_expected[i], 1e-12);
+        double gi = g.get({i}), v = tx.get({i});
+        EXPECT_DOUBLE_EQ(g_add.get({i}), gi);
+        EXPECT_DOUBLE_EQ(g_sub.get({i}), gi);
+        EXPECT_DOUBLE_EQ(g_rsub.get({i}), -gi);
+        EXPECT_DOUBLE_EQ(g_mul.get({i}), 3.0 * gi);
+        EXPECT_DOUBLE_EQ(g_div.get({i}), 0.25 * gi);
+        EXPECT_NEAR(g_rdiv.get({i}), -8.0 / (v * v) * gi, 1e-12);
     }
 }
 
 TEST(AutogradTableTest, MinWithTie) {
     TensorD ta({3}); ta.set(1.0, {0}); ta.set(5.0, {1}); ta.set(3.0, {2});
     TensorD tb({3}); tb.set(4.0, {0}); tb.set(2.0, {1}); tb.set(3.0, {2});
+    TensorD g({3}); g.set(2.0, {0}); g.set(3.0, {1}); g.set(5.0, {2});
     auto a = make_leaf(ta);
     auto b = make_leaf(tb);
-    auto c = TensorD::min(a, b); // [1, 2, 3]
-    autogradient::backward(c);
+    auto c = TensorD::min(a, b);
+    EXPECT_DOUBLE_EQ(c.get({0}), 1.0);
+    EXPECT_DOUBLE_EQ(c.get({1}), 2.0);
+    EXPECT_DOUBLE_EQ(c.get({2}), 3.0);
+    auto seeded = linear_algebra::hadamard(c, g);
+    autogradient::backward(seeded);
     // grad goes to whichever was smaller; ties go to both
-    EXPECT_DOUBLE_EQ(a.grad().get({0}), 1.0);
+    EXPECT_DOUBLE_EQ(a.grad().get({0}), 2.0);
     EXPECT_DOUBLE_EQ(a.grad().get({1}), 0.0);
-    EXPECT_DOUBLE_EQ(a.grad().get({2}), 1.0);
+    EXPECT_DOUBLE_EQ(a.grad().get({2}), 5.0);
     EXPECT_DOUBLE_EQ(b.grad().get({0}), 0.0);
-    EXPECT_DOUBLE_EQ(b.grad().get({1}), 1.0);
-    EXPECT_DOUBLE_EQ(b.grad().get({2}), 1.0);
+    EXPECT_DOUBLE_EQ(b.grad().get({1}), 3.0);
+    EXPECT_DOUBLE_EQ(b.grad().get({2}), 5.0);
 }
 
 TEST(AutogradTableTest, UnaryOps) {
     TensorD tx({2}); tx.set(0.5, {0}); tx.set(1.0, {1});
+    TensorD g({2}); g.set(2.0, {0}); g.set(3.0, {1});
     auto x = make_leaf(tx);
-    auto e = TensorD::exp(x);   auto g_exp = autogradient::gradients(e, {&x})[0];
-    auto s = TensorD::sin(x);   auto g_sin = autogradient::gradients(s, {&x})[0];
-    auto c = TensorD::cos(x);   auto g_cos = autogradient::gradients(c, {&x})[0];
-    auto t = TensorD::tan(x);   auto g_tan = autogradient::gradients(t, {&x})[0];
-    auto sh = TensorD::sinh(x); auto g_sinh = autogradient::gradients(sh, {&x})[0];
-    auto ch = TensorD::cosh(x); auto g_cosh = autogradient::gradients(ch, {&x})[0];
-    auto th = TensorD::tanh(x); auto g_tanh = autogradient::gradients(th, {&x})[0];
-    auto sq = TensorD::sqrt(x); auto g_sqrt = autogradient::gradients(sq, {&x})[0];
+    auto g_exp = seeded_grad(TensorD::exp(x), x, g);
+    auto g_sin = seeded_grad(TensorD::sin(x), x, g);
+    auto g_cos = seeded_grad(TensorD::cos(x), x, g);
+    auto g_tan = seeded_grad(TensorD::tan(x), x, g);
+    auto g_sinh = seeded_grad(TensorD::sinh(x), x, g);
+    auto g_cosh = seeded_grad(TensorD::cosh(x), x, g);
+    auto g_tanh = seeded_grad(TensorD::tanh(x), x, g);
+    auto g_sqrt = seeded_grad(TensorD::sqrt(x), x, g);
+    auto g_abs = seeded_grad(TensorD::abs(x), x, g);
+    auto g_log = seeded_grad(TensorD::log(x), x, g);
     for (int i = 0; i < 2; i++) {
-        double v = tx.get({i});
-        EXPECT_NEAR(g_exp.get({i}), std::exp(v), 1e-12);                               // e^x
-        EXPECT_NEAR(g_sin.get({i}), std::cos(v), 1e-12);                               // cos x
-        EXPECT_NEAR(g_cos.get({i}), -std::sin(v), 1e-12);                              // -sin x
-        EXPECT_NEAR(g_tan.get({i}), 1.0 / (std::cos(v) * std::cos(v)), 1e-12);        // sec^2 x
-        EXPECT_NEAR(g_sinh.get({i}), std::cosh(v), 1e-12);                             // cosh x
-        EXPECT_NEAR(g_cosh.get({i}), std::sinh(v), 1e-12);                             // sinh x
-        EXPECT_NEAR(g_tanh.get({i}), 1.0 - std::tanh(v) * std::tanh(v), 1e-12);       // 1 - tanh^2 x
-        EXPECT_NEAR(g_sqrt.get({i}), 0.5 / std::sqrt(v), 1e-12);                       // 1 / (2 sqrt x)
+        double v = tx.get({i}), gi = g.get({i});
+        EXPECT_NEAR(g_exp.get({i}), gi * std::exp(v), 1e-12);                          // e^x
+        EXPECT_NEAR(g_sin.get({i}), gi * std::cos(v), 1e-12);                          // cos x
+        EXPECT_NEAR(g_cos.get({i}), gi * -std::sin(v), 1e-12);                         // -sin x
+        EXPECT_NEAR(g_tan.get({i}), gi / (std::cos(v) * std::cos(v)), 1e-12);          // sec^2 x
+        EXPECT_NEAR(g_sinh.get({i}), gi * std::cosh(v), 1e-12);                        // cosh x
+        EXPECT_NEAR(g_cosh.get({i}), gi * std::sinh(v), 1e-12);                        // sinh x
+        EXPECT_NEAR(g_tanh.get({i}), gi * (1.0 - std::tanh(v) * std::tanh(v)), 1e-12); // 1 - tanh^2 x
+        EXPECT_NEAR(g_sqrt.get({i}), gi * 0.5 / std::sqrt(v), 1e-12);                  // 1 / (2 sqrt x)
+        EXPECT_NEAR(g_abs.get({i}), gi, 1e-12);                                        // sign(x), x > 0
+        EXPECT_NEAR(g_log.get({i}), gi / v, 1e-12);                                    // 1/x
     }
+}
+
+TEST(AutogradTableTest, TransposeValues) {
+    TensorD ta({2, 3}); ta.linspace(1.0, 6.0);
+    auto a = make_leaf(ta);
+    auto t = a.transpose(); // (3,2)
+    TensorD g({3, 2});
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 2; j++)
+            g.set(10.0 * i + j, {i, j}); // g[i][j] = 10i + j
+    auto seeded = linear_algebra::hadamard(t, g);
+    autogradient::backward(seeded);
+    // a's grad is g transposed: a.grad[r][c] = g[c][r]
+    for (int r = 0; r < 2; r++)
+        for (int c = 0; c < 3; c++)
+            EXPECT_DOUBLE_EQ(a.grad().get({r, c}), 10.0 * c + r);
 }
 
 TEST(AutogradTableTest, SumAlongDim) {
@@ -852,27 +884,30 @@ TEST(AutogradTableTest, PaddingCropsGradient) {
 
 TEST(AutogradTableTest, TensorDiv) {
     TensorD tx({2}); tx.set(2.0, {0}); tx.set(4.0, {1});
-    TensorD ty({2}); ty.set(1.0, {0}); ty.set(2.0, {1});
+    TensorD ty({2}); ty.set(2.0, {0}); ty.set(4.0, {1});
+    TensorD g({2}); g.set(2.0, {0}); g.set(3.0, {1});
     auto x = make_leaf(tx);
     auto y = make_leaf(ty);
     auto c = x / y;
-    autogradient::backward(c);
-    // dc/dx = 1/y, dc/dy = -x/y^2
+    auto seeded = linear_algebra::hadamard(c, g);
+    autogradient::backward(seeded);
+    // dc/dx = g/y, dc/dy = -g*x/y^2
     EXPECT_DOUBLE_EQ(x.grad().get({0}), 1.0);
-    EXPECT_DOUBLE_EQ(x.grad().get({1}), 0.5);
-    EXPECT_DOUBLE_EQ(y.grad().get({0}), -2.0);
-    EXPECT_DOUBLE_EQ(y.grad().get({1}), -1.0);
+    EXPECT_DOUBLE_EQ(x.grad().get({1}), 0.75);
+    EXPECT_DOUBLE_EQ(y.grad().get({0}), -1.0);
+    EXPECT_DOUBLE_EQ(y.grad().get({1}), -0.75);
 }
 
 TEST(AutogradTableTest, Mean2D) {
     TensorD ta({2, 3}); ta.linspace(1.0, 6.0);
     auto a = make_leaf(ta);
     auto m = TensorD::mean(a);
-    autogradient::backward(m);
-    // 1/n with n = 6
+    auto scaled = m * 3.0; // upstream of 3 into mean
+    autogradient::backward(scaled);
+    // 3 * 1/n with n = 6
     for (int r = 0; r < 2; r++)
         for (int c = 0; c < 3; c++)
-            EXPECT_NEAR(a.grad().get({r, c}), 1.0 / 6.0, 1e-12);
+            EXPECT_NEAR(a.grad().get({r, c}), 0.5, 1e-12);
 }
 
 TEST(AutogradTableTest, AccumulateAddsOnlyToLeaves) {
