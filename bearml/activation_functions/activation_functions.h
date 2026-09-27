@@ -31,13 +31,7 @@ namespace bearml {
                 }
 
                 // we override this from Module class
-                T forward(T& x) override{
-                    this->check_device(x);
-                    auto neg_x = -1.0*x;   // named so T::exp can take it by reference
-                    auto exp_node = T::exp(neg_x);
-                    auto sigmoid = 1.0/(1.0 + exp_node);
-                    return sigmoid;
-                }
+                T forward(T& x) override;
 
                 // return nothing a sigmoid layer does not have parameters
                 std::vector<std::shared_ptr<T>> parameters() override{
@@ -60,11 +54,7 @@ namespace bearml {
                     return this->forward(x);
                 }
 
-                T forward(T& x) override{
-                    this->check_device(x);
-                    T softmax_node = T::softmax(x, this->dim);
-                    return softmax_node;
-                }
+                T forward(T& x) override;
 
                 // return nothing a softmax layer does not have parameters
                 std::vector<std::shared_ptr<T>> parameters() override{
@@ -89,12 +79,7 @@ namespace bearml {
                 }
 
                 // we override this from Module class
-                T forward(T& x) override{
-                    this->check_device(x);
-                    std::vector<int> temp_shape = x.getShape();
-                    T temp_zero(temp_shape,this->device);
-                    return T::max(x, temp_zero)+this->negative_slope*T::min(x,temp_zero);
-                }
+                T forward(T& x) override;
 
                 // return nothing a relu layer does not have parameters
                 std::vector<std::shared_ptr<T>> parameters() override{
@@ -117,15 +102,7 @@ namespace bearml {
                 }
 
                 // we override this from Module class
-                T forward(T& x) override{
-                    this->check_device(x);
-
-                    // std::shared_ptr<bearml::Node<Tensor>> exp_minus = exp(-1.0*node_x);
-                    // std::shared_ptr<bearml::Node<Tensor>> exp_plus = exp(node_x);
-
-                    // auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // should work now - hadamard division is supported
-                    return T::tanh(x);
-                }
+                T forward(T& x) override;
 
                 // return nothing a tanh layer does not have parameters
                 std::vector<std::shared_ptr<T>> parameters() override{
@@ -147,20 +124,10 @@ namespace bearml {
                     return this->forward(x);
                 }
 
-                T operation(T& x) {
-                    auto x_cubed = bearml::linear_algebra::hadamard(x,  bearml::linear_algebra::hadamard(x, x)) ;
-                    auto inside_tanh = std::sqrt(2.0/ M_PI) * (x+ 0.044715*x_cubed);   // scalars, not T(2.0) tensors
-                    auto tanh_inside = T::tanh(inside_tanh);
-                    auto one_plus_tanh_x = 1.0 + tanh_inside;
-                    auto res = 0.5 * bearml::linear_algebra::hadamard(x, one_plus_tanh_x);
-                    return res;
-                }
+                T operation(T& x);
 
                 // we override this from Module class
-                T forward(T& x) override{
-                    this->check_device(x);
-                    return operation(x);
-                }
+                T forward(T& x) override;
 
                 // return nothing a GELU layer does not have parameters
                 std::vector<std::shared_ptr<T>> parameters() override{
@@ -183,19 +150,10 @@ namespace bearml {
                     return this->forward(x);
                 }
 
-                T operation(T& x) {
-
-                    auto sigmoid_act = Sigmoid<T>(this->random_seed, this->device);   // same device as this layer
-                    auto sigmoid_output = sigmoid_act(x);
-
-                    return bearml::linear_algebra::hadamard(x, sigmoid_output);
-                }
+                T operation(T& x);
 
                 // we override this from Module class
-                T forward(T& x) override{
-                    this->check_device(x);
-                    return operation(x);
-                }
+                T forward(T& x) override;
 
                 // return nothing a SiLU layer does not have parameters
                 std::vector<std::shared_ptr<T>> parameters() override{
@@ -217,17 +175,10 @@ namespace bearml {
                     return this->forward(x);
                 }
 
-                T operation(T& x) {
-                    auto exp_x = T::exp(x);
-                    auto intermediate = 1.0 + exp_x;
-                    return T::log(intermediate);
-                }
+                T operation(T& x);
 
                 // we override this from Module class
-                T forward(T& x) override{
-                    this->check_device(x);
-                    return operation(x);
-                }
+                T forward(T& x) override;
 
                 // return nothing a SoftPlus layer does not have parameters
                 std::vector<std::shared_ptr<T>> parameters() override{
@@ -239,6 +190,22 @@ namespace bearml {
         // alias for Swish activation function
         template<typename T>
         using Swish = SiLU<T>;
+
+        // bodies live in activation_functions.cpp, instantiated there for Tensorf and TensorD
+        extern template class Sigmoid<bearml::Tensorf>;
+        extern template class Sigmoid<bearml::TensorD>;
+        extern template class Softmax<bearml::Tensorf>;
+        extern template class Softmax<bearml::TensorD>;
+        extern template class LeakyReLU<bearml::Tensorf>;
+        extern template class LeakyReLU<bearml::TensorD>;
+        extern template class Tanh<bearml::Tensorf>;
+        extern template class Tanh<bearml::TensorD>;
+        extern template class GELU<bearml::Tensorf>;
+        extern template class GELU<bearml::TensorD>;
+        extern template class SiLU<bearml::Tensorf>;
+        extern template class SiLU<bearml::TensorD>;
+        extern template class SoftPlus<bearml::Tensorf>;
+        extern template class SoftPlus<bearml::TensorD>;
 
     }
 }
