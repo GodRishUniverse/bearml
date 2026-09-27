@@ -77,7 +77,7 @@ built at `/bearml/build`. From there:
 
 After building, the test driver is available at:
 ```bash
-./runchecks/runchecks    # main testing driver
+./runchecks/test_runner    # main testing driver (run from the build directory)
 ```
 
 Unit tests can be run with:
@@ -98,7 +98,7 @@ element type. It is multi-dimensional, device-aware (CPU/CUDA), and supports bro
 |-----------|------------------|---------------------------------|
 | `TensorD` | `Tensor<double>` | 64-bit float (default / legacy) |
 | `Tensorf` | `Tensor<float>`  | 32-bit float                    |
-| `TensorBF`| `Tensor<std::bfloat_t>`  | 16-bit bfloat16         |
+| `TensorBF`| `Tensor<std::bfloat16_t>`  | 16-bit bfloat16       |
 | `TensorI` | `Tensor<int>`    | 32-bit signed int               |
 
 Use an alias (e.g. `bearml::Tensorf`) or the explicit form `bearml::Tensor<float>`.
@@ -126,15 +126,17 @@ auto g = a * 3.5;
 
 // Shape operations
 a.reshape({6, 4});
-auto t = bearml::Tensorf::transpose(a, 0, 1);
+auto t = a.transpose();                  // swap the last two dims (a view)
 auto flat = a.flatten(0, -1, true);      // flatten dimensions
 a.squeeze(0);                            // remove dimension of size 1
 
 // Reductions
-auto s = a.sum(1, false);               // sum along axis 1
+auto s = a.accumulate(1, bearml::reductions::ReductionOps::SUM, false);  // sum along axis 1
 
 // Comparisons
-auto mask = bearml::linear_algebra::mask_of_greater_than(a, b, 1.0, 0.0);
+auto mask = bearml::linear_algebra::mask_of_greater_than(a, b, 1.0f, 0.0f);
+// any values work, e.g. an attention-style mask:
+auto attn = bearml::linear_algebra::mask_of_greater_than(a, b, 0.0f, -std::numeric_limits<float>::infinity());
 
 // Slicing
 auto sliced = a.slice("1, 1:5:2");       // numpy-style slicing
@@ -165,41 +167,57 @@ t.to_(gpu_dev);              // move to GPU in-place
 auto t_cpu = t.to(cpu_dev);  // create a copy on CPU
 ```
 
-### Autograd (`bearml::Node<T>`)
+### Autograd
 
-Reverse-mode automatic differentiation via a computational graph. `Node<T>` is generic
-over its value type: it works on scalar `double` and on any `Tensor<U>` (e.g. `Tensorf`,
-`TensorD`) — the autograd internals dispatch on the `is_tensor_v` trait rather than a
-hardcoded tensor dtype.
+Reverse-mode automatic differentiation is built into `Tensor`. Mark a tensor with
+`set_requires_grad()`; every op on it records a graph node (op code + attributes) on the
+result, and `backward` walks that graph with a gradient table (`grad_of`). Tensors that are
+not tracked cost nothing extra. Autograd works on floating tensors (`Tensorf`, `TensorD`,
+`TensorBF`); scalars are 1-element tensors.
 
 ```cpp
-// Scalar autodiff
-auto x = bearml::Node<double>::make_node(4.0);
-auto y = bearml::Node<double>::make_node(2.0);
-auto z = x * y + x;     // z = x*y + x
+// Scalar autodiff - a scalar is a 1-element tensor
+bearml::TensorD x({1}); x.fill(4.0); x.set_requires_grad();
+bearml::TensorD y({1}); y.fill(2.0); y.set_requires_grad();
+auto z = bearml::linear_algebra::hadamard(x, y) + x;     // z = x*y + x
 // dz/dx = y + 1 = 3, dz/dy = x = 4
 
 bearml::autogradient::backward(z);
-std::cout << x->grad << std::endl;  // 3.0
-std::cout << y->grad << std::endl;  // 4.0
+std::cout << x.grad() << std::endl;  // 3.0
+std::cout << y.grad() << std::endl;  // 4.0
 
 // Tensor autodiff
 bearml::Tensorf a({2, 3});
 a.linspace(1, 6);
-auto node_a = bearml::Node<bearml::Tensorf>::make_node(a);
-auto result = node_a * node_a;  // element-wise square
+a.set_requires_grad();
+auto result = bearml::linear_algebra::hadamard(a, a);  // element-wise square
 bearml::autogradient::backward(result);
-// node_a->grad now contains 2*a
+// a.grad() now contains 2*a
 ```
+
+| API | What it does |
+|-----|--------------|
+| `t.set_requires_grad(bool = true)` | make `t` a trainable leaf (or stop tracking it) |
+| `t.requires_grad()` / `t.grad()` / `t.zero_grad()` | query, read (throws if untracked) and reset the gradient |
+| `autogradient::backward(root, accumulate = false)` | backprop from `root`; `accumulate = true` adds onto the leaves' existing grads |
+| `autogradient::gradients(root, {&w, &b})` | backprop and return the gradients of the listed tensors |
+| `t.detach()` | same data, no graph - gradients stop here |
+| `t.shared_view()` | same data and same graph node |
+
+Notes: `*` on two tensors is matrix multiplication - use `linear_algebra::hadamard` for
+element-wise products. Copies are deep and untracked; moves keep the node. In-place ops
+(`+=`, `fill`, `to_`, ...) are not recorded and throw on tracked intermediate results.
+Backward is not itself recorded, so higher-order derivatives are not supported yet.
 
 ### Neural Network Modules
 
 PyTorch-style module system with polymorphism.
 
-**Base class:** `bearml::neural_network::Module` (abstract)
-- `forward()` - forward pass (pure virtual)
-- `parameters()` - returns trainable parameters
+**Base class:** `bearml::neural_network::Module<T>` (abstract, `T` defaults to `Tensorf`)
+- `T forward(T& x)` - forward pass (pure virtual); `operator()` calls it
+- `std::vector<std::shared_ptr<T>> parameters()` - the layer's trainable tensors, shared with the optimizer
 - Xavier and He initialization built in
+- the input must be on the layer's device, otherwise `forward` throws
 
 **Available layers:**
 - `Linear(in_features, out_features, init_method, device, seed)` - fully connected layer
@@ -207,18 +225,21 @@ PyTorch-style module system with polymorphism.
 - `Sigmoid()` - sigmoid activation
 - `LeakyReLU(negative_slope)` - leaky ReLU
 - `Tanh()` - hyperbolic tangent
+- `Softmax(dim)`, `GELU()`, `SiLU()` / `Swish`, `SoftPlus()`
+
+Copying a `Linear` gives an independent layer (its own weights and gradients); moving it
+keeps the weights, so an optimizer built on it stays valid.
 
 ```cpp
 bearml::Device dev = bearml::Device::cuda(0);
 
-// Create layers
-bearml::neural_network::Linear fc1(784, 128, "Xavier", dev);
-bearml::neural_network::ReLU relu;
-bearml::neural_network::Linear fc2(128, 10, "He", dev);
+// Create layers - all on the same device as the input
+bearml::neural_network::Linear<> fc1(784, 128, "Xavier", dev);
+bearml::neural_network::ReLU<> relu(42, dev);
+bearml::neural_network::Linear<> fc2(128, 10, "He", dev);
 
 // Forward pass through layers
-auto x = bearml::Node<bearml::Tensorf>::make_node(input);
-auto h = fc1(x);
+auto h = fc1(input);            // input: Tensorf of shape {batch, 784} on dev
 auto h_act = relu(h);
 auto out = fc2(h_act);
 ```
@@ -230,24 +251,23 @@ Base class for defining custom models (analogous to `torch.nn.Module`).
 ```cpp
 class MyModel : public bearml::neural_network::Model_Construct {
 public:
-    bearml::neural_network::Linear layer1;
-    bearml::neural_network::Tanh activation;
-    bearml::neural_network::Linear layer2;
+    bearml::neural_network::Linear<> layer1;
+    bearml::neural_network::Tanh<> activation;
+    bearml::neural_network::Linear<> layer2;
 
     MyModel(int in_size, int out_size, bearml::Device dev = bearml::Device::cpu())
         : layer1(in_size, 64, "Xavier", dev),
           activation(42, dev),
           layer2(64, out_size, "Xavier", dev) {}
 
-    std::shared_ptr<bearml::Node<bearml::Tensorf>> forward(
-            std::vector<bearml::Tensorf> inputs) override {
-        auto x = bearml::Node<bearml::Tensorf>::make_node(inputs[0]);
+    bearml::Tensorf forward(std::vector<bearml::Tensorf> inputs) override {
+        auto& x = inputs[0];
         auto h = layer1(x);
         auto h_act = activation(h);
         return layer2(h_act);
     }
 
-    std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> parameters() override {
+    std::vector<std::shared_ptr<bearml::Tensorf>> parameters() override {
         auto params = layer1.parameters();
         auto l2_params = layer2.parameters();
         params.insert(params.end(), l2_params.begin(), l2_params.end());
@@ -265,10 +285,14 @@ Located in `bearml::neural_network::loss_functions`:
 | `l1_loss(actual, predictions)` | Mean Absolute Error (MAE) |
 | `l2_loss(actual, predictions)` | Mean Squared Error (MSE) |
 | `log_loss(actual, predictions)` | Binary Cross-Entropy (Log Loss) |
+| `bce_loss_with_logits(actual, predictions)` | currently the same as `log_loss` |
+| `cross_entropy_loss(actual, predictions)` | softmax over the last dim, then cross entropy |
+
+Losses take tensors and return a tracked tensor; `actual` is usually untracked.
 
 ```cpp
-auto actual_node = bearml::Node<bearml::Tensorf>::make_node(actual);
-auto loss = bearml::neural_network::loss_functions::l1_loss(actual_node, predictions);
+auto loss = bearml::neural_network::loss_functions::l1_loss(actual, predictions);
+bearml::autogradient::backward(loss);
 ```
 
 ### Optimizers
@@ -289,13 +313,12 @@ for (int epoch = 0; epoch < 100; epoch++) {
     optim.zero_grad();
 
     auto pred = model.forward({input});
-    auto actual_node = bearml::Node<bearml::Tensorf>::make_node(target);
-    auto loss = bearml::neural_network::loss_functions::l2_loss(actual_node, pred);
+    auto loss = bearml::neural_network::loss_functions::l2_loss(target, pred);
 
     bearml::autogradient::backward(loss);
     optim.step();
 
-    std::cout << "Epoch " << epoch << " Loss: " << loss->val << std::endl;
+    std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
 }
 ```
 
@@ -327,25 +350,24 @@ Kernels are dispatched automatically when tensors are on a CUDA device. The host
 
 class Model : public bearml::neural_network::Model_Construct {
 public:
-    bearml::neural_network::Linear layer1;
-    bearml::neural_network::Tanh nonlinearity;
-    bearml::neural_network::Linear layer2;
+    bearml::neural_network::Linear<> layer1;
+    bearml::neural_network::Tanh<> nonlinearity;
+    bearml::neural_network::Linear<> layer2;
 
     Model(int in_shape, int out_shape, bearml::Device dev = bearml::Device::cpu())
         : layer1(in_shape, out_shape, "Xavier", dev),
           nonlinearity(42, dev),
           layer2(out_shape, out_shape, "Xavier", dev) {}
 
-    std::shared_ptr<bearml::Node<bearml::Tensorf>> forward(
-            std::vector<bearml::Tensorf> inputs) override {
-        auto x = bearml::Node<bearml::Tensorf>::make_node(inputs[0]);
+    bearml::Tensorf forward(std::vector<bearml::Tensorf> inputs) override {
+        auto& x = inputs[0];
         auto f1 = layer1(x);
         auto f2 = nonlinearity(f1);
         return layer2(f2);
     }
 
-    std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> parameters() override {
-        std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> params;
+    std::vector<std::shared_ptr<bearml::Tensorf>> parameters() override {
+        std::vector<std::shared_ptr<bearml::Tensorf>> params;
         auto l1 = layer1.parameters();
         params.insert(params.end(), l1.begin(), l1.end());
         auto l2 = layer2.parameters();
@@ -373,13 +395,12 @@ int main() {
         optim.zero_grad();
 
         auto pred = model.forward({input});
-        auto actual_node = bearml::Node<bearml::Tensorf>::make_node(target);
-        auto loss = bearml::neural_network::loss_functions::l1_loss(actual_node, pred);
+        auto loss = bearml::neural_network::loss_functions::l1_loss(target, pred);
 
         bearml::autogradient::backward(loss);
         optim.step();
 
-        std::cout << "Loss: " << loss->val << std::endl;
+        std::cout << "Loss: " << loss << std::endl;
     }
 
     return 0;
@@ -396,9 +417,10 @@ int main() {
 * Multi-dimensional transpose
 * Tensor reductions: sum, product (with CUDA atomicCAS-based atomicMul)
 * Kahan summation for numerical stability
-* Templated `Tensor<T>` class with dtype aliases (`TensorD`, `Tensorf`, `TensorI`)
-* Reverse-mode automatic differentiation, generic over scalar `double` and any `Tensor<T>` (via the `is_tensor_v` trait)
-* Neural network module system: Linear, ReLU, Sigmoid, LeakyReLU, Tanh
+* Templated `Tensor<T>` class with dtype aliases (`TensorD`, `Tensorf`, `TensorBF`, `TensorI`)
+* Reverse-mode automatic differentiation built into `Tensor` (graph nodes as op code + attributes, one gradient table)
+* Template bodies in `.cpp` files with explicit instantiation - editing an op rebuilds one file
+* Neural network module system: Linear, ReLU, Sigmoid, LeakyReLU, Tanh, Softmax, GELU, SiLU, SoftPlus
 * Model construction base class (`Model_Construct`)
 * Loss functions: L1 (MAE), L2 (MSE), Log Loss (BCE)
 * Optimizers: SGD, Adam (AdamW)
@@ -441,7 +463,7 @@ int main() {
     * Device-aware execution: Check device string to call CUDA kernel or standard Matmul.
     * Use CUDA for GEMM and Matmul. **Naive kernel is made**
 * **Vector Operations:** Rectify `Transpose` for vector operations (column vs. row).
-    * Apply corresponding modifications to multiplication in `autogradient.h`.
+    * Apply corresponding modifications to multiplication in `autogradient.cpp`.
 * **Caching:** Implement tensor caching to reduce memory usage.
 * **Convolution:** Implement tensor convolution support.
 
@@ -514,7 +536,7 @@ This repository is open to contributions. Please make an issue before submitting
 
 3. Run the test driver to verify your build:
    ```bash
-   ./runchecks/runchecks
+   ./runchecks/test_runner
    ```
 
 4. Run unit tests:
@@ -534,26 +556,34 @@ This repository is open to contributions. Please make an issue before submitting
 
 **Adding a new layer/activation:**
 
-1. Create your class inheriting from `bearml::neural_network::Module` in `bearml/activation_functions/`.
-2. Implement `forward()`, `parameters()`, `get_detached_value()`, and the `operator()` overloads.
-3. Include it in `bearml/bearml.h` if it should be part of the public API.
+Template bodies live in `.cpp` files and are explicitly instantiated at the bottom of each
+file (`Tensor`/`linalg_utils`: `float`, `double`, `int`, `bfloat16`; layers, losses and
+optimizers: `Tensorf`, `TensorD`). Headers keep declarations plus `extern template` lines.
+When you add a class or function template, add its instantiation lines too, or you get
+link errors.
+
+1. Create your class inheriting from `bearml::neural_network::Module<T>`: declare it in a header in `bearml/activation_functions/`, put the member bodies in the matching `.cpp`.
+2. Implement `T forward(T& x)` (call `this->check_device(x)` first), `T operator()(T& x)` and `std::vector<std::shared_ptr<T>> parameters()`.
+3. Add `template class ...<bearml::Tensorf>;` / `<bearml::TensorD>` in the `.cpp` and matching `extern template` lines in the header.
+4. Include it in `bearml/bearml.h` if it should be part of the public API.
 
 **Adding a new loss function:**
 
-1. Add your function in `bearml/loss_functions/loss.h` following the existing pattern.
-2. It should take `shared_ptr<Node<Tensor>>` arguments and return the same. Use the autodiff operators (`+`, `-`, `*`, `/`, `hadamard`, etc.) so gradients flow through automatically.
+1. Declare it in `bearml/loss_functions/loss.h` and define it in `loss.cpp`, following the existing pattern, with instantiations for `Tensorf` and `TensorD`.
+2. It takes and returns tensors (`T l1_loss(T& actual, T& predictions)`). Build it from tensor ops (`+`, `-`, `/`, `hadamard`, `T::mean`, ...) so gradients flow through automatically.
 
 **Adding a new optimizer:**
 
-1. Inherit from `bearml::neural_network::optimizers::Optimizer` in `bearml/optimizers/optimizers.h`.
+1. Inherit from `bearml::neural_network::optimizers::Optimizer` in `bearml/optimizers/optimizers.h`; hold the parameters as `std::vector<std::shared_ptr<T>>`.
 2. Implement `step()` and `zero_grad()`.
-3. Add the implementation in `optimizers.cpp`.
+3. Add the implementation and its instantiations in `optimizers.cpp`.
 
 **Adding new Tensor operations:**
 
 1. If it's a host-side utility, add it to the appropriate file under `bearml/tensor/utils/`.
 2. If it needs a CUDA kernel, follow the kernel instructions above and add the host dispatch in `cuda_kernels.h/.cpp`.
-3. Add the public method to `Tensor.h` / `Tensor.cpp`.
+3. Declare the method in `Tensor.h` and define it in `Tensor.cpp`.
+4. To make it differentiable: call `out.record_op(OP_Code::..., {&inputs...}, attrs, out)` after computing, add an `OP_Code` in `operators/ops.h`, and add its gradient rule to `grad_of` in `autograd/autogradient.cpp`.
 
 ### Build Configuration
 

@@ -102,7 +102,7 @@ extern __DEVICE_FUNCTIONS_DECL__ __device_builtin__ float rsqrtf(float x);
     * Device-aware execution: Check device string to call CUDA kernel or standard Matmul.
     * Use CUDA for GEMM and Matmul.**Naive kernel is made**
 * **Vector Operations:** Rectify `Transpose` for vector operations (column vs. row).
-    * Apply corresponding modifications to multiplication in `autogradient.h`.
+    * Apply corresponding modifications to multiplication in `autogradient.cpp`.
 * **Padding:** Implement tensor padding support.
 * **Caching:** Implement tensor caching to reduce memory usage.
 * **Convolution:** Implement tensor convolution support.
@@ -218,7 +218,7 @@ Afterwards:
     * Regularization
   
   * Rectify Transpose for vector operations as well -> column transpose or row transpose
-    * Same needs to modified in multiplication in `autogradient.h`
+    * Same needs to modified in multiplication in `autogradient.cpp`
   
   * A dataloading pipeline (with shuffle and batching) -> needs to modular for different data types like (images, csv, etc.)
   
