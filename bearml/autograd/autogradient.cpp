@@ -1,4 +1,5 @@
 #include "autogradient.h"
+#include "operators/ops.h"
 #include "tensor/Tensor.h"
 
 using ll = long long;
@@ -77,106 +78,106 @@ namespace bearml {
 
 
         // will be our function map - PROBLEM - does recomputation
-        // ALSO problem - does not deal with double diff
+        // ALSO problem - does not deal with nth diff - refactoring
         template <typename T>
-        std::vector<T> grad_of(Node<T>& node) {
-            switch (node.op) {
+        std::vector<T> grad_of(OP_Code op, const OpAttributes& attr, const T& grad, const std::vector<T>& inputs, const T& output) {
+            switch (op) {
                 case OP_Code::NO_OP:
                     return {}; // leaf node
                 case OP_Code::OP_ADD:
-                    return {node.grad, node.grad};
+                    return {grad, grad};
                 case OP_Code::OP_SUB:
-                    return {node.grad, node.grad*-1.0};
+                    return {grad, grad*-1.0};
                 case OP_Code::OP_MUL:
                     // scalar-shaped operand - the product is just a scaling
-                    if (is_scalar_shaped(node.inputs[0]->val)) return {bearml::linear_algebra::hadamard(node.grad, node.inputs[1]->val), node.grad*node.inputs[0]->val};
-                    if (is_scalar_shaped(node.inputs[1]->val)) return {node.grad*node.inputs[1]->val, bearml::linear_algebra::hadamard(node.grad, node.inputs[0]->val)};
+                    if (is_scalar_shaped(inputs[0]->val)) return {bearml::linear_algebra::hadamard(grad, inputs[1]->val), grad*inputs[0]->val};
+                    if (is_scalar_shaped(inputs[1]->val)) return {grad*inputs[1]->val, bearml::linear_algebra::hadamard(grad, inputs[0]->val)};
                     // transpose needs a rank >= 2 tensor
-                    if (node.inputs[0]->val.getShape().size() < 2 || node.inputs[1]->val.getShape().size() < 2)
+                    if (inputs[0]->val.getShape().size() < 2 || inputs[1]->val.getShape().size() < 2)
                         throw std::logic_error("Autograd: matmul backward with a 1-D operand is not supported yet");
                     // grad_a = grad * b^T
                     // grad_b = a^T * grad
-                    return {node.grad*node.inputs[1]->val.transpose(), node.inputs[0]->val.transpose()*node.grad};
+                    return {grad*inputs[1]->val.transpose(), inputs[0]->val.transpose()*grad};
                 case OP_Code::OP_DIV:
                     // c = a/b
                     // dc/da = grad * (1/b)
                     // dc/db = grad * (-a/b^2)
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0/node.inputs[1]->val), bearml::linear_algebra::hadamard(node.grad, -1.0 * node.inputs[0]->val / bearml::linear_algebra::hadamard(node.inputs[1]->val, node.inputs[1]->val))};
+                    return {bearml::linear_algebra::hadamard(grad, 1.0/inputs[1]->val), bearml::linear_algebra::hadamard(grad, -1.0 * inputs[0]->val / bearml::linear_algebra::hadamard(inputs[1]->val, inputs[1]->val))};
                 case OP_Code::OP_MAX:
                     // grad_a = grad * (a >= b)
                     // grad_b = grad * (b >= a)
-                    return {bearml::linear_algebra::hadamard(node.grad, bearml::linear_algebra::mask_of_greater_than_equal_to(node.inputs[0]->val,node.inputs[1]->val)), bearml::linear_algebra::hadamard(node.grad,  bearml::linear_algebra::mask_of_greater_than_equal_to(node.inputs[1]->val,node.inputs[0]->val))};
+                    return {bearml::linear_algebra::hadamard(grad, bearml::linear_algebra::mask_of_greater_than_equal_to(inputs[0]->val,inputs[1]->val)), bearml::linear_algebra::hadamard(grad,  bearml::linear_algebra::mask_of_greater_than_equal_to(inputs[1]->val,inputs[0]->val))};
                 case OP_Code::OP_MIN:
                     // grad_a = grad * (a <= b)
                     // grad_b = grad * (b <= a)
-                    return {bearml::linear_algebra::hadamard(node.grad, bearml::linear_algebra::mask_of_less_than_equal_to(node.inputs[0]->val,node.inputs[1]->val)), bearml::linear_algebra::hadamard(node.grad,  bearml::linear_algebra::mask_of_less_than_equal_to(node.inputs[1]->val,node.inputs[0]->val))};
+                    return {bearml::linear_algebra::hadamard(grad, bearml::linear_algebra::mask_of_less_than_equal_to(inputs[0]->val,inputs[1]->val)), bearml::linear_algebra::hadamard(grad,  bearml::linear_algebra::mask_of_less_than_equal_to(inputs[1]->val,inputs[0]->val))};
                 case OP_Code::OP_HADAMARD:
                     // grad_a = grad * b
                     // grad_b = grad * a
-                    return {bearml::linear_algebra::hadamard(node.grad, node.inputs[1]->val), bearml::linear_algebra::hadamard(node.grad, node.inputs[0]->val)};
+                    return {bearml::linear_algebra::hadamard(grad, inputs[1]->val), bearml::linear_algebra::hadamard(grad, inputs[0]->val)};
 
                 // UNARY OPS
 
                 case OP_Code::OP_EXP:
-                    return {bearml::linear_algebra::hadamard(node.grad, node.val)};
+                    return {bearml::linear_algebra::hadamard(grad, output->val)};
                 case OP_Code::OP_SIN:
-                    return {bearml::linear_algebra::hadamard(node.grad, T::cos(node.inputs[0]->val))};
+                    return {bearml::linear_algebra::hadamard(grad, T::cos(inputs[0]->val))};
                 case OP_Code::OP_COS:
-                    return {bearml::linear_algebra::hadamard(node.grad, -1.0 * T::sin(node.inputs[0]->val))};
+                    return {bearml::linear_algebra::hadamard(grad, -1.0 * T::sin(inputs[0]->val))};
                 case OP_Code::OP_TAN:
                     // grad_tan = grad * (1 + tan^2) [Note -> sec^2 = 1 + tan^2]
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0 +  bearml::linear_algebra::hadamard(T::tan(node.inputs[0]->val), T::tan(node.inputs[0]->val)))};
+                    return {bearml::linear_algebra::hadamard(grad, 1.0 +  bearml::linear_algebra::hadamard(T::tan(inputs[0]->val), T::tan(inputs[0]->val)))};
                 case OP_Code::OP_SINH:
-                    return {bearml::linear_algebra::hadamard(node.grad, T::cosh(node.inputs[0]->val))};
+                    return {bearml::linear_algebra::hadamard(grad, T::cosh(inputs[0]->val))};
                 case OP_Code::OP_COSH:
-                    return {bearml::linear_algebra::hadamard(node.grad, T::sinh(node.inputs[0]->val))};
+                    return {bearml::linear_algebra::hadamard(grad, T::sinh(inputs[0]->val))};
                 case OP_Code::OP_TANH:
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0 - bearml::linear_algebra::hadamard(node.val,node.val))};
+                    return {bearml::linear_algebra::hadamard(grad, 1.0 - bearml::linear_algebra::hadamard(output->val,output->val))};
                 case OP_Code::OP_TRANSPOSE:
-                    return {node.grad.transpose()};
+                    return {grad.transpose()};
                 case OP_Code::OP_ABS:
-                    return {bearml::linear_algebra::hadamard(node.grad, bearml::linear_algebra::sign(node.inputs[0]->val))};
+                    return {bearml::linear_algebra::hadamard(grad, bearml::linear_algebra::sign(inputs[0]->val))};
                 case OP_Code::OP_LOG:
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0 / node.inputs[0]->val)};
+                    return {bearml::linear_algebra::hadamard(grad, 1.0 / inputs[0]->val)};
                 case OP_Code::OP_SQRT:
-                    return {bearml::linear_algebra::hadamard(node.grad, 1.0 / (2.0 * T::sqrt(node.inputs[0]->val)))};
+                    return {bearml::linear_algebra::hadamard(grad, 1.0 / (2.0 * T::sqrt(inputs[0]->val)))};
                 case OP_Code::OP_MEAN_FOR_GRAD:
                     // c = mean(a)
                     // c = 1/n * sum(a)
                     // dL/da = dL/dc * dc/da (sum has gradient as 1 so only 1/n remains)
-                    return {compute_grad_for_mean(node, *node.inputs[0])};
+                    return {compute_grad_for_mean(grad, *inputs[0])};
                 case OP_Code::OP_PAD:
-                    return {bearml::neural_network::padding(node.grad, -node.op_attr.pad_amount, node.op_attr.pad_mode)};
+                    return {bearml::neural_network::padding(grad, -attr.pad_amount, attr.pad_mode)};
                 // SCALAR OPS - one tensor input, constant in op_attr
 
                 case OP_Code::OP_ADD_SCALAR:
                     // c is constant so it drops out
-                    return {node.grad};
+                    return {grad};
                 case OP_Code::OP_SUB_SCALAR:
                     // a - c
-                    return {node.grad};
+                    return {grad};
                 case OP_Code::OP_RSUB_SCALAR:
                     // c - a
-                    return {-1.0 * node.grad};
+                    return {-1.0 * grad};
                 case OP_Code::OP_MUL_SCALAR:
-                    return {node.op_attr.constant * node.grad};
+                    return {attr.constant * grad};
                 case OP_Code::OP_DIV_SCALAR:
                     // a / c
-                    return {node.grad / node.op_attr.constant};
+                    return {grad / attr.constant};
                 case OP_Code::OP_RDIV_SCALAR:
                     // c / a  =>  dc/da = -c / a^2
-                    return {bearml::linear_algebra::hadamard(node.grad, -node.op_attr.constant / bearml::linear_algebra::hadamard(node.inputs[0]->val, node.inputs[0]->val))};
+                    return {bearml::linear_algebra::hadamard(grad, -attr.constant / bearml::linear_algebra::hadamard(inputs[0]->val, inputs[0]->val))};
 
                 case OP_Code::OP_SOFTMAX: {
                     // grad_a = y * (grad - sum_dim(grad * y)) where y is the softmax output
-                    T grad_times_output = bearml::linear_algebra::hadamard(node.grad, node.val);
-                    T row_sum = grad_times_output.accumulate(node.op_attr.dim, bearml::reductions::ReductionOps::SUM, true);
-                    return {bearml::linear_algebra::hadamard(node.val, node.grad - row_sum)};
+                    T grad_times_output = bearml::linear_algebra::hadamard(grad, inputs[0]->val);
+                    T row_sum = grad_times_output.accumulate(attr.dim, bearml::reductions::ReductionOps::SUM, true);
+                    return {bearml::linear_algebra::hadamard(output->val, grad - row_sum)};
                 }
                 case OP_Code::OP_SUM: {
                     // every summed element gets grad - broadcast back over the reduced dim
-                    T grad_broadcast(node.inputs[0]->val.getShape(), node.inputs[0]->val.getDevice());
-                    return {grad_broadcast + node.grad};
+                    T grad_broadcast(inputs[0]->val.getShape(), inputs[0]->val.getDevice());
+                    return {grad_broadcast + grad};
                 }
                 default:
                     throw std::invalid_argument("Autograd: OP Code does not exist or not implemented yet!");
