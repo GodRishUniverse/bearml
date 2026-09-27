@@ -67,6 +67,7 @@ namespace bearml {
 
 
         // will be our function map - PROBLEM - does recomputation
+        // ALSO problem - does not deal with double diff
         template <typename T>
         std::vector<T> grad_of(Node<T>& node) {
             switch (node.op) {
@@ -182,7 +183,7 @@ namespace bearml {
         void apply_grad(Node<T>& node) {
             const OP_ARITY arity = op_arity(node.op);
             if (node.inputs.size() != static_cast<size_t>(arity))
-                throw std::logic_error("Autograd: input count does not match op arity");
+                throw std::logic_error("Autograd: input count does not match op arity (Binary op requires 2 inputs, Unary op requires 1 input and so on)");
 
             auto grads = grad_of(node);// pushes n.grad into its inputs
             for (size_t i = 0; i < node.inputs.size(); ++i) {

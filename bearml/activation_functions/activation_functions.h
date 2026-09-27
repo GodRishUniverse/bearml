@@ -26,44 +26,21 @@ namespace bearml {
 
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(T&x) override {
-                    return this->forward(x);
-                }
-
-                std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) override {
+                T operator()(T&x) override {
                     return this->forward(x);
                 }
 
                 // we override this from Module class
-                std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override{
-                    if (x->val.getDevice() != this->device) {
-                        x->val = x->val.to(this->device); // move to device if not already on it
-                    }
-                    std::shared_ptr<bearml::Node<T>> node_x = exp(-1.0*x);
-                    auto sigmoid = 1.0/(1.0 + node_x);
-                    return sigmoid;
-                }
-
-                std::shared_ptr<bearml::Node<T>> forward(T& x) override{
-                    if (x.getDevice() != this->device) {
-                        x = x.to(this->device); // move to device if not already on it
-                    }
-                    std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
-                    auto exp_node = exp(-1.0*node_x);
+                T forward(T& x) override{
+                    this->check_device(x);
+                    auto neg_x = -1.0*x;   // named so T::exp can take it by reference
+                    auto exp_node = T::exp(neg_x);
                     auto sigmoid = 1.0/(1.0 + exp_node);
                     return sigmoid;
                 }
 
-                T get_detached_value(T& t)override {
-                    return this->forward(t)->val;
-                }
-
-                T get_detached_value(std::shared_ptr<bearml::Node<T>> t)override {
-                    return this->forward(t)->val;
-                }
-
                 // return nothing a sigmoid layer does not have parameters
-                std::vector<std::shared_ptr<bearml::Node<T>>> parameters() override{
+                std::vector<T*> parameters() override{
                     return {};
                 }
 
@@ -79,41 +56,18 @@ namespace bearml {
 
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(T&x) override {
+                T operator()(T&x) override {
                     return this->forward(x);
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) override {
-                    return this->forward(x);
-                }
-
-                std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override{
-                    if (x->val.getDevice() != this->device) {
-                        x->val = x->val.to(this->device); // move to device if not already on it
-                    }
-                    std::shared_ptr<bearml::Node<T>> softmax_node = bearml::Node<T>::softmax(x, this->dim);
+                T forward(T& x) override{
+                    this->check_device(x);
+                    T softmax_node = T::softmax(x, this->dim);
                     return softmax_node;
-                }
-
-                std::shared_ptr<bearml::Node<T>> forward(T& x) override{
-                    if (x.getDevice() != this->device) {
-                        x = x.to(this->device); // move to device if not already on it
-                    }
-                    std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
-                    std::shared_ptr<bearml::Node<T>>  softmax_node = bearml::Node<T>::softmax(node_x, this->dim);
-                    return softmax_node;
-                }
-
-                T get_detached_value(T& t)override {
-                    return this->forward(t)->val;
-                }
-
-                T get_detached_value(std::shared_ptr<bearml::Node<T>> t)override {
-                    return this->forward(t)->val;
                 }
 
                 // return nothing a softmax layer does not have parameters
-                std::vector<std::shared_ptr<bearml::Node<T>>> parameters() override{
+                std::vector<T*> parameters() override{
                     return {};
                 }
 
@@ -130,47 +84,20 @@ namespace bearml {
             public:
                 LeakyReLU(double negative_slope = 0.01, int random_seed = 42, Device dev = Device(DeviceType::CPU, 0)) : Module<T>(random_seed, dev), negative_slope(negative_slope) {}
 
-                std::shared_ptr<bearml::Node<T>> operator()(T&x) override {
-                    return this->forward(x);
-                }
-
-                std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) override {
+                T operator()(T&x) override {
                     return this->forward(x);
                 }
 
                 // we override this from Module class
-                std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override{
-                    std::vector<int> temp_shape = x->val.getShape();
-                    T temp_zero(temp_shape, this->device);
-                    std::shared_ptr<bearml::Node<T>> mask_node = bearml::Node<T>::make_node(temp_zero);
-                    return max(x, mask_node)+this->negative_slope*min(x,mask_node);
-                }
-
-                std::shared_ptr<bearml::Node<T>> forward(T& x) override{
+                T forward(T& x) override{
+                    this->check_device(x);
                     std::vector<int> temp_shape = x.getShape();
                     T temp_zero(temp_shape,this->device);
-                    std::shared_ptr<bearml::Node<T>> mask_node = bearml::Node<T>::make_node(temp_zero);
-                    std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
-                    return max(node_x, mask_node)+this->negative_slope*min(node_x,mask_node);
-                }
-
-                T get_detached_value(T& t)override {
-                    std::vector<int> temp_shape = t.getShape();
-                    T temp_zero(temp_shape, this->device);
-                    std::shared_ptr<bearml::Node<T>> mask_node = bearml::Node<T>::make_node(temp_zero);
-                    std::shared_ptr<bearml::Node<T>> node_t = bearml::Node<T>::make_node(t);
-                    return (max(node_t, mask_node)+this->negative_slope*min(node_t,mask_node))->val;
-                }
-
-                T get_detached_value(std::shared_ptr<bearml::Node<T>> t)override {
-                    std::vector<int> temp_shape = t->val.getShape();
-                    T temp_zero(temp_shape, this->device);
-                    std::shared_ptr<bearml::Node<T>> mask_node = bearml::Node<T>::make_node(temp_zero);
-                    return (max(t, mask_node)+this->negative_slope*min(t,mask_node))->val;
+                    return T::max(x, temp_zero)+this->negative_slope*T::min(x,temp_zero);
                 }
 
                 // return nothing a relu layer does not have parameters
-                std::vector<std::shared_ptr<bearml::Node<T>>> parameters() override{
+                std::vector<T*> parameters() override{
                     return {};
                 }
 
@@ -185,46 +112,23 @@ namespace bearml {
 
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(T&x) override {
-                    return this->forward(x);
-                }
-
-                std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) override {
+                T operator()(T&x) override {
                     return this->forward(x);
                 }
 
                 // we override this from Module class
-                std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override{
-                    if (x->val.getDevice() != this->device) {
-                        x->val = x->val.to(this->device); // move to device if not already on it
-                    }
+                T forward(T& x) override{
+                    this->check_device(x);
 
-                    return tanh(x);
-                }
-
-                std::shared_ptr<bearml::Node<T>> forward(T& x) override{
-                    if (x.getDevice() != this->device) {
-                        x = x.to(this->device); // move to device if not already on it
-                    }
-
-                    std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
                     // std::shared_ptr<bearml::Node<Tensor>> exp_minus = exp(-1.0*node_x);
                     // std::shared_ptr<bearml::Node<Tensor>> exp_plus = exp(node_x);
 
                     // auto tanh = (exp_plus - exp_minus)/(exp_plus + exp_minus); // should work now - hadamard division is supported
-                    return tanh(node_x);
-                }
-
-                T get_detached_value(T& t)override {
-                    return this->forward(t)->val;
-                }
-
-                T get_detached_value(std::shared_ptr<bearml::Node<T>> t)override {
-                    return this->forward(t)->val;
+                    return T::tanh(x);
                 }
 
                 // return nothing a tanh layer does not have parameters
-                std::vector<std::shared_ptr<bearml::Node<T>>> parameters() override{
+                std::vector<T*> parameters() override{
                     return {};
                 }
 
@@ -239,49 +143,27 @@ namespace bearml {
 
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(T&x) override {
+                T operator()(T&x) override {
                     return this->forward(x);
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) override {
-                    return this->forward(x);
-                }
-
-                std::shared_ptr<bearml::Node<T>> operation(std::shared_ptr<bearml::Node<T>> x) {
-                    auto x_cubed = bearml::Node<T>::hadamard(x,  bearml::Node<T>::hadamard(x, x)) ;
-                    auto inside_tanh = sqrt(T(2.0)/ T(M_PI)) * (x+ T(0.044715)*x_cubed);
-                    auto one_plus_tanh_x = T(1.0) + tanh(inside_tanh);
-                    auto res = T(0.5) * bearml::Node<T>::hadamard(x, one_plus_tanh_x);
+                T operation(T& x) {
+                    auto x_cubed = bearml::linear_algebra::hadamard(x,  bearml::linear_algebra::hadamard(x, x)) ;
+                    auto inside_tanh = std::sqrt(2.0/ M_PI) * (x+ 0.044715*x_cubed);   // scalars, not T(2.0) tensors
+                    auto tanh_inside = T::tanh(inside_tanh);
+                    auto one_plus_tanh_x = 1.0 + tanh_inside;
+                    auto res = 0.5 * bearml::linear_algebra::hadamard(x, one_plus_tanh_x);
                     return res;
                 }
 
                 // we override this from Module class
-                std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override{
-                    if (x->val.getDevice() != this->device) {
-                        x->val = x->val.to(this->device); // move to device if not already on it
-                    }
+                T forward(T& x) override{
+                    this->check_device(x);
                     return operation(x);
                 }
 
-                std::shared_ptr<bearml::Node<T>> forward(T& x) override{
-                    if (x.getDevice() != this->device) {
-                        x = x.to(this->device); // move to device if not already on it
-                    }
-
-                    std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
-                    return operation(node_x);
-                }
-
-                T get_detached_value(T& t)override {
-                    return this->forward(t)->val;
-                }
-
-                T get_detached_value(std::shared_ptr<bearml::Node<T>> t)override {
-                    return this->forward(t)->val;
-                }
-
                 // return nothing a GELU layer does not have parameters
-                std::vector<std::shared_ptr<bearml::Node<T>>> parameters() override{
+                std::vector<T*> parameters() override{
                     return {};
                 }
 
@@ -297,49 +179,26 @@ namespace bearml {
 
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(T&x) override {
+                T operator()(T&x) override {
                     return this->forward(x);
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) override {
-                    return this->forward(x);
-                }
+                T operation(T& x) {
 
-                std::shared_ptr<bearml::Node<T>> operation(std::shared_ptr<bearml::Node<T>> x) {
-
-                    auto sigmoid_act = Sigmoid<T>();
+                    auto sigmoid_act = Sigmoid<T>(this->random_seed, this->device);   // same device as this layer
                     auto sigmoid_output = sigmoid_act(x);
 
-                    return bearml::Node<T>::hadamard(x, sigmoid_output);
+                    return bearml::linear_algebra::hadamard(x, sigmoid_output);
                 }
 
                 // we override this from Module class
-                std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override{
-                    if (x->val.getDevice() != this->device) {
-                        x->val = x->val.to(this->device); // move to device if not already on it
-                    }
+                T forward(T& x) override{
+                    this->check_device(x);
                     return operation(x);
                 }
 
-                std::shared_ptr<bearml::Node<T>> forward(T& x) override{
-                    if (x.getDevice() != this->device) {
-                        x = x.to(this->device); // move to device if not already on it
-                    }
-
-                    std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
-                    return operation(node_x);
-                }
-
-                T get_detached_value(T& t)override {
-                    return this->forward(t)->val;
-                }
-
-                T get_detached_value(std::shared_ptr<bearml::Node<T>> t)override {
-                    return this->forward(t)->val;
-                }
-
                 // return nothing a SiLU layer does not have parameters
-                std::vector<std::shared_ptr<bearml::Node<T>>> parameters() override{
+                std::vector<T*> parameters() override{
                     return {};
                 }
 
@@ -354,46 +213,24 @@ namespace bearml {
 
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(T&x) override {
+                T operator()(T&x) override {
                     return this->forward(x);
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) override {
-                    return this->forward(x);
-                }
-
-                std::shared_ptr<bearml::Node<T>> operation(std::shared_ptr<bearml::Node<T>> x) {
-                    auto intermediate = T(1.0) + bearml::Node<T>::exp(x);
-                    return bearml::Node<T>::log(intermediate);
+                T operation(T& x) {
+                    auto exp_x = T::exp(x);
+                    auto intermediate = 1.0 + exp_x;
+                    return T::log(intermediate);
                 }
 
                 // we override this from Module class
-                std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override{
-                    if (x->val.getDevice() != this->device) {
-                        x->val = x->val.to(this->device); // move to device if not already on it
-                    }
+                T forward(T& x) override{
+                    this->check_device(x);
                     return operation(x);
                 }
 
-                std::shared_ptr<bearml::Node<T>> forward(T& x) override{
-                    if (x.getDevice() != this->device) {
-                        x = x.to(this->device); // move to device if not already on it
-                    }
-
-                    std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
-                    return operation(node_x);
-                }
-
-                T get_detached_value(T& t)override {
-                    return this->forward(t)->val;
-                }
-
-                T get_detached_value(std::shared_ptr<bearml::Node<T>> t)override {
-                    return this->forward(t)->val;
-                }
-
                 // return nothing a SoftPlus layer does not have parameters
-                std::vector<std::shared_ptr<bearml::Node<T>>> parameters() override{
+                std::vector<T*> parameters() override{
                     return {};
                 }
 

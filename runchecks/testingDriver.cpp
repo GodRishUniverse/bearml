@@ -17,17 +17,17 @@ class Model : public bearml::neural_network::Model_Construct{
 
     }
 
-    std::shared_ptr<bearml::Node<bearml::Tensorf>> forward(std::vector<bearml::Tensorf> inputs) override {
+    bearml::Tensorf forward(std::vector<bearml::Tensorf> inputs) override {
         // assuming only x is passed in
-        auto x = bearml::Node<bearml::Tensorf>::make_node(inputs[0]);
+        auto& x = inputs[0];
 
         auto f1 = this->layer1(x);
         auto f2 = this->nonlinearity(f1);
         return this->layer2(f2);
     }
 
-    std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> parameters() override {
-        std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> params;
+    std::vector<bearml::Tensorf*> parameters() override {
+        std::vector<bearml::Tensorf*> params;
 
         // collect parameters from layer1
         auto l1_params = layer1.parameters();
@@ -276,7 +276,7 @@ int main() {
 
     // so PyTorch uses its custom random number generator for initialization and so our initialization does not match and so for testing this what can be done is we basically get pytorch weights and see if the numbers match
     auto pred = testmodel.forward({tester2});
-    pred->val.to_(dev);
+    // pred is already on dev - to_ on a tracked output would throw
 
     // cout << pred->val << endl;
     // cout << "Pred grad: " << pred->grad << endl;
@@ -290,19 +290,17 @@ int main() {
     // Sample - works gets closer to the ideal values
     for (int i =0;i <10; i++){
         optim.zero_grad();
-        auto ac = bearml::Node<bearml::Tensorf>::make_node(actual);
-
-        auto loss = bearml::neural_network::loss_functions::l1_loss(ac, pred);
+        auto loss = bearml::neural_network::loss_functions::l1_loss(actual, pred);
         bearml::autogradient::backward(loss);
 
         optim.step();
 
-        cout << "Loss value: " << loss->val << endl;
+        cout << "Loss value: " << loss << endl;
 
         pred = testmodel.forward({tester2});
-        cout << "Pred value: " << pred->val << endl;
+        cout << "Pred value: " << pred << endl;
     }
-    cout << "Pred grad: " << pred->grad << endl;
+    cout << "Pred grad: " << pred.grad() << endl;
 
 
 

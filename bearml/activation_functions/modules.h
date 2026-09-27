@@ -26,23 +26,25 @@ namespace bearml {
                 int random_seed = 42;
                 bearml::Device device;
                 Module(int seed, bearml::Device dev) : random_seed(seed), device(dev) {}
+
+                // input and layer must be on the same device - to() is not tracked, so moving here would cut the graph
+                void check_device(const T& x) const {
+                    if (x.getDevice() != this->device) {
+                        throw std::invalid_argument("input tensor and layer are on different devices");
+                    }
+                }
             public:
                 virtual ~Module()  = default; // it is a pure virtual class
 
                 // we will assume at least one input - may change it
-                virtual std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) = 0; // pure virtual function
-                virtual std::shared_ptr<bearml::Node<T>> forward(T& x)  =0; // another virtual representation
+                virtual T forward(T& x)  =0; // pure virtual function
 
-                virtual std::shared_ptr<bearml::Node<T>> operator()(T&x) =0;
-                virtual std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) =0;
-
-                virtual T get_detached_value(T& t) = 0;
-                virtual T get_detached_value(std::shared_ptr<bearml::Node<T>> t) = 0;
+                virtual T operator()(T&x) =0;
 
                 virtual void initialize_parameters() {}
 
                 // get all the parameters here
-                virtual std::vector<std::shared_ptr<bearml::Node<T>>> parameters() = 0;
+                virtual std::vector<T*> parameters() = 0;
 
                 // TODO: test this
                 static void xavier_init(T& t, int input_size, int output_size, int seed) {
@@ -119,59 +121,61 @@ namespace bearml {
         // inherits operations and also gets structure from Module class
         template <typename T = bearml::Tensorf>
         class Linear : public Module<T>{
+                static_assert(bearml::is_floating(bearml::dtype_of<bearml::tensor_element_t<T>>),
+                    "Linear parameters must be float, double, or bfloat16 tensors");
             private:
-                std::shared_ptr<bearml::Node<T>> W;  // Weight matrix as a node for autogradient
-                std::shared_ptr<bearml::Node<T>> B;  // Bias vector as a node for autogradient
+                T W;  // Weight matrix as a node for autogradient
+                T B;  // Bias vector as a node for autogradient
                 int input_size;
                 int output_size;
                 std::string initialization_method;
             public:
-                Linear(int in_shape, int out_shape, std::string initialization = "Xavier", Device dev = Device(DeviceType::CPU, 0), int random_seed =42) : Module<T>(random_seed, dev), input_size(in_shape), output_size(out_shape), initialization_method(initialization){
-                    // Initialize on CPU first  so that we dont get GPU direct access errors - then transfer to the target device
-                    T weight_tensor({input_size, output_size});
-                    T bias_tensor({ output_size});
-
-                    W = bearml::Node<T>::make_node(weight_tensor);
-                    B = bearml::Node<T>::make_node(bias_tensor);
-
+                // Initialize on CPU first  so that we dont get GPU direct access errors - then transfer to the target device
+                Linear(int in_shape, int out_shape, std::string initialization = "Xavier", Device dev = Device(DeviceType::CPU, 0), int random_seed =42) : Module<T>(random_seed, dev), W({in_shape, out_shape}), B({out_shape}), input_size(in_shape), output_size(out_shape), initialization_method(initialization){
                     initialize_parameters();
 
                     if (!dev.is_cpu()) {
-                        W->val.to_(dev);
-                        B->val.to_(dev);
+                        W.to_(dev);
+                        B.to_(dev);
                     }
+
+                    // tracked only after the values and device are final
+                    W.set_requires_grad();
+                    B.set_requires_grad();
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(T&x) override {
-                    return this->forward(x);
+                // a copy is a new layer - W/B are deep copies made fresh leaves, tracked only if the source was
+                Linear(const Linear& other) : Module<T>(other), W(other.W), B(other.B), input_size(other.input_size), output_size(other.output_size), initialization_method(other.initialization_method){
+                    W.set_requires_grad(other.W.requires_grad());
+                    B.set_requires_grad(other.B.requires_grad());
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) override {
+                Linear& operator=(const Linear& other){
+                    if (this != &other) {
+                        Module<T>::operator=(other);
+                        W = other.W;
+                        B = other.B;
+                        input_size = other.input_size;
+                        output_size = other.output_size;
+                        initialization_method = other.initialization_method;
+                        W.set_requires_grad(other.W.requires_grad());
+                        B.set_requires_grad(other.B.requires_grad());
+                    }
+                    return *this;
+                }
+
+                // no moves - a move would dangle the optimizer's pointers to W/B
+                Linear(Linear&&) = delete;
+                Linear& operator=(Linear&&) = delete;
+
+                T operator()(T&x) override {
                     return this->forward(x);
                 }
 
                 // we override this from Module class
-                std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override{
-                    return x * W + B;
-                }
-
-                std::shared_ptr<bearml::Node<T>> forward(T& x) override{
-                    std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
-                    return node_x * W + B; // convert input shape to output shape
-                }
-
-                T get_detached_value(T& t)override {
-                    // t.printShape();
-                    // W->val.printShape();
-                    // B->val.printShape();
-                    return (t*W->val + B->val);
-                }
-
-                T get_detached_value(std::shared_ptr<bearml::Node<T>> t)override {
-                    // t.printShape();
-                    // W->val.printShape();
-                    // B->val.printShape();
-                    return (t->val*W->val + B->val);
+                T forward(T& x) override{
+                    this->check_device(x);
+                    return x * W + B; // convert input shape to output shape
                 }
 
                 // we will perform Xavier Init here
@@ -181,9 +185,9 @@ namespace bearml {
                         // default behaviour
                     }
                     else if (this->initialization_method == "Xavier"){
-                        this->xavier_init(W->val, input_size, output_size, this->random_seed);
+                        this->xavier_init(W, input_size, output_size, this->random_seed);
                     } else if (this->initialization_method == "He"){
-                        this->he_init(W->val, input_size, this->random_seed);
+                        this->he_init(W, input_size, this->random_seed);
                     } else {
                         throw std::invalid_argument("Invalid initialization method");
                     }
@@ -191,14 +195,14 @@ namespace bearml {
                 };
 
                 // Helpers
-                T get_weights() const { return W->val; }
-                T get_bias() const { return B->val; }
+                T get_weights() const { return W; }
+                T get_bias() const { return B; }
 
                 int get_in_shape() const { return input_size; }
                 int get_out_shape() const { return output_size; }
 
-                std::vector<std::shared_ptr<bearml::Node<T>>> parameters() override{
-                    return {W,B};
+                std::vector<T*> parameters() override{
+                    return {&W, &B};
                 }
 
         };
@@ -210,47 +214,20 @@ namespace bearml {
 
                 }
 
-                std::shared_ptr<bearml::Node<T>> operator()(T&x) override {
-                    return this->forward(x);
-                }
-
-                std::shared_ptr<bearml::Node<T>> operator()(std::shared_ptr<bearml::Node<T>> x) override {
+                T operator()(T&x) override {
                     return this->forward(x);
                 }
 
                 // we override this from Module class
-                std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override{
-                    std::vector<int> temp_shape = x->val.getShape();
-                    T temp_zero(temp_shape, this->device);
-                    std::shared_ptr<bearml::Node<T>> mask_node = bearml::Node<T>::make_node(temp_zero);
-                    return max(x, mask_node);
-                }
-
-                std::shared_ptr<bearml::Node<T>> forward(T& x) override{
+                T forward(T& x) override{
+                    this->check_device(x);
                     std::vector<int> temp_shape = x.getShape();
                     T temp_zero(temp_shape,this->device);
-                    std::shared_ptr<bearml::Node<T>> mask_node = bearml::Node<T>::make_node(temp_zero);
-                    std::shared_ptr<bearml::Node<T>> node_x = bearml::Node<T>::make_node(x);
-                    return max(node_x, mask_node);
-                }
-
-                T get_detached_value(T& t)override {
-                    std::vector<int> temp_shape = t.getShape();
-                    T temp_zero(temp_shape, this->device);
-                    std::shared_ptr<bearml::Node<T>> mask_node = bearml::Node<T>::make_node(temp_zero);
-                    std::shared_ptr<bearml::Node<T>> node_t = bearml::Node<T>::make_node(t);
-                    return (max(node_t, mask_node))->val;
-                }
-
-                T get_detached_value(std::shared_ptr<bearml::Node<T>> t)override {
-                    std::vector<int> temp_shape = t->val.getShape();
-                    T temp_zero(temp_shape, this->device);
-                    std::shared_ptr<bearml::Node<T>> mask_node = bearml::Node<T>::make_node(temp_zero);
-                    return (max(t, mask_node))->val;
+                    return T::max(x, temp_zero);
                 }
 
                 // return nothing a relu layer does not have parameters
-                std::vector<std::shared_ptr<bearml::Node<T>>> parameters() override{
+                std::vector<T*> parameters() override{
                     return {};
                 }
 

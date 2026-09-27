@@ -24,11 +24,11 @@ namespace bearml{
                 virtual ~Model_Construct()  = default; // it is a pure virtual class
 
                 // we will be passing by value here as we are not sure what the user passes in
-                virtual std::shared_ptr<bearml::Node<bearml::Tensorf>> forward(std::vector<bearml::Tensorf> inputs) = 0; // pure virtual function
+                virtual bearml::Tensorf forward(std::vector<bearml::Tensorf> inputs) = 0; // pure virtual function
 
                 // get the parameters of the model class
                 // pointers ensure that when they are updated the same memory block is updated and there are no duplicates
-                virtual std::vector<std::shared_ptr<bearml::Node<bearml::Tensorf>>> parameters() = 0;
+                virtual std::vector<bearml::Tensorf*> parameters() = 0;
 
         };
     }

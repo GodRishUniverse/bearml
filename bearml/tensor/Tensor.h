@@ -767,7 +767,7 @@ namespace bearml{
             Tensor detach() const { Tensor v = makeStrideView(*this); v.graph_node = nullptr; return v; }
 
             // shares storage and the graph node
-            Tensor alias() const { Tensor v = makeStrideView(*this); v.graph_node = graph_node; return v; }
+            Tensor shared_view() const { Tensor v = makeStrideView(*this); v.graph_node = graph_node; return v; }
 
 
             // constructor when size and data are provided -> copies on same device as I want to ensure the programmer has explicit knowledge of where the tensor is and should use .to before doing "cross-devices" copies

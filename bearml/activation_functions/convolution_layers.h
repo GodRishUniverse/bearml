@@ -76,8 +76,18 @@ namespace bearml {
 
             }
 
-            std::shared_ptr<bearml::Node<T>> forward(std::shared_ptr<bearml::Node<T>> x) override {
+            T forward(T& x) override {
+                this->check_device(x);
                 // implement im2col and then use GEMM - rather than using FFT
+                throw std::logic_error("Conv2D::forward is not implemented yet");
+            }
+
+            T operator()(T& x) override {
+                return this->forward(x);
+            }
+
+            std::vector<T*> parameters() override {
+                return {};
             }
         };
 
