@@ -40,7 +40,7 @@ namespace bearml {
                 }
 
                 // return nothing a sigmoid layer does not have parameters
-                std::vector<T*> parameters() override{
+                std::vector<std::shared_ptr<T>> parameters() override{
                     return {};
                 }
 
@@ -67,7 +67,7 @@ namespace bearml {
                 }
 
                 // return nothing a softmax layer does not have parameters
-                std::vector<T*> parameters() override{
+                std::vector<std::shared_ptr<T>> parameters() override{
                     return {};
                 }
 
@@ -97,7 +97,7 @@ namespace bearml {
                 }
 
                 // return nothing a relu layer does not have parameters
-                std::vector<T*> parameters() override{
+                std::vector<std::shared_ptr<T>> parameters() override{
                     return {};
                 }
 
@@ -128,7 +128,7 @@ namespace bearml {
                 }
 
                 // return nothing a tanh layer does not have parameters
-                std::vector<T*> parameters() override{
+                std::vector<std::shared_ptr<T>> parameters() override{
                     return {};
                 }
 
@@ -163,7 +163,7 @@ namespace bearml {
                 }
 
                 // return nothing a GELU layer does not have parameters
-                std::vector<T*> parameters() override{
+                std::vector<std::shared_ptr<T>> parameters() override{
                     return {};
                 }
 
@@ -198,7 +198,7 @@ namespace bearml {
                 }
 
                 // return nothing a SiLU layer does not have parameters
-                std::vector<T*> parameters() override{
+                std::vector<std::shared_ptr<T>> parameters() override{
                     return {};
                 }
 
@@ -230,7 +230,7 @@ namespace bearml {
                 }
 
                 // return nothing a SoftPlus layer does not have parameters
-                std::vector<T*> parameters() override{
+                std::vector<std::shared_ptr<T>> parameters() override{
                     return {};
                 }
 

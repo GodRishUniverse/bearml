@@ -5,6 +5,16 @@ using ll = long long;
 namespace bearml {
     namespace autogradient{
 
+        // A better way to get the n-th derivative is to:
+        // grads[root] = seed
+        // for node in topo_order:
+        //     g = grads[node]                       // tracked if create_graph
+        //     in_alias  = tracked aliases of node->inputs
+        //     out_alias = tracked alias of node
+        //     contribs  = grad_of(node->op, node->op_attr, g, in_alias, out_alias)
+        //     for i: if input i needs grad: grads[input_i] = grads[input_i] + sum_to_size(contribs[i], shape)
+        // return grads[wrt...]
+
        // no named namespace as we do not want topological sort to be called outside
        namespace{
           template <typename T>
@@ -176,7 +186,7 @@ namespace bearml {
         template<typename T>
         void accumulate_grad(T& target_grad, const T& grad_contribution, const T& target_val) {
             auto target_grad_shape = target_val.getShape();
-            target_grad += bearml::linear_algebra::reduce(grad_contribution, target_grad_shape, reduction_op);
+            target_grad = target_grad +  bearml::linear_algebra::reduce(grad_contribution, target_grad_shape, reduction_op);
         }
 
         template<typename T>

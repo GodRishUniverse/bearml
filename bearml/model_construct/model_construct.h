@@ -28,7 +28,7 @@ namespace bearml{
 
                 // get the parameters of the model class
                 // pointers ensure that when they are updated the same memory block is updated and there are no duplicates
-                virtual std::vector<bearml::Tensorf*> parameters() = 0;
+                virtual std::vector<std::shared_ptr<bearml::Tensorf>> parameters() = 0;
 
         };
     }

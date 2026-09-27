@@ -44,7 +44,7 @@ namespace bearml {
                 virtual void initialize_parameters() {}
 
                 // get all the parameters here
-                virtual std::vector<T*> parameters() = 0;
+                virtual std::vector<std::shared_ptr<T>> parameters() = 0;
 
                 // TODO: test this
                 static void xavier_init(T& t, int input_size, int output_size, int seed) {
@@ -124,49 +124,50 @@ namespace bearml {
                 static_assert(bearml::is_floating(bearml::dtype_of<bearml::tensor_element_t<T>>),
                     "Linear parameters must be float, double, or bfloat16 tensors");
             private:
-                T W;  // Weight matrix as a node for autogradient
-                T B;  // Bias vector as a node for autogradient
+                std::shared_ptr<T> W;  // Weight matrix as a node for autogradient
+                std::shared_ptr<T> B;  // Bias vector as a node for autogradient
                 int input_size;
                 int output_size;
                 std::string initialization_method;
             public:
                 // Initialize on CPU first  so that we dont get GPU direct access errors - then transfer to the target device
-                Linear(int in_shape, int out_shape, std::string initialization = "Xavier", Device dev = Device(DeviceType::CPU, 0), int random_seed =42) : Module<T>(random_seed, dev), W({in_shape, out_shape}), B({out_shape}), input_size(in_shape), output_size(out_shape), initialization_method(initialization){
+                Linear(int in_shape, int out_shape, std::string initialization = "Xavier", Device dev = Device(DeviceType::CPU, 0), int random_seed =42) : Module<T>(random_seed, dev), W(std::make_shared<T>(std::vector<int>{in_shape, out_shape})), B(std::make_shared<T>(std::vector<int>{out_shape})), input_size(in_shape), output_size(out_shape), initialization_method(initialization){
                     initialize_parameters();
 
                     if (!dev.is_cpu()) {
-                        W.to_(dev);
-                        B.to_(dev);
+                        W->to_(dev);
+                        B->to_(dev);
                     }
 
                     // tracked only after the values and device are final
-                    W.set_requires_grad();
-                    B.set_requires_grad();
+                    W->set_requires_grad();
+                    B->set_requires_grad();
                 }
 
-                // a copy is a new layer - W/B are deep copies made fresh leaves, tracked only if the source was
-                Linear(const Linear& other) : Module<T>(other), W(other.W), B(other.B), input_size(other.input_size), output_size(other.output_size), initialization_method(other.initialization_method){
-                    W.set_requires_grad(other.W.requires_grad());
-                    B.set_requires_grad(other.B.requires_grad());
+                // a copy is a new layer - W/B are new deep copies made fresh leaves, tracked only if the source was
+                Linear(const Linear& other) : Module<T>(other), W(std::make_shared<T>(*other.W)), B(std::make_shared<T>(*other.B)), input_size(other.input_size), output_size(other.output_size), initialization_method(other.initialization_method){
+                    W->set_requires_grad(other.W->requires_grad());
+                    B->set_requires_grad(other.B->requires_grad());
                 }
 
+                // copies the values into this layer's own W/B, so an optimizer holding them sees the new weights
                 Linear& operator=(const Linear& other){
                     if (this != &other) {
                         Module<T>::operator=(other);
-                        W = other.W;
-                        B = other.B;
+                        *W = *other.W;
+                        *B = *other.B;
                         input_size = other.input_size;
                         output_size = other.output_size;
                         initialization_method = other.initialization_method;
-                        W.set_requires_grad(other.W.requires_grad());
-                        B.set_requires_grad(other.B.requires_grad());
+                        W->set_requires_grad(other.W->requires_grad());
+                        B->set_requires_grad(other.B->requires_grad());
                     }
                     return *this;
                 }
 
-                // no moves - a move would dangle the optimizer's pointers to W/B
-                Linear(Linear&&) = delete;
-                Linear& operator=(Linear&&) = delete;
+                // moves hand over the shared W/B - optimizers holding them stay valid
+                Linear(Linear&&) = default;
+                Linear& operator=(Linear&&) = default;
 
                 T operator()(T&x) override {
                     return this->forward(x);
@@ -175,7 +176,7 @@ namespace bearml {
                 // we override this from Module class
                 T forward(T& x) override{
                     this->check_device(x);
-                    return x * W + B; // convert input shape to output shape
+                    return x * (*W) + (*B); // convert input shape to output shape
                 }
 
                 // we will perform Xavier Init here
@@ -185,9 +186,9 @@ namespace bearml {
                         // default behaviour
                     }
                     else if (this->initialization_method == "Xavier"){
-                        this->xavier_init(W, input_size, output_size, this->random_seed);
+                        this->xavier_init(*W, input_size, output_size, this->random_seed);
                     } else if (this->initialization_method == "He"){
-                        this->he_init(W, input_size, this->random_seed);
+                        this->he_init(*W, input_size, this->random_seed);
                     } else {
                         throw std::invalid_argument("Invalid initialization method");
                     }
@@ -195,14 +196,14 @@ namespace bearml {
                 };
 
                 // Helpers
-                T get_weights() const { return W; }
-                T get_bias() const { return B; }
+                T get_weights() const { return *W; }
+                T get_bias() const { return *B; }
 
                 int get_in_shape() const { return input_size; }
                 int get_out_shape() const { return output_size; }
 
-                std::vector<T*> parameters() override{
-                    return {&W, &B};
+                std::vector<std::shared_ptr<T>> parameters() override{
+                    return {W, B};
                 }
 
         };
@@ -227,7 +228,7 @@ namespace bearml {
                 }
 
                 // return nothing a relu layer does not have parameters
-                std::vector<T*> parameters() override{
+                std::vector<std::shared_ptr<T>> parameters() override{
                     return {};
                 }
 

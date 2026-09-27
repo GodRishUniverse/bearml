@@ -26,8 +26,8 @@ class Model : public bearml::neural_network::Model_Construct{
         return this->layer2(f2);
     }
 
-    std::vector<bearml::Tensorf*> parameters() override {
-        std::vector<bearml::Tensorf*> params;
+    std::vector<std::shared_ptr<bearml::Tensorf>> parameters() override {
+        std::vector<std::shared_ptr<bearml::Tensorf>> params;
 
         // collect parameters from layer1
         auto l1_params = layer1.parameters();

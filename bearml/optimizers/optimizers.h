@@ -29,10 +29,10 @@ namespace bearml {
                     static_assert(bearml::is_floating(bearml::dtype_of<bearml::tensor_element_t<T>>),
                         "SGD parameters must be float, double, or bfloat16 tensors");
                 private:
-                    std::vector<T*> params;
+                    std::vector<std::shared_ptr<T>> params;
                     double learning_rate;
                 public:
-                    SGD(std::vector<T*> params, double learning_rate= 0.0001);
+                    SGD(std::vector<std::shared_ptr<T>> params, double learning_rate= 0.0001);
                     void step() override;
                     void zero_grad() override;
             };
@@ -46,7 +46,7 @@ namespace bearml {
                     static_assert(bearml::is_floating(bearml::dtype_of<bearml::tensor_element_t<T>>),
                         "Adam parameters must be float, double, or bfloat16 tensors");
                 private:
-                    std::vector<T*> params;
+                    std::vector<std::shared_ptr<T>> params;
                     std::vector<T> m; // momentum
                     double learning_rate;
                     std::vector<T> v; // rms_prop
@@ -57,27 +57,27 @@ namespace bearml {
                     int64_t step_count;
 
                 public:
-                    Adam(std::vector<T*> params, double learning_rate= 0.0001, double beta1 = 0.9, double beta2 = 0.999, double eps = 1e-8);
+                    Adam(std::vector<std::shared_ptr<T>> params, double learning_rate= 0.0001, double beta1 = 0.9, double beta2 = 0.999, double eps = 1e-8);
                     void step() override;
                     void zero_grad() override;
             };
 
             // ---- SGD definitions (header-only: template members must be visible at instantiation) ----
             template<typename T>
-            SGD<T>::SGD(std::vector<T*> params, double learning_rate)
+            SGD<T>::SGD(std::vector<std::shared_ptr<T>> params, double learning_rate)
                 : params(params), learning_rate(learning_rate) {}
 
             // Use this after doing backward pass on the computational graph
             template<typename T>
             void SGD<T>::step(){
-                for (T* p : this->params){   // pointers - a copy of a tensor is deep and untracked
+                for (auto& p : this->params){   // shared pointers - a copy of a tensor is deep and untracked
                     *p -= learning_rate*p->grad();
                 }
             }
 
             template<typename T>
             void SGD<T>::zero_grad(){
-                for (T* p : this->params){
+                for (auto& p : this->params){
                     p->zero_grad();
                 }
             }
@@ -85,9 +85,9 @@ namespace bearml {
             // ---- Adam definitions ----
             // src - https://builtin.com/machine-learning/adam-optimization
             template<typename T>
-            Adam<T>::Adam(std::vector<T*> params, double learning_rate, double beta1, double beta2, double eps)
+            Adam<T>::Adam(std::vector<std::shared_ptr<T>> params, double learning_rate, double beta1, double beta2, double eps)
                 : params(params), learning_rate(learning_rate), beta1(beta1), beta2(beta2), eps(eps), step_count(1){
-                for (T* p : params) {
+                for (auto& p : params) {
                     m.push_back(T(p->getShape(), p->getDevice())); // zeros, same shape and device as param
                     v.push_back(T(p->getShape(), p->getDevice()));
                 }
@@ -96,7 +96,7 @@ namespace bearml {
             template<typename T>
             void Adam<T>::step(){
                 for (size_t i = 0; i < params.size(); i++) {
-                    T* p = params[i];
+                    auto& p = params[i];
                     m[i] = beta1 * m[i] + (1 - beta1) * p->grad(); // scalar multiplication
                     v[i] = beta2 * v[i] + (1 - beta2) * bearml::linear_algebra::hadamard(p->grad(), p->grad()); // element-wise square
 
@@ -111,7 +111,7 @@ namespace bearml {
 
             template<typename T>
             void Adam<T>::zero_grad(){
-                for (T* p : this->params){
+                for (auto& p : this->params){
                     p->zero_grad();
                 }
             }

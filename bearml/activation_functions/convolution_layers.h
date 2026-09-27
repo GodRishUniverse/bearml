@@ -86,7 +86,7 @@ namespace bearml {
                 return this->forward(x);
             }
 
-            std::vector<T*> parameters() override {
+            std::vector<std::shared_ptr<T>> parameters() override {
                 return {};
             }
         };
