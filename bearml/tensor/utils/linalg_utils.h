@@ -61,5 +61,4 @@ namespace bearml {
     }
 }
 
-// Template definitions live in the .tpp; it is included at the bottom of
-// tensor/Tensor.h (after Tensor<T> is a complete type) to break the include cycle.
+// definitions live in linalg_utils.cpp, instantiated there for float, double, int and bfloat16

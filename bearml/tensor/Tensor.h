@@ -864,7 +864,4 @@ namespace bearml{
 
 }
 
-// linear_algebra friend templates - definitions included here so they are visible
-// for instantiation, now that Tensor<T> is a complete type (breaks the include cycle).
-#include "utils/linalg_utils.tpp"
 #endif
