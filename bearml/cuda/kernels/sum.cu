@@ -7,8 +7,24 @@ namespace bearml {
 
         template<typename T>
         __global__ void sum_kernel(const T* d_data, T* result, int64_t size) {
-            for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x;  idx < size; idx += blockDim.x * gridDim.x) {
-                atomicAdd(result, static_cast<T>(d_data[idx]));
+            __shared__ T memo[THREAD_COUNT];
+
+            size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+            if (idx < size) {
+                memo[threadIdx.x] = static_cast<T>(d_data[idx]);
+            }
+            __syncthreads();
+
+            // use strides
+            for (int stride = THREAD_COUNT / 2; stride > 0; stride /= 2) {
+                if (threadIdx.x < stride) {
+                    memo[threadIdx.x] += memo[threadIdx.x + stride];
+                }
+                __syncthreads();
+            }
+
+            if (threadIdx.x == 0) {
+                atomicAdd(result, memo[0]);
             }
         }
 

@@ -690,20 +690,20 @@ namespace bearml{
             static Tensor exp(Tensor& t);
 
             //----------------------------------------Sin------------------------------------------------------
-            static Tensor sin(Tensor& t);
+            static Tensor sin(const Tensor& t);
 
             //----------------------------------------Cos------------------------------------------------------
-            static Tensor cos(Tensor& t);
+            static Tensor cos(const Tensor& t);
 
             //----------------------------------------Tan------------------------------------------------------
-            static Tensor tan(Tensor& t);
+            static Tensor tan(const Tensor& t);
 
             //----------------------------------------Hyperbolic------------------------------------------------------
-            static Tensor sinh(Tensor& t);
+            static Tensor sinh(const Tensor& t);
 
-            static Tensor cosh(Tensor& t);
+            static Tensor cosh(const Tensor& t);
 
-            static Tensor tanh(Tensor& t);
+            static Tensor tanh(const Tensor& t);
 
 
 
@@ -776,7 +776,7 @@ namespace bearml{
             // Returns an O(1) non-owning view that transposes the last two dims.
             // No data is moved; call .contiguous() before feeding into a
             // row-major-only kernel (GEMM, element_wise_contiguous, etc.).
-            Tensor transpose();
+            Tensor transpose() const;
 
 
 

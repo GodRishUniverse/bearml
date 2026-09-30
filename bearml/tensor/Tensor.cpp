@@ -1216,7 +1216,7 @@ namespace bearml {
     }
 
     template <typename T>
-    Tensor<T> Tensor<T>::sin(Tensor& t){
+    Tensor<T> Tensor<T>::sin(const Tensor& t){
         // std::cout <<"SIN" <<std::endl;
         Tensor out = elementwise_unary(t, OP_Code::OP_SIN);
         out.record_op(OP_Code::OP_SIN, {&t}, {}, out);
@@ -1224,7 +1224,7 @@ namespace bearml {
     }
 
     template <typename T>
-    Tensor<T> Tensor<T>::cos(Tensor& t){
+    Tensor<T> Tensor<T>::cos(const Tensor& t){
         // std::cout <<"COS" <<std::endl;
         Tensor out = elementwise_unary(t, OP_Code::OP_COS);
         out.record_op(OP_Code::OP_COS, {&t}, {}, out);
@@ -1232,7 +1232,7 @@ namespace bearml {
     }
 
     template <typename T>
-    Tensor<T> Tensor<T>::tan(Tensor& t){
+    Tensor<T> Tensor<T>::tan(const Tensor& t){
         // std::cout <<"TAN" <<std::endl;
         Tensor out = elementwise_unary(t, OP_Code::OP_TAN);
         out.record_op(OP_Code::OP_TAN, {&t}, {}, out);
@@ -1240,7 +1240,7 @@ namespace bearml {
     }
 
     template <typename T>
-    Tensor<T> Tensor<T>::sinh(Tensor& t){
+    Tensor<T> Tensor<T>::sinh(const Tensor& t){
         // std::cout <<"SINH" <<std::endl;
         Tensor out = elementwise_unary(t, OP_Code::OP_SINH);
         out.record_op(OP_Code::OP_SINH, {&t}, {}, out);
@@ -1248,7 +1248,7 @@ namespace bearml {
     }
 
     template <typename T>
-    Tensor<T> Tensor<T>::cosh(Tensor& t){
+    Tensor<T> Tensor<T>::cosh(const Tensor& t){
         // std::cout <<"COSH" <<std::endl;
         Tensor out = elementwise_unary(t, OP_Code::OP_COSH);
         out.record_op(OP_Code::OP_COSH, {&t}, {}, out);
@@ -1256,7 +1256,7 @@ namespace bearml {
     }
 
     template <typename T>
-    Tensor<T> Tensor<T>::tanh(Tensor& t){
+    Tensor<T> Tensor<T>::tanh(const Tensor& t){
         // std::cout <<"TANH" <<std::endl;
         Tensor out = elementwise_unary(t, OP_Code::OP_TANH);
         out.record_op(OP_Code::OP_TANH, {&t}, {}, out);
@@ -1517,7 +1517,7 @@ namespace bearml {
     }
 
     template <typename T>
-    Tensor<T> Tensor<T>::transpose(){
+    Tensor<T> Tensor<T>::transpose() const{
         Tensor v = transpose_view();
         v.record_op(OP_Code::OP_TRANSPOSE, {this}, {}, v);
         return v;

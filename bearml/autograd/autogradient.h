@@ -99,10 +99,10 @@ namespace bearml{
         };
 
         template <typename T>
-        T compute_grad_for_mean(Node<T>& node, Node<T>& node_input);
+        T compute_grad_for_mean(const T& grad, const T& input);
 
         template <typename T>
-        std::vector<T> grad_of(Node<T>& node);
+        std::vector<T> grad_of(OP_Code op, const OpAttributes& attr, const T& grad, const std::vector<T>& inputs, const T& output);
 
         template<typename T>
         void accumulate_grad(T& target_grad, const T& grad_contribution, const T& target_val);
