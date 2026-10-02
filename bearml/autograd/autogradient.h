@@ -117,6 +117,9 @@ namespace bearml{
         // runs backward from root and returns the gradients of wrt, in order
         template <typename E>
         std::vector<Tensor<E>> gradients(const Tensor<E>& root, std::initializer_list<const Tensor<E>*> wrt);
+
+        template <typename E>
+        std::vector<Tensor<E>> derivate(const Tensor<E>& root, int n);
     }
 
    // NOTE: Check if  we need to ->  add double and Tensor operator overloads to unblock the loss functions like log loss - by implementing operator overloads

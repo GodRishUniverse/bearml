@@ -6,26 +6,6 @@ using ll = long long;
 namespace bearml {
     namespace autogradient{
 
-        // A better way to get the n-th derivative is to:
-        // grads[root] = seed
-        // for node in topo_order:
-        //     g = grads[node]                       // tracked if create_graph
-        //     in_alias  = tracked aliases of node->inputs
-        //     out_alias = tracked alias of node
-        //     contribs  = grad_of(node->op, node->op_attr, g, in_alias, out_alias)
-        //     for i:
-        //         if input i needs grad:
-        //             grads[input_i] = grads[input_i] + sum_to_size(contribs[i], shape)
-        // return grads[wrt...]
-        //
-        //
-        // Pytorch methodology -
-        // def deriv(self, t, n=1):
-        //      dx = self.forward(t)
-        //      for i in range(n):
-        //          dx = torch.autograd.grad(outputs=dx, inputs=t, grad_outputs=torch.ones_like(t), create_graph=True)[0]
-        //      return dx
-
        // no named namespace as we do not want topological sort to be called outside
        namespace{
           template <typename T>
@@ -257,15 +237,18 @@ namespace bearml {
           return backward(node, accumulate);
        }
 
-       // runs backward from root and collects the gradient of each tensor in wrt
+       // Example -   auto g = gradients(loss, {&w, &b});   // g[0] = dloss/dw, g[1] = dloss/db
+       // wrt is the list of tensors for which we want gradients
        template <typename E>
-       std::vector<Tensor<E>> gradients(const Tensor<E>& root, std::initializer_list<const Tensor<E>*> wrt) {
-          // tensors the root doesn't reach would otherwise keep an old gradient
+       std::vector<Tensor<E>> gradients(const Tensor<E>& end_node, std::initializer_list<const Tensor<E>*> wrt) {
+           // backward only resets nodes it reaches - zero these so an unreached tensor reads 0, not an old gradient
           for (const Tensor<E>* t : wrt) {
              const auto& node = TensorAccess::node(*t);
              if (node) node->grad.fill(E(0));
           }
-          backward(root);
+          // fills node->grad for everything end_node depends on
+          backward(end_node);
+          // read each gradient back, keeping the order of wrt
           std::vector<Tensor<E>> grads;
           grads.reserve(wrt.size());
           for (const Tensor<E>* t : wrt) grads.push_back(t->grad());
@@ -350,6 +333,33 @@ namespace bearml {
     template <typename E>
     void Tensor<E>::zero_grad() {
        if (graph_node) graph_node->grad.fill(E(0));
+    }
+
+
+
+    // A better way to get the n-th derivative is to:
+    // grads[root] = seed
+    // for node in topo_order:
+    //     g = grads[node]                       // tracked if create_graph
+    //     in_alias  = tracked aliases of node->inputs
+    //     out_alias = tracked alias of node
+    //     contribs  = grad_of(node->op, node->op_attr, g, in_alias, out_alias)
+    //     for i:
+    //         if input i needs grad:
+    //             grads[input_i] = grads[input_i] + sum_to_size(contribs[i], shape)
+    // return grads[wrt...]
+    //
+    //
+    // Pytorch methodology -
+    // def deriv(self, t, n=1):
+    //      dx = self.forward(t)
+    //      for i in range(n):
+    //          dx = torch.autograd.grad(outputs=dx, inputs=t, grad_outputs=torch.ones_like(t), create_graph=True)[0]
+    //      return dx
+    template <typename E>
+    std::vector<Tensor<E>> derivate(const Tensor<E>& end_node, int n){
+        // todo
+
     }
 }
 
