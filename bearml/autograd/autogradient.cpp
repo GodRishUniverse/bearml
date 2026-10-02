@@ -1,6 +1,7 @@
 #include "autogradient.h"
 #include "operators/ops.h"
 #include "tensor/Tensor.h"
+#include <vector>
 
 using ll = long long;
 namespace bearml {
@@ -357,9 +358,14 @@ namespace bearml {
     //          dx = torch.autograd.grad(outputs=dx, inputs=t, grad_outputs=torch.ones_like(t), create_graph=True)[0]
     //      return dx
     template <typename E>
-    std::vector<Tensor<E>> derivate(const Tensor<E>& end_node, int n){
+    std::vector<Tensor<E>> derivate(const Tensor<E>& end_node, const Tensor<E>& t, int n){
         // todo
-
+        std::vector<Tensor<E>> grads;
+        for (int i = 0; i < n; ++i) {
+            grads = gradients(end_node, {&t});
+            end_node = grads[0];
+        }
+        return grads;
     }
 }
 
