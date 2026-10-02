@@ -68,14 +68,27 @@ namespace bearml {
     // will not be a template class
     // Need to preserve topological ordering - TODO
     class LazyTensorNode {
+        private:
+            std::shared_ptr<IRNode> ir_node; // holds shape and stride (Shape struct), Dtype and Op details
+            std::vector<std::shared_ptr<LazyTensorNode>> inputs; // get the inputs to this op so that we can materialize it
+
         public:
             // we need incoming op and output op to know how to fuse
             Device device;
-            IRNode* ir_node; // holds shape and stride (Shape struct), Dtype and Op details
+            // no need to have a raw pointer here - we can use shared_ptr to manage the lifetime of the IRNode
             LazyTensorNodeType node_type; // it can either be a tensor node or an op node
             std::string node_name; // the name of the node (for debugging purposes and seeing IR trace) - like can be variable name (if tensor) or op name ("add_1", "mul_2", etc.) - numbers are in topological order
-            std::vector<std::shared_ptr<LazyTensorNode>> inputs; // get the inputs to this op so that we can materialize it
+
             template<typename T>
             Tensor<T> materialize(); // materialize means to compute the tensor from the inputs
+
+            LazyTensorNode() = default;
+            LazyTensorNode(LazyTensorNodeType type, std::string name);
+
+            void set_ir_node(std::shared_ptr<IRNode> ir_node);
+            void create_ir_node(OP_Code op, std::vector<std::shared_ptr<LazyTensorNode>> inputs, Shape shape, DType dtype, OpAttributes attrs);
+
+
+            ~LazyTensorNode() = default; // since we use shared_ptr, the destructor is automatically called when the reference count goes to 0
     };
 }
