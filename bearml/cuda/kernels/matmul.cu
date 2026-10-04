@@ -83,27 +83,49 @@ namespace bearml {
             const int N, // column_count
             T alpha, T beta,
             // Layout-aware GEMM - so that when we have ColumnMajor layout, we can still use contiguous memory access
-            int64_t row_aware_strde_a, int64_t col_aware_stride_a,
-            int64_t row_aware_strde_b, int64_t col_aware_stride_b,
+            int64_t row_aware_stride_a, int64_t col_aware_stride_a,
+            int64_t row_aware_stride_b, int64_t col_aware_stride_b,
             const T* __restrict__ a,
             const T* __restrict__ b,
             T* c
         ){
-            int column = blockIdx.x* BLOCK_SIZE + threadIdx.x; // rows access
-            int row = blockIdx.y* BLOCK_SIZE + threadIdx.y; // column access
-            int batchId = blockIdx.z;
 
-            if (batchId < batchsize &&  row<M && column<N){
-                int64_t a_batch_off = (int64_t) batchId * M * K;
-                int64_t b_batch_off = (int64_t) batchId * K * N;
-                int64_t c_batch_off = (int64_t) batchId * M * N;
+            __shared__ T shared_a[TILE_SIZE][TILE_SIZE];
+            __shared__ T shared_b[TILE_SIZE][TILE_SIZE];
 
-                T sum {}; // brace initialization
-                for (int mid = 0; mid<K; ++mid){
-                    // basically, we're doing a dot product between row/column of a and b - but stride-aware so that col/row-major order is preserved (triton kernel was the inspiration)
-                    sum+= a[a_batch_off + row*row_aware_strde_a + mid*col_aware_stride_a]*b[b_batch_off + mid*row_aware_strde_b + column*col_aware_stride_b];
+            int batchId = blockIdx.z; //
+
+            int column = blockIdx.x * TILE_SIZE + threadIdx.x;
+            int row = blockIdx.y * TILE_SIZE + threadIdx.y;
+
+            int tx = threadIdx.x;
+            int ty = threadIdx.y;
+
+            T dot_product = T(0);
+
+            int64_t a_off = (int64_t)batchId * M *K ;
+            int64_t b_off = (int64_t)batchId * K * N;
+            int64_t c_batch_off = (int64_t)batchId * M * N;
+
+            for (int tile = 0; tile < K; tile += TILE_SIZE) {
+                int a_k = tile + tx;            // this thread's column inside A's tile
+                int b_k = tile + ty;            // this thread's row inside B's tile
+
+                shared_a[ty][tx] = (row < M && a_k < K)
+                    ? a[a_off + row*row_aware_stride_a + a_k*col_aware_stride_a] : T(0);
+                shared_b[ty][tx] = (b_k < K && column < N)
+                    ? b[b_off + b_k*row_aware_stride_b + column*col_aware_stride_b] : T(0);
+                __syncthreads();
+
+                for (int i = 0; i < TILE_SIZE; i++){
+                    dot_product += shared_a[ty][i] * shared_b[i][tx];
                 }
-                c[c_batch_off + row*N + column] = alpha*sum + beta*c[c_batch_off + row*N + column];
+
+                __syncthreads();
+            }
+
+            if (row < M && column < N){
+                 c[c_batch_off + row*N + column] = alpha*dot_product + beta*c[c_batch_off + row*N + column];
             }
         }
 
