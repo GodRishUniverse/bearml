@@ -67,9 +67,8 @@ namespace bearml {
             return grad_broadcast + grad * (1.0 / static_cast<double>(n));
         }
 
-
-        // will be our function map - PROBLEM - does recomputation
-        // ALSO problem - does not deal with nth diff - refactoring
+        // acts as a map of gradients (derivative lookup)
+        // TODO: PROBLEM: WE HAVE RECOMPUTATION HERE - remove that
         template <typename T>
         std::vector<T> grad_of(OP_Code op, const OpAttributes& attr, const T& grad, const std::vector<T>& inputs, const T& output) {
             switch (op) {
@@ -81,6 +80,7 @@ namespace bearml {
                     return {grad, grad*-1.0};
                 case OP_Code::OP_MUL:
                     // scalar-shaped operand - the product is just a scaling
+                    // TODO: FIX - rank one matrix operand
                     if (is_scalar_shaped(inputs[0])) return {bearml::linear_algebra::hadamard(grad, inputs[1]), grad*inputs[0]};
                     if (is_scalar_shaped(inputs[1])) return {grad*inputs[1], bearml::linear_algebra::hadamard(grad, inputs[0])};
                     // transpose needs a rank >= 2 tensor
@@ -178,9 +178,11 @@ namespace bearml {
         template<typename T>
         void accumulate_grad(T& target_grad, const T& grad_contribution, const T& target_val) {
             auto target_grad_shape = target_val.getShape();
+            // add the reduced gradient contribution
             target_grad = target_grad +  bearml::linear_algebra::reduce(grad_contribution, target_grad_shape, reduction_op);
         }
 
+        // We propogate the gradient here
         template<typename T>
         void apply_grad(Node<T>& node) {
             const OP_ARITY arity = op_arity(node.op);
@@ -189,31 +191,39 @@ namespace bearml {
 
             // TODO: remove this copy op
             std::vector<T> input_vals;
-            for (auto& in : node.inputs) input_vals.push_back(in->val);
+            for (auto& in : node.inputs) {
+                input_vals.push_back(in->val);
+            }
+            // get the grad that was computed based on the operation and its attributes
             auto grads = grad_of(node.op, node.op_attr, node.grad, input_vals, node.val);// pushes n.grad into its inputs
+
             for (size_t i = 0; i < node.inputs.size(); ++i) {
-                if (!node.inputs[i]->requires_grad) continue; // constant inputs don't get a gradient
+                if (!node.inputs[i]->requires_grad){
+                    continue; // constant inputs don't get a gradient
+                }
+                // adds contribution to each corresponding input's accumulated gradient
                 accumulate_grad(node.inputs[i]->grad, grads[i], node.inputs[i]->val);
             }
         }
 
        // TODO: fix for MATRIX AND TENSOR TYPES - also add a boolean for gradient accumulation as well
+       // backward_graph is needed in order to make the backward function differentiable as well in order to do higher order derivatives
        template <typename T>
        T backward(std::shared_ptr<bearml::Node<T>> end_node, bool accumulate){
 
-          std::vector<std::shared_ptr<bearml::Node<T>>> all_nodes = topological_sort(end_node);
+          std::vector<std::shared_ptr<bearml::Node<T>>> all_nodes = topological_sort(end_node); // sort the graph
           // we clear grads right now
           if (!accumulate){
              for (const auto& node : all_nodes) {
                 if (node->requires_grad){
-                    node->grad = T(node->val.getShape(), node->val.getDevice());
+                    node->grad = T(node->val.getShape(), node->val.getDevice()); // initialize all nodes to 0
                 }
              }
           } else {
-             // only leaves accumulate - intermediate grads still restart, or they would be counted twice
+             // only leaf nodes accumulate - intermediate grads still restart, or they would be counted twice
              for (const auto& node : all_nodes) {
                 if (node->requires_grad && node->op != OP_Code::NO_OP){
-                    node->grad = T(node->val.getShape(), node->val.getDevice());
+                    node->grad = T(node->val.getShape(), node->val.getDevice()); // only leaf nodes are 0 here
                 }
              }
           }
@@ -221,10 +231,11 @@ namespace bearml {
           end_node->grad = T(end_node->val.getShape(), end_node->val.getDevice()); // The whole matrix is filled with 1 - because we want to compute the Jacobian matrix
           end_node->grad.fill(1.0); // fill returns void;
 
+          // walk in topological ordering
           for (const auto& node : all_nodes) {
              // Only propagate from nodes made by an op that needs a gradient
              if (node->op != OP_Code::NO_OP && node->requires_grad) {
-                   apply_grad(*node);
+                   apply_grad(*node); // apply the gradient on that node
              }
           }
           return end_node->grad;
@@ -233,26 +244,29 @@ namespace bearml {
        // backward from a tracked tensor rather than from its node
        template <typename E>
        Tensor<E> backward(const Tensor<E>& root, bool accumulate) {
-          const auto& node = TensorAccess::node(root);
+          const auto& node = root.graph_node;
           if (!node) throw std::logic_error("backward: root tensor is not tracked");
           return backward(node, accumulate);
        }
 
        // Example -   auto g = gradients(loss, {&w, &b});   // g[0] = dloss/dw, g[1] = dloss/db
-       // wrt is the list of tensors for which we want gradients
+       // This is a different API than backward to get only particular gradients but still uses the backward function
        template <typename E>
-       std::vector<Tensor<E>> gradients(const Tensor<E>& end_node, std::initializer_list<const Tensor<E>*> wrt) {
+       std::vector<Tensor<E>> gradients(const Tensor<E>& end_node, std::initializer_list<const Tensor<E>*> nodes_we_want_grads_with_respect_to) {
            // backward only resets nodes it reaches - zero these so an unreached tensor reads 0, not an old gradient
-          for (const Tensor<E>* t : wrt) {
-             const auto& node = TensorAccess::node(*t);
+          for (const Tensor<E>* t : nodes_we_want_grads_with_respect_to) {
+             const auto& node = t->graph_node;
              if (node) node->grad.fill(E(0));
           }
           // fills node->grad for everything end_node depends on
-          backward(end_node);
-          // read each gradient back, keeping the order of wrt
+          backward(end_node); // compute the jacobian matrix
+
           std::vector<Tensor<E>> grads;
-          grads.reserve(wrt.size());
-          for (const Tensor<E>* t : wrt) grads.push_back(t->grad());
+          grads.reserve(nodes_we_want_grads_with_respect_to.size()); // we want the gradients of no. of nodes in the nodes_we_want_grads_with_respect_to list
+
+          for (const Tensor<E>* t : nodes_we_want_grads_with_respect_to){
+              grads.push_back(t->grad());
+          }
           return grads;
        }
     }
@@ -265,12 +279,14 @@ namespace bearml {
        if constexpr (!is_floating(dtype_of<E>)) {
           (void)op; (void)inputs; (void)attrs; (void)output; // integer tensors are never tracked
        } else {
+          // if neither input requires grads then we dont need to build autograd node so we avoid graph overhead here
           bool tracked = false;
           for (const Tensor* in : inputs) {
              if (in->graph_node) { tracked = true; break; }
           }
           if (!tracked) return;
 
+          // Creating a node here
           auto node = std::make_shared<Node<Tensor>>();
           node->val = output.detach();
           node->grad = Tensor(output.getShape(), output.getDevice());
@@ -278,10 +294,12 @@ namespace bearml {
           node->op_attr = attrs;
           node->requires_grad = true;
           node->inputs.reserve(inputs.size());
+
+
+          // we connect the node inputs now
           for (const Tensor* in : inputs) {
              if (in->graph_node) {
-                // leaf (e.g. W): to_ or *= may have given it new memory, so point val at the current memory
-                if (in->graph_node->op == OP_Code::NO_OP) in->graph_node->val = in->detach();
+                if (in->graph_node->op == OP_Code::NO_OP) in->graph_node->val = in->detach(); // when we have no-op - we have a leaf node
                 node->inputs.push_back(in->graph_node);
              } else {
                 auto constant = std::make_shared<Node<Tensor>>(); // keeps inputs lined up with op_arity
@@ -289,7 +307,7 @@ namespace bearml {
                 node->inputs.push_back(constant);
              }
           }
-          output.graph_node = node;
+          output.graph_node = node; // attach created node to the output tensor
        }
     }
 
@@ -325,9 +343,10 @@ namespace bearml {
        return graph_node != nullptr;
     }
 
+    // get the gradient of the current tensor
     template <typename E>
     const Tensor<E>& Tensor<E>::grad() const {
-       if (!graph_node) throw std::logic_error("grad: tensor is not tracked");
+       if (!graph_node) throw std::logic_error("Autogradient: Tensor gradient is not tracked");
        return graph_node->grad;
     }
 
@@ -358,14 +377,20 @@ namespace bearml {
     //          dx = torch.autograd.grad(outputs=dx, inputs=t, grad_outputs=torch.ones_like(t), create_graph=True)[0]
     //      return dx
     template <typename E>
-    std::vector<Tensor<E>> derivate(const Tensor<E>& end_node, const Tensor<E>& t, int n){
-        // todo
+    Tensor<E> derivate(const Tensor<E>& end_node, const Tensor<E>& t, int n){
+
+        if (n < 1) {
+            throw std::invalid_argument("n must be positive as we cannot have a negative gradient");
+        }
+
+        Tensor<E> current = end_node; // temporary node
+
         std::vector<Tensor<E>> grads;
         for (int i = 0; i < n; ++i) {
-            grads = gradients(end_node, {&t});
-            end_node = grads[0];
+            grads = gradients(current, {&t});
+            current = grads[0];
         }
-        return grads;
+        return current;
     }
 }
 

@@ -5,6 +5,8 @@
 #include "utils/shape_utils.h"
 #include "utils/dtype.h"
 
+
+// We will use MLIR and stablehlo as the backend
 namespace bearml {
 
     struct IRNode {

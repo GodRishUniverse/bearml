@@ -90,6 +90,8 @@ namespace bearml {
             T* c
         ){
 
+            static_assert(TILE_SIZE == BLOCK_SIZE,"TILE_SIZE must be equal to BLOCK_SIZE" );
+
             __shared__ T shared_a[TILE_SIZE][TILE_SIZE];
             __shared__ T shared_b[TILE_SIZE][TILE_SIZE];
 

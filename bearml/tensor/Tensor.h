@@ -87,7 +87,6 @@ namespace bearml{
     // forward declaration of the class template - needed by the free-function declarations below
     template <typename T> class Tensor;
     template <typename T> struct Node;               // autograd record, defined in autograd/autogradient.h
-    namespace autogradient { struct TensorAccess; } // autograd's access to graph_node
 
     // bearml::cuda_type_trait<U>::type maps a host element type U to the CUDA
     // kernel type used to launch it (defaults to U itself; overridden for the
@@ -118,6 +117,16 @@ namespace bearml{
     // are same-size, same-layout but distinct C++ types.
     template <typename U>
     inline cuda_type_trait_t<U> cuda_val(U v) { return std::bit_cast<cuda_type_trait_t<U>>(v); }
+
+
+    // forward declaration
+    namespace autogradient {
+        template <typename E> Tensor<E> backward(const Tensor<E>& root, bool accumulate = false);
+
+        template <typename E> std::vector<Tensor<E>> gradients(const Tensor<E>& root, std::initializer_list<const Tensor<E>*> nodes_we_want_grads_with_respect_to);
+
+        template <typename E> Tensor<E> derivate(const Tensor<E>& end_node, const Tensor<E>& t,int n );
+    }
 
     // forward declaration
     namespace linear_algebra {
@@ -183,7 +192,6 @@ namespace bearml{
             Device device;
 
             std::shared_ptr<bearml::Node<Tensor<T>>> graph_node; // integration with autograd
-            friend struct autogradient::TensorAccess;
             template <typename U> friend struct Node;   // Node default-constructs its val/grad
 
             // elements in the storage (a view's shape can be smaller)
@@ -266,6 +274,20 @@ namespace bearml{
             static bool equal_impl(const Tensor &a, const Tensor &b);
 
         public:
+
+            template <typename E>
+            friend Tensor<E> autogradient::backward(
+                const Tensor<E>& root, bool accumulate
+            );
+
+            template <typename E>
+            friend std::vector<Tensor<E>> autogradient::gradients(
+                const Tensor<E>& root,
+                std::initializer_list<const Tensor<E>*> nodes_we_want_grads_with_respect_to
+            );
+
+            template <typename E>
+            friend Tensor<E> derivate(const Tensor<E>& end_node, const Tensor<E>& t, int n);
 
             // flat index into storage (caller adds data_offset); bounds-checked in Debug
             T& at(size_t flat) {
