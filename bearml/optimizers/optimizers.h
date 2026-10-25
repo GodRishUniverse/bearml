@@ -62,6 +62,21 @@ namespace bearml {
                     void zero_grad() override;
             };
 
+
+            // Muon optimizer (have to go over graham schmit again and newton-scholz)
+            template <typename T>
+            class Muon: public Optimizer{
+                    static_assert(bearml::is_tensor_v<T>,
+                        "Muon requires a Tensor type (e.g. Tensorf / TensorD)");
+                    static_assert(bearml::is_floating(bearml::dtype_of<bearml::tensor_element_t<T>>),
+                        "Muon parameters must be float, double, or bfloat16 tensors");
+                private:
+
+
+                public:
+
+            };
+
             // bodies live in optimizers.cpp, instantiated there for Tensorf and TensorD
             extern template class SGD<bearml::Tensorf>;
             extern template class SGD<bearml::TensorD>;
