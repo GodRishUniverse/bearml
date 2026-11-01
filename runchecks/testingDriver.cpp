@@ -1,5 +1,6 @@
 #include "activation_functions/convolution_layers.h"
 #include "bearml.h"
+#include "tensor/Tensor.h"
 #include <iostream>
 #include <vector>
 
@@ -421,6 +422,9 @@ int main() {
 
      auto padded2 = bearml::neural_network::padding(f_tens, -1);
      cout << padded2 << endl;
+
+     std::vector<int> s = {3,4,4};
+     cout<< bearml::Tensorf::identity_matrix(s) << endl;
 
 
 

@@ -842,8 +842,7 @@ namespace bearml{
             // TODO: CUDA support
             void stack(std::initializer_list<Tensor> tensors);
 
-            // TODO
-            // static Tensor identity_matrix(std::vector<int>& sizePassed, int n)
+            static Tensor identity_matrix(std::vector<int>& sizePassed);
 
         };
 

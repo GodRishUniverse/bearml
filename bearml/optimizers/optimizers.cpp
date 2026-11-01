@@ -91,6 +91,41 @@ namespace bearml {
                 }
             }
 
+
+            // Muon optimizer
+            // source: https://docs.pytorch.org/docs/2.15/generated/torch.optim.Muon.html
+            template<typename T>
+            Muon<T>::Muon(std::vector<std::shared_ptr<T>> params, double lr, double wd, double momemtum, bool nesterov, std::vector<double> ns_coefficients, double eps, int64_t ns_steps):
+            params(params), learning_rate(lr), weight_decay(wd), momentum(momemtum), nesterov(nesterov), ns_coefficients(ns_coefficients),eps(eps), ns_steps(ns_steps)  {
+                // initialize momentum buffer to 0
+                for (auto& p : params) {
+                    momentum_buffer.push_back(T(p->getShape(), p->getDevice())); // zeros, same shape and device as param
+                }
+            }
+
+            // template<typename T>
+            // T Muon<T>::NewtonSchulz(std::shared_ptr<T> x) {
+            //     // formula is X_k+1 = 1/2 X_k (3I-X_k A X_k)
+            //     for (int i =0; i<ns_steps; i++){
+            //         x = 0.5*x*(3 T::iden)
+            //     }
+            // }
+
+
+            template<typename T>
+            void Muon<T>::step(){
+                for (size_t i = 1; i < params.size(); i++) {
+                    momentum_buffer[i] = momentum*momentum_buffer[i-1] + params[i]->grad;
+                    if (nesterov) {
+                        momentum_buffer[i] =  momentum*momentum_buffer[i] + params[i]->grad;
+                    }
+
+                    // Perform Newton-Schulz
+                }
+            }
+
+
+
         }
     }
 }

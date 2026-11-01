@@ -23,6 +23,28 @@ namespace bearml {
         }
 
 
+
+        template <typename T>
+        __global__
+        void identityMatrixGPU(
+            T* data,
+            size_t batch,
+            size_t rows // same as columns
+        ) {
+            for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x, idy = blockIdx.y * blockDim.y + threadIdx.y;
+                idx < rows && idy<rows;
+                 idx += blockDim.x * gridDim.x, idy+=blockDim.y*gridDim.y) {
+
+                int offset = idy*rows + idx;
+
+                if (idx==idy){
+                    data[offset] = T(1.0);
+                }
+            }
+        }
+
+
+
         // ---------------------------------- Template specification for floats ----------------------------------
         // bfloat16
         template __global__ void bearml::cuda::fill_kernel<__nv_bfloat16>(__nv_bfloat16 *data, __nv_bfloat16 value, size_t);

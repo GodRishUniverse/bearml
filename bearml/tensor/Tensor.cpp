@@ -1,5 +1,6 @@
 // Tensor member definitions - declared in Tensor.h, instantiated at the bottom
 #include "Tensor.h"
+#include <cassert>
 
 namespace bearml {
 
@@ -1838,6 +1839,26 @@ namespace bearml {
 
         this->storage = new_storage;
     }
+
+
+    template<typename T>
+    Tensor<T> Tensor<T>::identity_matrix(std::vector<int>& sizePassed){
+        // check size passed
+        int n=sizePassed.size();
+        assert(sizePassed[n-1]==sizePassed[n-2]); // we want to have the same shape
+
+        int dim = sizePassed[n-1];
+
+        Tensor<T> iden = Tensor<T>(sizePassed); // also need to specify the device here
+        for (int i = 0; i<iden.sizeOfTensor()/(dim*dim); i++){
+            for (int r = 0; r<dim; r++){
+                 iden.at(i*dim*dim+r*dim+r)=T(1.0);
+            }
+        }
+
+        return iden;
+    }
+
 
 }
 

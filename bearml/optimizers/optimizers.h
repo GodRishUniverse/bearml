@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <stdexcept>
@@ -97,9 +98,27 @@ namespace bearml {
                     static_assert(bearml::is_floating(bearml::dtype_of<bearml::tensor_element_t<T>>),
                         "Muon parameters must be float, double, or bfloat16 tensors");
                 private:
+                    std::vector<std::shared_ptr<T>> params;
+                    double learning_rate;
+                    double weight_decay;
 
+                    double momentum;
+                    bool nesterov;
+                    std::vector<double> ns_coefficients; // Newton-Schulz
+                    double eps; // small value to avoid division by zero
+                    int64_t ns_steps;
+
+
+                    std::vector<double> momentum_buffer; // initialized to 0
 
                 public:
+
+                    Muon<T> (std::vector<std::shared_ptr<T>> params, double lr = 0.001, double wd=0.01, double momemtum=0.95, bool nesterov= true, std::vector<double> ns_coefficients={3.4445, -4.775, 2.0315}, double eps = 1e-7, int64_t ns_steps= 5);
+
+
+                    T NewtonSchulz(std::shared_ptr<T> x); // no need to pass eps as we already have it
+                    void step() override;
+                    void zero_grad() override;
 
             };
 
