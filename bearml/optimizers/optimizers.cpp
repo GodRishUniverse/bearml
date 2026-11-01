@@ -46,7 +46,7 @@ namespace bearml {
                     T m_hat = m[i] / (1 - std::pow(beta1, step_count));
                     T v_hat = v[i] / (1 - std::pow(beta2, step_count));
 
-                    *p -= learning_rate * m_hat / (T::sqrt(v_hat) + eps);
+                    *p -= learning_rate *( m_hat / (T::sqrt(v_hat) + eps));
                 }
                 this->step_count++;
             }
@@ -57,6 +57,40 @@ namespace bearml {
                     p->zero_grad();
                 }
             }
+
+            // ---- AdamW definitions ----
+            template<typename T>
+            AdamW<T>::AdamW(std::vector<std::shared_ptr<T>> params, double learning_rate, double beta1, double beta2, double eps, double weight_decay)
+                : params(params), learning_rate(learning_rate), beta1(beta1), beta2(beta2), eps(eps), step_count(1), weight_decay(weight_decay){
+                for (auto& p : params) {
+                    m.push_back(T(p->getShape(), p->getDevice())); // zeros, same shape and device as param
+                    v.push_back(T(p->getShape(), p->getDevice()));
+                }
+            }
+
+            template<typename T>
+            void AdamW<T>::step(){
+                for (size_t i = 0; i < params.size(); i++) {
+                    auto& p = params[i];
+                    m[i] = beta1 * m[i] + (1 - beta1) * p->grad(); // scalar multiplication
+                    v[i] = beta2 * v[i] + (1 - beta2) * bearml::linear_algebra::hadamard(p->grad(), p->grad()); // element-wise square
+
+                    // Bias-corrected estimates
+                    T m_hat = m[i] / (1 - std::pow(beta1, step_count));
+                    T v_hat = v[i] / (1 - std::pow(beta2, step_count));
+
+                    *p -= learning_rate *( m_hat / (T::sqrt(v_hat) + eps) + weight_decay* (*p));
+                }
+                this->step_count++;
+            }
+
+            template<typename T>
+            void AdamW<T>::zero_grad(){
+                for (auto& p : this->params){
+                    p->zero_grad();
+                }
+            }
+
         }
     }
 }
@@ -65,3 +99,5 @@ template class bearml::neural_network::optimizers::SGD<bearml::Tensorf>;
 template class bearml::neural_network::optimizers::SGD<bearml::TensorD>;
 template class bearml::neural_network::optimizers::Adam<bearml::Tensorf>;
 template class bearml::neural_network::optimizers::Adam<bearml::TensorD>;
+template class bearml::neural_network::optimizers::AdamW<bearml::Tensorf>;
+template class bearml::neural_network::optimizers::AdamW<bearml::TensorD>;

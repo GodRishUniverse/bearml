@@ -63,6 +63,32 @@ namespace bearml {
             };
 
 
+            // ADAMW optimizer
+            template <typename T>
+            class AdamW: public Optimizer{
+                    static_assert(bearml::is_tensor_v<T>,
+                        "AdamW requires a Tensor type (e.g. Tensorf / TensorD)");
+                    static_assert(bearml::is_floating(bearml::dtype_of<bearml::tensor_element_t<T>>),
+                        "AdamW parameters must be float, double, or bfloat16 tensors");
+                private:
+                    std::vector<std::shared_ptr<T>> params;
+                    std::vector<T> m; // momentum
+                    double learning_rate;
+                    std::vector<T> v; // rms_prop
+                    double beta1; // decay rate for momentum
+                    double beta2; // decay rate for RMSProp
+                    double eps; // small value to avoid division by zero
+
+                    double weight_decay;
+                    int64_t step_count;
+
+                public:
+                    AdamW(std::vector<std::shared_ptr<T>> params, double learning_rate= 0.0001, double beta1 = 0.9, double beta2 = 0.999, double eps = 1e-8, double weight_decay= 0.01);
+                    void step() override;
+                    void zero_grad() override;
+            };
+
+
             // Muon optimizer (have to go over graham schmit again and newton-scholz)
             template <typename T>
             class Muon: public Optimizer{
