@@ -23,28 +23,6 @@ namespace bearml {
         }
 
 
-
-        template <typename T>
-        __global__
-        void identityMatrixGPU(
-            T* data,
-            size_t batch,
-            size_t rows // same as columns
-        ) {
-            for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x, idy = blockIdx.y * blockDim.y + threadIdx.y;
-                idx < rows && idy<rows;
-                 idx += blockDim.x * gridDim.x, idy+=blockDim.y*gridDim.y) {
-
-                int offset = idy*rows + idx;
-
-                if (idx==idy){
-                    data[offset] = T(1.0);
-                }
-            }
-        }
-
-
-
         // ---------------------------------- Template specification for floats ----------------------------------
         // bfloat16
         template __global__ void bearml::cuda::fill_kernel<__nv_bfloat16>(__nv_bfloat16 *data, __nv_bfloat16 value, size_t);
@@ -67,6 +45,30 @@ namespace bearml {
         template __global__ void bearml::cuda::fill_kernel<int32_t>(int32_t *data, int32_t value, size_t);
         // int64
         template __global__ void bearml::cuda::fill_kernel<int64_t>(int64_t *data, int64_t value, size_t);
+
+
+
+
+        template <typename T>
+        __global__
+        void identityMatrixGPU(
+            T* data,
+            size_t batch,
+            size_t rows // same as columns
+        ) {
+            for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x, idy = blockIdx.y * blockDim.y + threadIdx.y;
+                idx < rows && idy<rows;
+                    idx += blockDim.x * gridDim.x, idy+=blockDim.y*gridDim.y) {
+
+                int offset = idy*rows + idx;
+
+                if (idx==idy){
+                    data[offset] = T(1.0);
+                }
+            }
+        }
+
+
 
         //  - right now the Launch code -> d_a, d_b and d_out already on device as the variable name implies
         template <typename T>
