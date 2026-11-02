@@ -1,5 +1,7 @@
 // Tensor member definitions - declared in Tensor.h, instantiated at the bottom
 #include "Tensor.h"
+#include "cuda/kernels/fill.cuh"
+#include "devices/device_type.h"
 #include <cassert>
 
 namespace bearml {
@@ -1842,20 +1844,27 @@ namespace bearml {
 
 
     template<typename T>
-    Tensor<T> Tensor<T>::identity_matrix(std::vector<int>& sizePassed){
+    Tensor<T> Tensor<T>::identity_matrix(std::vector<int>& sizePassed, Device dev){
         // check size passed
         int n=sizePassed.size();
         assert(sizePassed[n-1]==sizePassed[n-2]); // we want to have the same shape
 
         int dim = sizePassed[n-1];
 
-        Tensor<T> iden = Tensor<T>(sizePassed); // also need to specify the device here
-        for (int i = 0; i<iden.sizeOfTensor()/(dim*dim); i++){
-            for (int r = 0; r<dim; r++){
-                 iden.at(i*dim*dim+r*dim+r)=T(1.0);
+
+
+
+        Tensor<T> iden = Tensor<T>(sizePassed, dev); // also need to specify the device here
+
+        if (dev.is_cuda()){
+            cuda::launch_iden<cuda_type_trait_t<T>>(cuda_ptr(iden.mutable_data() ), sizePassed);
+        }else{
+            for (int i = 0; i<iden.sizeOfTensor()/(dim*dim); i++){
+                for (int r = 0; r<dim; r++){
+                     iden.at(i*dim*dim+r*dim+r)=T(1.0);
+                }
             }
         }
-
         return iden;
     }
 

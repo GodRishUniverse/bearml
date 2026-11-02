@@ -12,5 +12,13 @@ namespace bearml {
             std::vector<int>& res_shape,
             cudaStream_t stream = nullptr
         );
+
+        template<typename T>
+        void launch_iden(
+            T* d_data,
+            std::vector<int>& res_shape,
+            cudaStream_t stream = nullptr
+        );
+
     }
 }

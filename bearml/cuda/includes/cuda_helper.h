@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <numeric>
 #include <functional>
+#include <iostream>
 
 #include "cuda_imports.h" // all cuda imports
 

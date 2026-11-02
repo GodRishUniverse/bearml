@@ -424,7 +424,7 @@ int main() {
      cout << padded2 << endl;
 
      std::vector<int> s = {3,4,4};
-     cout<< bearml::Tensorf::identity_matrix(s) << endl;
+     cout<< bearml::Tensorf::identity_matrix(s, dev) << endl;
 
 
 

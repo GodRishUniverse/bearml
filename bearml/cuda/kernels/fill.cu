@@ -1,4 +1,5 @@
 #include "fill.cuh"
+#include <cassert>
 
 // We only need cudaMalloc/cudaMemcpy for:
 //   - Arrays/vectors (like your strides_a, strides_b)
@@ -53,20 +54,99 @@ namespace bearml {
         __global__
         void identityMatrixGPU(
             T* data,
-            size_t batch,
-            size_t rows // same as columns
+            size_t rows, // same as columns
+            size_t batch
         ) {
-            for (size_t idx = blockIdx.x * blockDim.x + threadIdx.x, idy = blockIdx.y * blockDim.y + threadIdx.y;
-                idx < rows && idy<rows;
-                    idx += blockDim.x * gridDim.x, idy+=blockDim.y*gridDim.y) {
 
-                int offset = idy*rows + idx;
+            for (
+                size_t idx = blockIdx.x * blockDim.x + threadIdx.x,
+                      idy = blockIdx.y * blockDim.y + threadIdx.y,
+                      b = blockIdx.z * blockDim.z + threadIdx.z;
 
-                if (idx==idy){
-                    data[offset] = T(1.0);
-                }
+                      idx < rows && idy < rows && b < batch;
+
+                      idx += blockDim.x * gridDim.x,
+                      idy += blockDim.y * gridDim.y,
+                      b += blockDim.z * gridDim.z
+            ) {
+                size_t offset = b*rows*rows+idy*rows + idx;
+                data[offset] = (idx==idy) ? T(1.0) : T(0.0);
             }
         }
+
+
+
+        // ---------------------------------- Template specification for floats ----------------------------------
+        // bfloat16
+        template __global__ void bearml::cuda::identityMatrixGPU<__nv_bfloat16>(__nv_bfloat16 *data, size_t, size_t);
+
+        // float16
+        template __global__ void bearml::cuda::identityMatrixGPU<__half>(__half *data, size_t, size_t);
+
+        // float32
+        template __global__ void bearml::cuda::identityMatrixGPU<float>(float *data, size_t, size_t);
+
+        // float64
+        template __global__ void bearml::cuda::identityMatrixGPU<double>(double *data,  size_t, size_t);
+
+        // ---------------------------------- Template specification for ints ----------------------------------
+        // int8
+        template __global__ void bearml::cuda::identityMatrixGPU<int8_t>(int8_t *data, size_t, size_t);
+        // int16
+        template __global__ void bearml::cuda::identityMatrixGPU<int16_t>(int16_t *data, size_t, size_t);
+        // int32
+        template __global__ void bearml::cuda::identityMatrixGPU<int32_t>(int32_t *data, size_t, size_t);
+        // int64
+        template __global__ void bearml::cuda::identityMatrixGPU<int64_t>(int64_t *data, size_t, size_t);
+
+
+
+        template <typename T>
+        void launch_iden(T* d_data, std::vector<int>& res_shape, cudaStream_t stream) {
+            bool own_stream = (stream == nullptr);
+            size_t ndim = res_shape.size();
+
+            assert(ndim >= 2);
+            size_t rows = static_cast<size_t>(res_shape[ndim - 1]);
+
+            assert(rows==res_shape[ndim-2]);
+            // if we do need to create a stream then we create it here
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamCreate(&stream));
+            }
+
+            size_t batch = 1;
+            for (size_t i = 0; i < ndim - 2; ++i) {
+                batch *= static_cast<size_t>(res_shape[i]);
+            }
+
+            // Configuring kernel launch
+            dim3 block(BLOCK_SIZE, BLOCK_SIZE, 1);
+            dim3 grid((rows+BLOCK_SIZE-1) / BLOCK_SIZE, (rows+BLOCK_SIZE - 1) / BLOCK_SIZE, batch);
+
+            identityMatrixGPU<T><<<grid, block,0, stream>>>(d_data, rows, batch);
+            CUDA_CHECK(cudaGetLastError());
+
+
+
+            if (own_stream) {
+                CUDA_CHECK(cudaStreamSynchronize(stream));
+                CUDA_CHECK(cudaStreamDestroy(stream));
+            }
+        }
+
+        // template specification
+        // Ints
+        template void launch_iden<int8_t>(int8_t*, std::vector<int>&, cudaStream_t);
+        template void launch_iden<int16_t>(int16_t*, std::vector<int>&, cudaStream_t);
+        template void launch_iden<int32_t>(int32_t*, std::vector<int>&, cudaStream_t);
+        template void launch_iden<int64_t>(int64_t*, std::vector<int>&, cudaStream_t);
+
+        // floats
+        template void launch_iden<float>(float*, std::vector<int>&, cudaStream_t);
+        template void launch_iden<double>(double*, std::vector<int>&, cudaStream_t);
+        template void launch_iden<__half>(__half*, std::vector<int>&, cudaStream_t);
+        template void launch_iden<__nv_bfloat16>(__nv_bfloat16*, std::vector<int>&, cudaStream_t);
 
 
 
