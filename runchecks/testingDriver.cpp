@@ -286,7 +286,7 @@ int main() {
     bearml::Tensorf actual({1,5});
     actual.linspace(1,5);
     actual.to_(dev);
-    bearml::neural_network::optimizers::SGD optim(testmodel.parameters(), 0.1);
+    bearml::neural_network::optimizers::Muon optim(testmodel.parameters(), 0.1);
 
     // Sample - works gets closer to the ideal values
     for (int i =0;i <10; i++){

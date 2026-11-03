@@ -1868,6 +1868,22 @@ namespace bearml {
         return iden;
     }
 
+    template<typename T>
+    double Tensor<T>::frobenius_norm(Tensor& x){
+        Tensor result({1}, x.device);
+        if (x.device == DeviceType::CUDA) {
+            cuda::launch_sum_kernel<cuda_type_trait_t<T>>(cuda_ptr(x.mutable_data()), cuda_ptr(result.mutable_data()), x.sizeOfTensor());
+        }else {
+            size_t sizeTensor = x.sizeOfTensor();
+            double sum = 0.0; // accumulate in double on CPU to avoid float cancellation
+            for (size_t i =0; i<sizeTensor; i++){
+               sum += static_cast<double>(x.at(i));
+
+            }
+        }
+        return sqrt(result).at(0);
+    }
+
 
 }
 

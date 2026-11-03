@@ -1,5 +1,6 @@
 // SGD and Adam definitions - declared in optimizers.h, instantiated at the bottom
 #include "optimizers/optimizers.h"
+#include "tensor/Tensor.h"
 
 namespace bearml {
     namespace neural_network{
@@ -103,24 +104,78 @@ namespace bearml {
                 }
             }
 
-            // template<typename T>
-            // T Muon<T>::NewtonSchulz(std::shared_ptr<T> x) {
-            //     // formula is X_k+1 = 1/2 X_k (3I-X_k A X_k)
-            //     for (int i =0; i<ns_steps; i++){
-            //         x = 0.5*x*(3 T::iden)
-            //     }
-            // }
+            template<typename T>
+            void Muon<T>::NewtonSchulz(T& x) {
+
+
+                if (x.getShape().size() != 2) {
+                    throw std::invalid_argument(
+                        "Muon Newton-Schulz requires a 2D tensor"
+                    );
+                }
+
+                if (ns_coefficients.size() != 3) {
+                    throw std::invalid_argument(
+                        "Newton-Schulz requires exactly 3 coefficients"
+                    );
+                }
+
+                // formula is X_k+1 = 1/2 X_k (3I-X_k A X_k)
+                const double a = ns_coefficients[0];
+                const double b = ns_coefficients[1];
+                const double c = ns_coefficients[2];
+
+                // Normalize by Frobenius norm.
+                x = x / (T::frobenius_norm(x) + eps);
+
+                // Work with the smaller Gram matrix -> checks if matrix is taller or wider
+                bool transposed = x.getShape()[0] > x.getShape()[1];
+
+                if (transposed) {
+                    x = x.transpose().contiguous();
+                }
+                // 3 param implementation: https://github.com/KellerJordan/Muon/blob/master/muon.py
+                for (int i =0; i<ns_steps; i++){
+                    T A = x * x.transpose();
+                    // A^2
+                    T A_2 = A * A;
+                    // B = bA + cA^2
+                    T B = b * A + c * A_2;
+                    // X_{i+1} = aX + BX
+                    x = a * x + B * x;
+                }
+
+                if (transposed) {
+                    x = x.transpose().contiguous();
+                }
+            }
 
 
             template<typename T>
             void Muon<T>::step(){
-                for (size_t i = 1; i < params.size(); i++) {
-                    momentum_buffer[i] = momentum*momentum_buffer[i-1] + params[i]->grad;
-                    if (nesterov) {
-                        momentum_buffer[i] =  momentum*momentum_buffer[i] + params[i]->grad;
-                    }
+                for (size_t i = 0; i < params.size(); i++) {
+
+                    auto& p = params[i];
+                    const T& g = p->grad();
+
+                    T update = nesterov ? (g + momentum * momentum_buffer[i]) : momentum_buffer[i];
 
                     // Perform Newton-Schulz
+                    NewtonSchulz(update);
+
+                    // weight decay
+                    *p -= learning_rate * weight_decay * (*p);
+
+                    // update
+                    *p -= learning_rate * update;
+                }
+            }
+
+
+            template<typename T>
+            void Muon<T>::zero_grad() {
+                for (auto& p : this->params) {
+                    p->zero_grad();
                 }
             }
 
@@ -136,3 +191,5 @@ template class bearml::neural_network::optimizers::Adam<bearml::Tensorf>;
 template class bearml::neural_network::optimizers::Adam<bearml::TensorD>;
 template class bearml::neural_network::optimizers::AdamW<bearml::Tensorf>;
 template class bearml::neural_network::optimizers::AdamW<bearml::TensorD>;
+template class bearml::neural_network::optimizers::Muon<bearml::Tensorf>;
+template class bearml::neural_network::optimizers::Muon<bearml::TensorD>;

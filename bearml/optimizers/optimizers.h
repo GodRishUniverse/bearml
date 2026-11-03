@@ -109,14 +109,14 @@ namespace bearml {
                     int64_t ns_steps;
 
 
-                    std::vector<double> momentum_buffer; // initialized to 0
+                    std::vector<T> momentum_buffer; // initialized to 0
 
                 public:
 
-                    Muon<T> (std::vector<std::shared_ptr<T>> params, double lr = 0.001, double wd=0.01, double momemtum=0.95, bool nesterov= true, std::vector<double> ns_coefficients={3.4445, -4.775, 2.0315}, double eps = 1e-7, int64_t ns_steps= 5);
+                    Muon(std::vector<std::shared_ptr<T>> params, double lr = 0.001, double wd=0.01, double momemtum=0.95, bool nesterov= true, std::vector<double> ns_coefficients={3.4445, -4.775, 2.0315}, double eps = 1e-7, int64_t ns_steps= 5);
 
 
-                    T NewtonSchulz(std::shared_ptr<T> x); // no need to pass eps as we already have it
+                    void NewtonSchulz(T& x); // no need to pass eps as we already have it
                     void step() override;
                     void zero_grad() override;
 
@@ -127,6 +127,10 @@ namespace bearml {
             extern template class SGD<bearml::TensorD>;
             extern template class Adam<bearml::Tensorf>;
             extern template class Adam<bearml::TensorD>;
+            extern template class AdamW<bearml::Tensorf>;
+            extern template class AdamW<bearml::TensorD>;
+            extern template class Muon<bearml::Tensorf>;
+            extern template class Muon<bearml::TensorD>;
         }
     }
 }

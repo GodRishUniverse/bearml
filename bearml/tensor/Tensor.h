@@ -844,6 +844,9 @@ namespace bearml{
 
             static Tensor identity_matrix(std::vector<int>& sizePassed, Device dev = Device(DeviceType::CPU));
 
+
+            static double frobenius_norm(Tensor& x);
+
         };
 
     // dtype aliases - the supported element types for Tensor<T>
