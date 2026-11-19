@@ -2,22 +2,31 @@
 #include "operators/ops.h"
 #include "tensor/Tensor.h"
 #include <vector>
+#include <unordered_map>
 
 using ll = long long;
+
+// added for code clarity
+template <typename e>
+using beartens = bearml::Tensor<e>;
+
+template <typename t>
+using bearnode = bearml::Node<t>;
+
 namespace bearml {
     namespace autogradient{
 
        // no named namespace as we do not want topological sort to be called outside
        namespace{
           template <typename T>
-          std::vector<std::shared_ptr<bearml::Node<T>>> topological_sort(std::shared_ptr<bearml::Node<T>> end_node){
+          std::vector<std::shared_ptr<bearnode<T>>> topological_sort(std::shared_ptr<bearnode<T>> end_node){
 
-             std::map<std::shared_ptr<bearml::Node<T>>, ll> child_counts;
-             std::vector<std::shared_ptr<bearml::Node<T>>> stack;
+             std::map<std::shared_ptr<bearnode<T>>, ll> child_counts;
+             std::vector<std::shared_ptr<bearnode<T>>> stack;
              stack.push_back(end_node);
 
              while (!stack.empty()){
-                std::shared_ptr<bearml::Node<T>> node = stack[stack.size()-1]; stack.pop_back();
+                std::shared_ptr<bearnode<T>> node = stack[stack.size()-1]; stack.pop_back();
                 auto f = child_counts.find(node);
                 if (f != child_counts.end()){
                    child_counts[node] += 1;
@@ -28,10 +37,10 @@ namespace bearml {
              }
 
 
-             std::vector<std::shared_ptr<bearml::Node<T>>> childless_nodes {end_node}; // assumption is that we do not consider the child nodes of the calling node here, even if it has some children
-             std::vector<std::shared_ptr<bearml::Node<T>>> sorted;
+             std::vector<std::shared_ptr<bearnode<T>>> childless_nodes {end_node}; // assumption is that we do not consider the child nodes of the calling node here, even if it has some children
+             std::vector<std::shared_ptr<bearnode<T>>> sorted;
              while (!childless_nodes.empty()){
-                std::shared_ptr<bearml::Node<T>> node = childless_nodes[childless_nodes.size()-1]; childless_nodes.pop_back();
+                std::shared_ptr<bearnode<T>> node = childless_nodes[childless_nodes.size()-1]; childless_nodes.pop_back();
                 sorted.push_back(node); // like python yield
                 for (auto parent  : node->inputs){
 
@@ -161,7 +170,7 @@ namespace bearml {
 
                 case OP_Code::OP_SOFTMAX: {
                     // grad_a = y * (grad - sum_dim(grad * y)) where y is the softmax output
-                    T grad_times_output = bearml::linear_algebra::hadamard(grad, inputs[0]);
+                    T grad_times_output = bearml::linear_algebra::hadamard(grad, output);
                     T row_sum = grad_times_output.accumulate(attr.dim, bearml::reductions::ReductionOps::SUM, true);
                     return {bearml::linear_algebra::hadamard(output, grad - row_sum)};
                 }
@@ -177,76 +186,132 @@ namespace bearml {
 
         template<typename T>
         void accumulate_grad(T& target_grad, const T& grad_contribution, const T& target_val) {
-            auto target_grad_shape = target_val.getShape();
+            std::vector<int> target_grad_shape = target_val.getShape();
             // add the reduced gradient contribution
             target_grad = target_grad +  bearml::linear_algebra::reduce(grad_contribution, target_grad_shape, reduction_op);
         }
 
         // We propogate the gradient here
         template<typename T>
-        void apply_grad(Node<T>& node) {
-            const OP_ARITY arity = op_arity(node.op);
-            if (node.inputs.size() != static_cast<size_t>(arity))
-                throw std::logic_error("Autograd: input count does not match op arity (Binary op requires 2 inputs, Unary op requires 1 input and so on)");
+        void apply_grad(
+            const std::shared_ptr<Node<T>>& node,
+            const T& upstream_grad,
+            std::unordered_map<Node<T>*, T>& grad_map,
+            bool create_graph
+        ) {
+            const OP_ARITY arity = op_arity(node->op);
 
-            // TODO: remove this copy op
-            std::vector<T> input_vals;
-            for (auto& in : node.inputs) {
-                input_vals.push_back(in->val);
+            if (node->inputs.size() != static_cast<size_t>(arity)) {
+                throw std::logic_error(
+                    "Autograd: input count does not match op arity"
+                );
             }
-            // get the grad that was computed based on the operation and its attributes
-            auto grads = grad_of(node.op, node.op_attr, node.grad, input_vals, node.val);// pushes n.grad into its inputs
 
-            for (size_t i = 0; i < node.inputs.size(); ++i) {
-                if (!node.inputs[i]->requires_grad){
-                    continue; // constant inputs don't get a gradient
+            std::vector<T> input_vals;
+            input_vals.reserve(node->inputs.size());
+
+            for (const auto& in : node->inputs) {
+                if (create_graph && in->requires_grad) {
+                    input_vals.push_back(in->val.autograd_tracked_view(in));
+                } else {
+                    input_vals.push_back(in->val);
                 }
-                // adds contribution to each corresponding input's accumulated gradient
-                accumulate_grad(node.inputs[i]->grad, grads[i], node.inputs[i]->val);
+            }
+
+            T output_val = node->val;
+
+            if (create_graph) {
+                output_val = node->val.autograd_tracked_view(node);
+            }
+
+            auto grads = grad_of(
+                node->op,
+                node->op_attr,
+                upstream_grad,
+                input_vals,
+                output_val
+            );
+
+            for (size_t i = 0; i < node->inputs.size(); ++i) {
+                auto& input = node->inputs[i];
+
+                if (!input->requires_grad) {
+                    continue;
+                }
+
+                auto it = grad_map.find(input.get());
+
+                if (it == grad_map.end()) {
+                    throw std::logic_error(
+                        "Autograd: missing gradient-map entry"
+                    );
+                }
+
+                accumulate_grad(
+                    it->second,
+                    grads[i],
+                    input->val
+                );
             }
         }
 
        // TODO: fix for MATRIX AND TENSOR TYPES - also add a boolean for gradient accumulation as well
        // backward_graph is needed in order to make the backward function differentiable as well in order to do higher order derivatives
        template <typename T>
-       T backward(std::shared_ptr<bearml::Node<T>> end_node, bool accumulate){
+       T backward(std::shared_ptr<bearnode<T>> end_node, bool accumulate,  bool create_graph){
+          std::unordered_map<Node<T>*, T> grad_map;
 
-          std::vector<std::shared_ptr<bearml::Node<T>>> all_nodes = topological_sort(end_node); // sort the graph
+          std::vector<std::shared_ptr<bearnode<T>>> all_nodes = topological_sort(end_node); // sort the graph
           // we clear grads right now
-          if (!accumulate){
-             for (const auto& node : all_nodes) {
-                if (node->requires_grad){
-                    node->grad = T(node->val.getShape(), node->val.getDevice()); // initialize all nodes to 0
-                }
-             }
-          } else {
-             // only leaf nodes accumulate - intermediate grads still restart, or they would be counted twice
-             for (const auto& node : all_nodes) {
-                if (node->requires_grad && node->op != OP_Code::NO_OP){
-                    node->grad = T(node->val.getShape(), node->val.getDevice()); // only leaf nodes are 0 here
-                }
-             }
+          for (const auto& node : all_nodes) {
+              if (node->requires_grad) {
+                  // insert_or_assign as operator[] needs Tensor's private default constructor
+                  grad_map.insert_or_assign(node.get(), T(node->val.getShape(), node->val.getDevice()));
+              }
           }
 
-          end_node->grad = T(end_node->val.getShape(), end_node->val.getDevice()); // The whole matrix is filled with 1 - because we want to compute the Jacobian matrix
-          end_node->grad.fill(1.0); // fill returns void;
+          grad_map.insert_or_assign(end_node.get(), T(
+              end_node->val.getShape(),
+              end_node->val.getDevice()
+          )); // The whole matrix is filled with 1 - because we want to compute the Jacobian matrix
+
+          grad_map.at(end_node.get()).fill(1.0);  // fill returns void;
+
 
           // walk in topological ordering
           for (const auto& node : all_nodes) {
              // Only propagate from nodes made by an op that needs a gradient
              if (node->op != OP_Code::NO_OP && node->requires_grad) {
-                   apply_grad(*node); // apply the gradient on that node
+                   apply_grad(node, grad_map.at(node.get()), grad_map, create_graph); // apply the gradient on that node
              }
+          }
+
+          // sync grad map to our node's definition
+          for (const auto& node : all_nodes) {
+              if (!node->requires_grad) {
+                  continue;
+              }
+
+              auto it = grad_map.find(node.get());
+              if (it == grad_map.end()) {
+                  continue;
+              }
+
+              if (accumulate && node->op == OP_Code::NO_OP) {
+                  node->grad = node->grad + it->second.detach();
+              } else {
+                  node->grad = it->second.detach();
+              }
           }
           return end_node->grad;
        }
 
        // backward from a tracked tensor rather than from its node
        template <typename E>
-       Tensor<E> backward(const Tensor<E>& root, bool accumulate) {
-          const auto& node = root.graph_node;
+       Tensor<E> backward(const Tensor<E>& root, bool accumulate, bool create_graph) {
+          std::shared_ptr<Node<Tensor<E>>> node = root.graph_node;
           if (!node) throw std::logic_error("backward: root tensor is not tracked");
-          return backward(node, accumulate);
+          return backward(node, accumulate, create_graph);
        }
 
        // Example -   auto g = gradients(loss, {&w, &b});   // g[0] = dloss/dw, g[1] = dloss/db
@@ -376,42 +441,26 @@ namespace bearml {
     //      for i in range(n):
     //          dx = torch.autograd.grad(outputs=dx, inputs=t, grad_outputs=torch.ones_like(t), create_graph=True)[0]
     //      return dx
-    template <typename E>
-    Tensor<E> derivate(const Tensor<E>& end_node, const Tensor<E>& t, int n){
-
-        if (n < 1) {
-            throw std::invalid_argument("n must be positive as we cannot have a negative gradient");
-        }
-
-        Tensor<E> current = end_node; // temporary node
-
-        std::vector<Tensor<E>> grads;
-        for (int i = 0; i < n; ++i) {
-            grads = gradients(current, {&t});
-            current = grads[0];
-        }
-        return current;
-    }
 }
 
 // Template specified
 
 #define BEARML_AUTOGRAD_TENSOR_MEMBERS(E) \
-    template void bearml::Tensor<E>::record_op(OP_Code, std::initializer_list<const bearml::Tensor<E>*>, OpAttributes, bearml::Tensor<E>&); \
-    template void bearml::Tensor<E>::check_inplace(const bearml::Tensor<E>*) const; \
-    template void bearml::Tensor<E>::set_requires_grad(bool); \
-    template bool bearml::Tensor<E>::requires_grad() const; \
-    template const bearml::Tensor<E>& bearml::Tensor<E>::grad() const; \
-    template void bearml::Tensor<E>::zero_grad();
+    template void beartens<E>::record_op(OP_Code, std::initializer_list<const beartens<E>*>, OpAttributes, beartens<E>&); \
+    template void beartens<E>::check_inplace(const beartens<E>*) const; \
+    template void beartens<E>::set_requires_grad(bool); \
+    template bool beartens<E>::requires_grad() const; \
+    template const beartens<E>& beartens<E>::grad() const; \
+    template void beartens<E>::zero_grad();
 
 #define BEARML_AUTOGRAD_ENGINE(E) \
-    template bearml::Tensor<E> bearml::autogradient::compute_grad_for_mean<bearml::Tensor<E>>(const bearml::Tensor<E>&, const bearml::Tensor<E>&); \
-    template std::vector<bearml::Tensor<E>> bearml::autogradient::grad_of<bearml::Tensor<E>>(OP_Code op, const OpAttributes& attr, const bearml::Tensor<E>& grad, const std::vector<bearml::Tensor<E>>& inputs, const bearml::Tensor<E>& output); \
-    template void bearml::autogradient::accumulate_grad<bearml::Tensor<E>>(bearml::Tensor<E>&, const bearml::Tensor<E>&, const bearml::Tensor<E>&); \
-    template void bearml::autogradient::apply_grad<bearml::Tensor<E>>(bearml::Node<bearml::Tensor<E>>&); \
-    template bearml::Tensor<E> bearml::autogradient::backward<bearml::Tensor<E>>(std::shared_ptr<bearml::Node<bearml::Tensor<E>>>, bool); \
-    template bearml::Tensor<E> bearml::autogradient::backward<E>(const bearml::Tensor<E>&, bool); \
-    template std::vector<bearml::Tensor<E>> bearml::autogradient::gradients<E>(const bearml::Tensor<E>&, std::initializer_list<const bearml::Tensor<E>*>);
+    template beartens<E> bearml::autogradient::compute_grad_for_mean<beartens<E>>(const beartens<E>&, const beartens<E>&); \
+    template std::vector<beartens<E>> bearml::autogradient::grad_of<beartens<E>>(OP_Code op, const OpAttributes& attr, const beartens<E>& grad, const std::vector<beartens<E>>& inputs, const beartens<E>& output); \
+    template void bearml::autogradient::accumulate_grad<beartens<E>>(beartens<E>&, const beartens<E>&, const beartens<E>&); \
+    template void bearml::autogradient::apply_grad<beartens<E>>(const std::shared_ptr<bearml::Node<beartens<E>>>&, const beartens<E>&, std::unordered_map<bearml::Node<beartens<E>>*, beartens<E>>&, bool); \
+    template beartens<E> bearml::autogradient::backward<beartens<E>>(std::shared_ptr<bearml::Node<beartens<E>>>, bool, bool); \
+    template beartens<E> bearml::autogradient::backward<E>(const beartens<E>&, bool, bool); \
+    template std::vector<beartens<E>> bearml::autogradient::gradients<E>(const beartens<E>&, std::initializer_list<const beartens<E>*>);
 
 BEARML_AUTOGRAD_TENSOR_MEMBERS(float)
 BEARML_AUTOGRAD_TENSOR_MEMBERS(double)

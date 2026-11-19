@@ -10,9 +10,8 @@ namespace bearml {
             __shared__ T memo[THREAD_COUNT];
 
             size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-            if (idx < size) {
-                memo[threadIdx.x] = static_cast<T>(d_data[idx]);
-            }
+            // out-of-range threads contribute 0 so the reduction never reads uninitialized memory
+            memo[threadIdx.x] = (idx < size) ? static_cast<T>(d_data[idx]) : static_cast<T>(0);
             __syncthreads();
 
             // use strides

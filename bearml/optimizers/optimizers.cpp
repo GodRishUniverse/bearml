@@ -80,7 +80,7 @@ namespace bearml {
                     T m_hat = m[i] / (1 - std::pow(beta1, step_count));
                     T v_hat = v[i] / (1 - std::pow(beta2, step_count));
 
-                    *p -= learning_rate *( m_hat / (T::sqrt(v_hat) + eps) + weight_decay* (*p));
+                    *p -= learning_rate *( m_hat / (T::sqrt(v_hat) + eps) + weight_decay* p->detach());
                 }
                 this->step_count++;
             }
@@ -158,13 +158,18 @@ namespace bearml {
                     auto& p = params[i];
                     const T& g = p->grad();
 
+                    // buf = momentum * buf + g
+                    momentum_buffer[i] = momentum * momentum_buffer[i] + g;
+
                     T update = nesterov ? (g + momentum * momentum_buffer[i]) : momentum_buffer[i];
 
-                    // Perform Newton-Schulz
-                    NewtonSchulz(update);
+                    // Perform Newton-Schulz - only defined for 2D params, others (e.g. biases) take the plain momentum update
+                    if (update.getShape().size() == 2) {
+                        NewtonSchulz(update);
+                    }
 
                     // weight decay
-                    *p -= learning_rate * weight_decay * (*p);
+                    *p -= learning_rate * weight_decay * p->detach(); // detach: in-place ops reject tracked operands
 
                     // update
                     *p -= learning_rate * update;

@@ -121,7 +121,7 @@ namespace bearml{
 
     // forward declaration
     namespace autogradient {
-        template <typename E> Tensor<E> backward(const Tensor<E>& root, bool accumulate = false);
+        template <typename E> Tensor<E> backward(const Tensor<E>& root, bool accumulate = false, bool create_graph = false);
 
         template <typename E> std::vector<Tensor<E>> gradients(const Tensor<E>& root, std::initializer_list<const Tensor<E>*> nodes_we_want_grads_with_respect_to);
 
@@ -277,7 +277,7 @@ namespace bearml{
 
             template <typename E>
             friend Tensor<E> autogradient::backward(
-                const Tensor<E>& root, bool accumulate
+                const Tensor<E>& root, bool accumulate, bool create_graph
             );
 
             template <typename E>
@@ -315,6 +315,9 @@ namespace bearml{
 
             // shares storage and the graph node
             Tensor shared_view() const { Tensor v = makeStrideView(*this); v.graph_node = graph_node; return v; }
+
+            // shares storage and is attached to node, so ops on it are recorded for higher-order grads
+            Tensor autograd_tracked_view(const std::shared_ptr<bearml::Node<Tensor>>& node) const { Tensor v = makeStrideView(*this); v.graph_node = node; return v; }
 
 
             // constructor when size and data are provided -> copies on same device as I want to ensure the programmer has explicit knowledge of where the tensor is and should use .to before doing "cross-devices" copies

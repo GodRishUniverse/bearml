@@ -1870,21 +1870,20 @@ namespace bearml {
 
     template<typename T>
     double Tensor<T>::frobenius_norm(Tensor& x){
-        Tensor result({1}, x.device);
+        Tensor squared = linear_algebra::hadamard(x, x); // fresh contiguous tensor of x^2
+        double sum = 0.0; // accumulate in double on CPU to avoid float cancellation
         if (x.device == DeviceType::CUDA) {
-            cuda::launch_sum_kernel<cuda_type_trait_t<T>>(cuda_ptr(x.mutable_data()), cuda_ptr(result.mutable_data()), x.sizeOfTensor());
+            Tensor result({1}, x.device);
+            cuda::launch_sum_kernel<cuda_type_trait_t<T>>(cuda_ptr(squared.mutable_data()), cuda_ptr(result.mutable_data()), squared.sizeOfTensor());
+            sum = static_cast<double>(result.to(Device::cpu()).at(0)); // device memory can't be read from host
         }else {
-            size_t sizeTensor = x.sizeOfTensor();
-            double sum = 0.0; // accumulate in double on CPU to avoid float cancellation
+            size_t sizeTensor = squared.sizeOfTensor();
             for (size_t i =0; i<sizeTensor; i++){
-               sum += static_cast<double>(x.at(i));
-
+               sum += static_cast<double>(squared.at(i));
             }
         }
-        return sqrt(result).at(0);
+        return std::sqrt(sum);
     }
-
-
 }
 
 template class bearml::Tensor<float>;

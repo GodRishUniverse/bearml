@@ -7,6 +7,7 @@
 #include <memory>
 #include <functional>
 #include <map>
+#include <unordered_map>
 #include <type_traits>
 #include <iostream>
 
@@ -99,11 +100,11 @@ namespace bearml{
         void accumulate_grad(T& target_grad, const T& grad_contribution, const T& target_val);
 
         template<typename T>
-        void apply_grad(Node<T>& node);
+        void apply_grad(const std::shared_ptr<Node<T>>& node, const T& upstream_grad, std::unordered_map<Node<T>*, T>& grad_map, bool create_graph);
 
         // backward from a tracked tensor; returns the root gradient
         template <typename E>
-        Tensor<E> backward(const Tensor<E>& root, bool accumulate);
+        Tensor<E> backward(const Tensor<E>& root, bool accumulate, bool create_graph);
 
         // runs backward from root and returns the gradients of wrt, in order
         template <typename E>
@@ -116,7 +117,7 @@ namespace bearml{
 
     namespace autogradient {
         template <typename T>
-        T backward(std::shared_ptr<bearml::Node<T>> end_node, bool accumulate = false);
+        T backward(std::shared_ptr<bearml::Node<T>> end_node, bool accumulate = false, bool create_graph = false);
     }
 
 }
