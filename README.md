@@ -4,6 +4,8 @@ Deep Learning Framework: Implementing Neural Networks in C++
 
 Bare-metal deep learning, hence the bear.
 
+> BearML started as a learning project. The goal now is to grow it into a coherent stack for training, RL post-training and inference of LLMs and other modalities. See the [issues](https://github.com/GodRishUniverse/bearml/issues) for planned work.
+
 ## Why?
 
 I want to implement a project in C++ and CUDA (AMD HIP/ROCm may also be implemented - **optional right now**) properly and this would enable me to do that.
