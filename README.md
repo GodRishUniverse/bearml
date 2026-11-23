@@ -637,6 +637,6 @@ Rishabh Agarwal ([@GodRishUniverse](https://github.com/GodRishUniverse))
 
 Claude code was used for refactoring and understanding concepts and add comments in some places (I highly encourage you to read the code!!!). I wrote most of my code myself and you can check Git history for that. 
 
-Unit tests were written by Claude code - if you find a mistake then feel free to make a pull request to edit the rectify.
+Unit tests were written by Claude code - if you find a mistake then feel free to make a pull request to rectify.
 
 As AI models are advancing, I am going to adopt using the models for searching blogs to read and creating boilerplate stubs for new features.
