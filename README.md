@@ -440,46 +440,30 @@ int main() {
 ## What we need to do
 
 ### CUDA Support & Core Infrastructure
-* **Refactoring for CUDA Support (Major Overhaul)** -- **IN PROGRESS (Priority)**
-    * Write host code and kernels -- **Status: Kernels in progress**
-      * kernels need to be fixed for when the datasize is larger than the number of threads (this wont compute it) AS THREAD_IDX WILL NEVER REACH N
-    * Call kernels in the `Tensor` class when devices match (CUDA). **DOING alongside CUDA support**
-    * Implement **Lazy Copy** operation.
-    * **Memory Management:** Address CPU/GPU memory usage. (Decision needed: Single memory space vs. syncing to avoid expensive copy operations).
-* **Refactoring for Slice Support** - thinking about it
+* **Arena Allocator** needs to be implemented rather than Tensor class allocating space using the Storage class as this would enable CUDA-Graphs and dispatches to be added
+* Lot of kernels needed ... *sigh*
+* **Refactoring for Slice Support** - thinking about it 
     * All ops will have to become slice aware and a `::contiguous` static function will be needed
     * This will allow easy implementation of convolution operations (i think) - but also nice way to have slicing support
-
-* **Dependency Management:** Fix `#includes` for the repo to remove cyclical dependencies and repeated includes. -- **Priority After Kernels**
-* **Templatify**
-  * ~~**Templatify Tensor:** template the `Tensor` class to support different data types.~~ **DONE** (`Tensor<T>` with `TensorD`/`Tensorf`/`TensorI` aliases)
-  * ~~**Templatify Autodiff:** template the autodiff engine for different data types.~~ **DONE** (generic over `Tensor<T>` via `is_tensor_v`)
-  * ~~**Templatify Kernel:** template the CUDA kernels for different data types.~~ **DONE** (kernels templated, instantiated per element type)
-  * Explicit-instantiation `.cu` split + `if constexpr` host-compute guards so non-`double` aliases can be instantiated -- **IN PROGRESS**
-* Extend supported dtypes (`int8, int16, int64, float16, bfloat16`, etc.) and allow Mixed Precision
+* Extend supported dtypes (`int8, int16, int64, float16, bfloat16`, etc.) and allow **Mixed Precision**
 * Add OpenMP support for CPU side
-* **Hardware Support:** Potential support for AMD HIP/ROCm. -- **Maybe**
+* **Hardware Support:** Potential support for AMD HIP/ROCm. -- **Will do - hipify should work**
 
 ### Math Engine & Tensor Operations
-* **Matrix Multiplication (GEMM):** Use [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) integration.
-    * Device-aware execution: Check device string to call CUDA kernel or standard Matmul.
-    * Use CUDA for GEMM and Matmul. **Naive kernel is made**
+* **Matrix Multiplication (GEMM):** Using [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page) integration.
+    * Use CUDA for GEMM and Matmul. **Tiled added - but need to match cuBLAS or hipBLAS**
 * **Vector Operations:** Rectify `Transpose` for vector operations (column vs. row).
     * Apply corresponding modifications to multiplication in `autogradient.cpp`.
 * **Caching:** Implement tensor caching to reduce memory usage.
 * **Convolution:** Implement tensor convolution support.
 
 ### Autogradient/Autodiff & Neural Network Module
-* **Autodiff Engine:** Implement for activation functions (Unary and Binary ops).
 * **Sequential Class:** Create a wrapper to stack layers.
 * **Loss Functions:**
     * Cross Entropy Loss (using LogSoftmax - fix needed)
     * Softmax Loss
     * Cross Entropy Loss with Softmax
     * Binary Cross Entropy Loss with Sigmoid
-* **Optimizers (Post-Loss Implementation):**
-    * **SGD:** Currently implemented but slow. Add Momentum.
-    * **Adam / AdamW:** Implement Eps, Betas, and Regularization.
 
 ### Data & Pipeline
 * **Dataloading Pipeline:** Support for shuffling and batching.
@@ -496,10 +480,10 @@ int main() {
     * Matrix Multiplication Tiling (Cache blocking).
     * OpenMP parallelization (specifically for Matmul).
 * **Graph & Performance:**
-    * Lazy evaluation of the computational graph.
-    * Operator Fusing (e.g., ReLU + Linear).
-    * Strassen's algorithm for large matrices.
-    * Compile-time graph optimization (e.g., `torch.compile` equivalent using **XLA and MLIR**) - **Need to research**
+    * Lazy evaluation of the computational graph **In-progress**
+    * Operator Fusing (e.g., ReLU + Linear). **In-progress**
+    * Compile-time graph optimization (e.g., `torch.compile` equivalent using **XLA and MLIR**) - **researching - IR building has been started**
+    * a **JIT**?
 * **Advanced Features:**
     * Mixed precision training -- **High Importance**
     * Dropout.
@@ -507,14 +491,15 @@ int main() {
 * **Cleanup:** Removing Eigen operations **(Long-term)**.
 
 ### Compatibility and Containerization
-* ~~Provide a Dockerfile for building the project.~~ Done (CPU-only by default, see `Dockerfile`) - still needs a proper CUDA-enabled base image/variant.
-* ~~Add compatibility for `clang` compiler.~~ Done (`-DBEARML_COMPILER=clang`, host code only; CUDA still built via g++-15). MSVC still to do.
-* Add OS agnostic support (e.g., cross-platform compatibility).
+* MSVC support.
+* Add OS agnostic support (e.g., cross-platform compatibility) -> should work if gcc and clang are present
+
+### CI and Github actions setup
+* Automated CI is important for tests to be passed and also core changes
 
 ### EXPLAINATION
 * Create a website that explains the project and its features.
 * Update readme with explanations of optimizations and features and diagrams
-
 ---
 
 ## Contributing
@@ -640,7 +625,18 @@ Rishabh Agarwal ([@GodRishUniverse](https://github.com/GodRishUniverse))
 >
 > [4] [intuitive convolution](https://betterexplained.com/articles/intuitive-convolution/)
 >
+> [5] [LazyTensor](https://arxiv.org/pdf/2102.13267)
+>
+> [6] [vLLM](https://github.com/vllm-project/vllm)
+>
+> [7] [ggml](https://github.com/ggml-org/ggml)
+>
+> [8] [SGlang](https://github.com/sgl-project/sglang)
 
 ## AI Disclosure
 
-Claude code was used for refactoring and understanding concepts and add comments in some places (I highly encourage you to read the code!!!). I wrote most of my code myself and you can check Git history for that.
+Claude code was used for refactoring and understanding concepts and add comments in some places (I highly encourage you to read the code!!!). I wrote most of my code myself and you can check Git history for that. 
+
+Unit tests were written by Claude code - if you find a mistake then feel free to make a pull request to edit the rectify.
+
+As AI models are advancing, I am going to adopt using the models for searching blogs to read and creating boilerplate stubs for new features.

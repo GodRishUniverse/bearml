@@ -9,6 +9,8 @@
 #include <memory>
 #include <vector>
 #include "ir.h"
+#include "ir_builder.h"
+#include <string>
 
 //
 //
@@ -59,36 +61,72 @@
 //
 
 namespace bearml {
-    // why not use ir.h directly?
-    enum class LazyTensorNodeType {
-        TENSOR,
-        OP
-    };
 
-    // will not be a template class
-    // Need to preserve topological ordering - TODO
-    class LazyTensorNode {
+    // user-facing lazy tensor (IRNode is the main struct that is being used)
+    class LazyTensor {
         private:
-            std::shared_ptr<IRNode> ir_node; // holds shape and stride (Shape struct), Dtype and Op details
-            std::vector<std::shared_ptr<LazyTensorNode>> inputs; // get the inputs to this op so that we can materialize it
+            std::shared_ptr<IRNode> node; // the value this handle names - copies share the same node
 
         public:
-            // we need incoming op and output op to know how to fuse
-            Device device;
-            // no need to have a raw pointer here - we can use shared_ptr to manage the lifetime of the IRNode
-            LazyTensorNodeType node_type; // it can either be a tensor node or an op node
-            std::string node_name; // the name of the node (for debugging purposes and seeing IR trace) - like can be variable name (if tensor) or op name ("add_1", "mul_2", etc.) - numbers are in topological order
+            // explicit constructor = stops a shared_ptr<IRNode> silently converting into a LazyTensor
+            explicit LazyTensor(std::shared_ptr<IRNode> node);
 
-            template<typename T>
-            Tensor<T> materialize(); // materialize means to compute the tensor from the inputs
+            // wrap an eager tensor as a PARAMETER leaf - no data is copied
+            template <typename T>
+            static LazyTensor from(const Tensor<T>& t);
 
-            LazyTensorNode() = default;
-            LazyTensorNode(LazyTensorNodeType type, std::string name);
+            // sync point - computes this node and everything upstream (like a materialize)
+            // throws if T does not match dtype()
+            template <typename T>
+            Tensor<T> to_tensor() const;
 
-            void set_ir_node(std::shared_ptr<IRNode> ir_node);
-            void create_ir_node(OP_Code op, std::vector<std::shared_ptr<LazyTensorNode>> inputs, Shape shape, DType dtype, OpAttributes attrs);
+            // logical dims of the value
+            const std::vector<int>& shape() const;
 
+            // element type of the value
+            DType dtype() const;
 
-            ~LazyTensorNode() = default; // since we use shared_ptr, the destructor is automatically called when the reference count goes to 0
+            // device the value will be computed on
+            const Device& device() const;
+
+            // underlying IR node - for passes and tests
+            const std::shared_ptr<IRNode>& ir() const;
+
+            // IR text of this node (not its values) - never forces computation
+            std::string to_string() const;
+
+            // unary ops - static like Tensor (T::exp) so they never hide std::exp etc. inside bearml and same shape as input
+            static LazyTensor exp(const LazyTensor& a);
+            static LazyTensor log(const LazyTensor& a);
+            static LazyTensor abs(const LazyTensor& a);
+            static LazyTensor sqrt(const LazyTensor& a);
+            static LazyTensor sin(const LazyTensor& a);
+            static LazyTensor cos(const LazyTensor& a);
+            static LazyTensor tanh(const LazyTensor& a);
+
+            // swaps the last two dims - metadata-only node, no compute
+            static LazyTensor transpose(const LazyTensor& a);
+
+            // sum over dim, keeps dim as size 1 (matches Tensor::accumulate with keepdims)
+            static LazyTensor sum(const LazyTensor& a, int dim);
+
+            // softmax over dim - same shape as input
+            static LazyTensor softmax(const LazyTensor& a, int dim = -1);
     };
+
+    // element-wise binary ops - broadcast like Tensor, build OP_ADD / OP_SUB / OP_MUL / OP_DIV nodes
+    LazyTensor operator+(const LazyTensor& a, const LazyTensor& b);
+    LazyTensor operator-(const LazyTensor& a, const LazyTensor& b);
+    LazyTensor operator*(const LazyTensor& a, const LazyTensor& b);
+    LazyTensor operator/(const LazyTensor& a, const LazyTensor& b);
+
+    // scalar ops - constant goes in OpAttributes, builds the *_SCALAR nodes (c - x and c / x use OP_RSUB_SCALAR / OP_RDIV_SCALAR)
+    LazyTensor operator+(const LazyTensor& a, double c);
+    LazyTensor operator+(double c, const LazyTensor& a);
+    LazyTensor operator-(const LazyTensor& a, double c);
+    LazyTensor operator-(double c, const LazyTensor& a);
+    LazyTensor operator*(const LazyTensor& a, double c);
+    LazyTensor operator*(double c, const LazyTensor& a);
+    LazyTensor operator/(const LazyTensor& a, double c);
+    LazyTensor operator/(double c, const LazyTensor& a);
 }
