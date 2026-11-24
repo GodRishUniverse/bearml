@@ -15,6 +15,9 @@ namespace bearml {
            Device device_;
            // get_allocator() hands back a per-device singleton - so the uniqueness is guaranteed there
            DeviceAllocator* allocator_;
+
+           std::shared_ptr<Storage> parent = nullptr;
+
     public:
         Storage(size_t nbytes, const Device& device) :
             num_bytes_(nbytes),
@@ -25,6 +28,13 @@ namespace bearml {
                       data_ = allocator_->allocate(num_bytes_);
                   }
         }
+
+        // raw_data() + offset is arithmetic when pointer is void*
+        // TODO: set device_(parent->device()) - defaults to CPU, so a CUDA slice's to() would memcpy a device pointer
+        // TODO: list initializers in declaration order (data_, num_bytes_, device_, allocator_, parent) - fixes -Wreorder
+        Storage(std::shared_ptr<Storage> parent, size_t offset, size_t size_bytes):
+         num_bytes_(size_bytes), data_(static_cast<std::byte*>(parent->raw_data())+offset), parent(parent), allocator_(&parent->allocator()){
+        }
         // no move or copy constructors as we only want shared ownership
         Storage(const Storage&) = delete;
         Storage& operator=(const Storage&) = delete;
@@ -33,8 +43,8 @@ namespace bearml {
 
         ~Storage() {
             if (data_) {
-                allocator_->deallocate(data_);
-                data_ = nullptr;
+                if (parent == nullptr) allocator_->deallocate(data_); // only deallocate if parent is null (root storage)
+                data_ = nullptr; // we empty the block
             }
         }
 

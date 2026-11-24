@@ -33,13 +33,13 @@ namespace bearml {
 
     // one value in the graph - it describes a tensor that does not exist yet, so it has dims but no strides
     struct IRNode {
-        IRNodeType node_type = IRNodeType::OP;             // leaf or op
+        IRNodeType node_type = IRNodeType::OP;        // leaf or op
         OP_Code op = OP_Code::NO_OP;                  // NO_OP for leaves
         std::vector<std::shared_ptr<IRNode>> inputs;  // the edges of the graph - empty for leaves
         std::vector<int> shape;                       // logical dims only - layout (strides) is decided when materializing
         DType dtype;                                  // element type, known at build time
         Device device;                                // where it will be computed
-        OpAttributes op_attrs;                           // op parameters (dim, scalar constant, ...)
+        OpAttributes op_attrs;                        // op parameters (dim, scalar constant, ...)
         std::shared_ptr<AnyTensor> leaf_value;        // real data - PARAMETER/CONSTANT only, keeps its own strides
         int id = -1;                                  // creation order - printed as %id in to_string
     };
